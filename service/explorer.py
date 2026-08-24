@@ -45,3 +45,9 @@ def normalize_cnpj_identifier(value: str | None) -> str:
         raise ValueError("informe um CNPJ com 14 caracteres")
     return normalized
 
+
+def cnpj_root_bounds(value: str | None) -> tuple[str, str, str]:
+    """Return an indexed CNPJ range for every establishment of one company root."""
+    normalized = normalize_cnpj_identifier(value)
+    root = normalized[:8]
+    return root, f"{root}000000", f"{root}ZZZZZZ"

@@ -86,9 +86,10 @@ class SearchSqlTests(unittest.TestCase):
             filters,
             SearchCapabilities(simples=True, company_details=True, establishment_details=True),
         )
-        self.assertIn("LEFT JOIN rfb_current_simples", sql)
-        self.assertIn("LEFT JOIN rfb_current_company_details", sql)
-        self.assertIn("LEFT JOIN rfb_current_establishment_details", sql)
+        self.assertIn("LEFT JOIN rfb_simples", sql)
+        self.assertIn("LEFT JOIN rfb_company_details", sql)
+        self.assertIn("LEFT JOIN rfb_establishment_details", sql)
+        self.assertIn("s.dataset_version=e.dataset_version", sql)
         self.assertIn("nullif(x.email,'') IS NOT NULL", sql)
         self.assertIn(True, parameters)
         self.assertIn(False, parameters)

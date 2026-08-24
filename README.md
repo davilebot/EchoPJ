@@ -24,6 +24,11 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
   telefone e e-mail, liberados somente quando a carga complementar estiver
   na mesma versão da base principal;
 - exportação da busca por filtros para CSV;
+- quantidade digitável entre 1 e 10.000, com prévia antes de salvar o CSV;
+- seleção manual de empresas na prévia ou download de todo o recorte;
+- consulta exata de todos os estabelecimentos da mesma matriz pelo CNPJ-base;
+- busca genérica de possíveis unidades de redes pelo nome/marca, sempre
+  distinguindo candidatos de uma relação oficial de franquia;
 - somente empresas ativas por padrão.
 
 ## Regras de segurança do match

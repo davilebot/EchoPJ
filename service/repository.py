@@ -11,7 +11,7 @@ from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 
 from .search import SearchCapabilities, build_search_query
-from .explorer import FIELD_GROUPS
+from .explorer import FIELD_GROUPS, cnpj_root_bounds
 
 
 class Repository:
@@ -43,24 +43,49 @@ class Repository:
         with self.pool.connection() as connection:
             row = connection.execute("""
                 SELECT
-                  to_regclass('public.rfb_current_simples') IS NOT NULL AS simples,
-                  to_regclass('public.rfb_current_company_details') IS NOT NULL AS company_details,
-                  to_regclass('public.rfb_current_establishment_details') IS NOT NULL AS establishment_details,
+                  to_regclass('public.rfb_simples') IS NOT NULL AS simples,
+                  to_regclass('public.rfb_company_details') IS NOT NULL AS company_details,
+                  to_regclass('public.rfb_establishment_details') IS NOT NULL AS establishment_details,
+                  to_regclass('public.rfb_partners') IS NOT NULL AS partners,
+                  to_regclass('public.rfb_aux_reference') IS NOT NULL AS references,
                   to_regclass('public.rfb_aux_datasets') IS NOT NULL AS datasets
             """).fetchone()
-            compatible_current = False
+            readiness: dict[str, bool] = {}
             if row["datasets"]:
-                auxiliary = connection.execute(
-                    "SELECT version FROM rfb_aux_datasets WHERE status='current' LIMIT 1"
-                ).fetchone()
                 base = connection.execute(
                     "SELECT version FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
                 ).fetchone()
-                compatible_current = bool(auxiliary and base and auxiliary["version"] == base["version"])
+                auxiliary = connection.execute(
+                    "SELECT version FROM rfb_aux_datasets WHERE version=%s AND status IN ('staging','current')",
+                    (base["version"],),
+                ).fetchone() if base else None
+                if auxiliary:
+                    progress = connection.execute("""
+                        SELECT kind,count(*) AS files,bool_and(status='completed') AS completed
+                        FROM rfb_aux_import_files
+                        WHERE dataset_version=%s
+                        GROUP BY kind
+                    """, (base["version"],)).fetchall()
+                    readiness = {
+                        progress_row["kind"]: bool(progress_row["files"] and progress_row["completed"])
+                        for progress_row in progress
+                    }
         return SearchCapabilities(
-            simples=bool(row["simples"] and compatible_current),
-            company_details=bool(row["company_details"] and compatible_current),
-            establishment_details=bool(row["establishment_details"] and compatible_current),
+            simples=bool(row["simples"] and readiness.get("simples")),
+            company_details=bool(row["company_details"] and readiness.get("companies")),
+            establishment_details=bool(row["establishment_details"] and readiness.get("establishments")),
+            partners=bool(row["partners"] and readiness.get("partners")),
+            references=bool(
+                row["references"]
+                and readiness
+                and all(
+                    readiness.get(kind, False)
+                    for kind in (
+                        "reference_cnaes", "reference_countries", "reference_legal_natures",
+                        "reference_municipalities", "reference_qualifications", "reference_status_reasons",
+                    )
+                )
+            ),
         )
 
     @staticmethod
@@ -220,19 +245,20 @@ class Repository:
             references: dict[str, str] = {}
             if capabilities.company_details:
                 company = connection.execute(
-                    "SELECT * FROM rfb_current_company_details WHERE cnpj_root=%s",
-                    (core["cnpj_root"],),
+                    "SELECT * FROM rfb_company_details WHERE dataset_version=%s AND cnpj_root=%s",
+                    (core["dataset_version"], core["cnpj_root"]),
                 ).fetchone()
             if capabilities.establishment_details:
                 establishment = connection.execute(
-                    "SELECT * FROM rfb_current_establishment_details WHERE cnpj=%s",
-                    (cnpj,),
+                    "SELECT * FROM rfb_establishment_details WHERE dataset_version=%s AND cnpj=%s",
+                    (core["dataset_version"], cnpj),
                 ).fetchone()
             if capabilities.simples:
                 simples = connection.execute(
-                    "SELECT * FROM rfb_current_simples WHERE cnpj_root=%s",
-                    (core["cnpj_root"],),
+                    "SELECT * FROM rfb_simples WHERE dataset_version=%s AND cnpj_root=%s",
+                    (core["dataset_version"], core["cnpj_root"]),
                 ).fetchone()
+            if capabilities.partners:
                 partners = connection.execute("""
                     SELECT p.dataset_version,p.cnpj_root,p.partner_type_code,p.partner_type,
                            p.partner_name,p.partner_document,p.qualification_code,p.joined_at,
@@ -242,16 +268,17 @@ class Repository:
                            q.label AS qualification,
                            co.label AS country,
                            rq.label AS legal_representative_qualification
-                    FROM rfb_current_partners p
-                    LEFT JOIN rfb_current_aux_reference q
-                      ON q.kind='qualification' AND q.code=p.qualification_code
-                    LEFT JOIN rfb_current_aux_reference co
-                      ON co.kind='country' AND co.code=p.country_code
-                    LEFT JOIN rfb_current_aux_reference rq
-                      ON rq.kind='qualification' AND rq.code=p.legal_representative_qualification_code
-                    WHERE p.cnpj_root=%s
+                    FROM rfb_partners p
+                    LEFT JOIN rfb_aux_reference q
+                      ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
+                    LEFT JOIN rfb_aux_reference co
+                      ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
+                    LEFT JOIN rfb_aux_reference rq
+                      ON rq.dataset_version=p.dataset_version AND rq.kind='qualification' AND rq.code=p.legal_representative_qualification_code
+                    WHERE p.dataset_version=%s AND p.cnpj_root=%s
                     ORDER BY p.partner_name,p.qualification_code
-                """, (core["cnpj_root"],)).fetchall()
+                """, (core["dataset_version"], core["cnpj_root"])).fetchall()
+            if capabilities.references:
                 reference_codes = {
                     "cnae": [core.get("primary_cnae"), *(core.get("secondary_cnaes") or [])],
                     "legal_nature": [company.get("legal_nature_code") if company else None],
@@ -264,9 +291,9 @@ class Repository:
                     if not clean_codes:
                         continue
                     rows = connection.execute("""
-                        SELECT kind,code,label FROM rfb_current_aux_reference
-                        WHERE kind=%s AND code=ANY(%s)
-                    """, (kind, clean_codes)).fetchall()
+                        SELECT kind,code,label FROM rfb_aux_reference
+                        WHERE dataset_version=%s AND kind=%s AND code=ANY(%s)
+                    """, (core["dataset_version"], kind, clean_codes)).fetchall()
                     references.update({f"{row['kind']}:{row['code']}": row["label"] for row in rows})
         serialize = lambda value: (
             {key: self._serializable(item) for key, item in dict(value).items()}
@@ -280,6 +307,63 @@ class Repository:
             "partners": [serialize(partner) for partner in partners],
             "references": references,
             "capabilities": capabilities.as_dict(),
+        }
+
+    def company_establishments(self, cnpj: str) -> dict[str, Any] | None:
+        """List every CNPJ sharing the official eight-character company root."""
+        root, lower_bound, upper_bound = cnpj_root_bounds(cnpj)
+        capabilities = self.search_capabilities()
+        detail_join = """
+            LEFT JOIN rfb_establishment_details x
+              ON x.dataset_version=e.dataset_version AND x.cnpj=e.cnpj
+        """ if capabilities.establishment_details else ""
+        detail_columns = (
+            "x.branch_type_code,x.email,x.phone1_area_code,x.phone1"
+            if capabilities.establishment_details
+            else "NULL::text AS branch_type_code,NULL::text AS email,NULL::text AS phone1_area_code,NULL::text AS phone1"
+        )
+        sql = f"""
+            SELECT e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
+                   e.registration_status_date,e.opened_at,e.company_size,e.share_capital,
+                   e.primary_cnae,e.secondary_cnaes,e.municipality,e.uf,e.postal_code,
+                   e.street_type,e.street,e.street_number,e.address_extra,e.district,
+                   e.dataset_version,{detail_columns}
+            FROM rfb_establishments e
+            {detail_join}
+            WHERE e.cnpj >= %s AND e.cnpj <= %s AND e.cnpj_root=%s
+            ORDER BY CASE WHEN x.branch_type_code='1' THEN 0 ELSE 1 END NULLS LAST,e.cnpj
+            LIMIT 10001
+        """ if capabilities.establishment_details else f"""
+            SELECT e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
+                   e.registration_status_date,e.opened_at,e.company_size,e.share_capital,
+                   e.primary_cnae,e.secondary_cnaes,e.municipality,e.uf,e.postal_code,
+                   e.street_type,e.street,e.street_number,e.address_extra,e.district,
+                   e.dataset_version,{detail_columns}
+            FROM rfb_establishments e
+            WHERE e.cnpj >= %s AND e.cnpj <= %s AND e.cnpj_root=%s
+            ORDER BY e.cnpj
+            LIMIT 10001
+        """
+        with self.pool.connection() as connection:
+            connection.execute(
+                "SELECT set_config('statement_timeout',%s,true)",
+                (str(max(15_000, self.statement_timeout_ms * 5)),),
+            )
+            rows = connection.execute(sql, (lower_bound, upper_bound, root)).fetchall()
+        if not rows:
+            return None
+        has_more = len(rows) > 10000
+        establishments = [self._search_result(row) for row in rows[:10000]]
+        matrix = next((item for item in establishments if item["branch_type_code"] == "1"), None)
+        return {
+            "cnpj_root": root,
+            "queried_cnpj": cnpj,
+            "matrix": matrix,
+            "establishments": establishments,
+            "returned": len(establishments),
+            "has_more": has_more,
+            "dataset_version": rows[0]["dataset_version"],
+            "branch_type_available": capabilities.establishment_details,
         }
 
     @staticmethod

@@ -94,15 +94,25 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 .search-form legend { grid-column: 1 / -1; width: 100%; margin-bottom: 14px; color: #172033; font-size: 17px; font-weight: 800; }
 .search-form legend span { float: right; border-radius: 999px; padding: 5px 9px; color: #92400e; background: #fef3c7; font-size: 11px; }
 .search-form .fieldset-note { grid-column: 1 / -1; margin: 0; color: #64748b; font-size: 12px; }
+.network-note { grid-column: 1 / -1; padding: 14px 16px; border: 1px solid #bfdbfe; border-radius: 12px; background: #eff6ff; }
+.network-note p { margin: 5px 0 0; color: #475569; font-size: 12px; font-weight: 400; line-height: 1.5; }
 .complementary-filters { border-radius: 14px; }
 .complementary-filters > p { grid-column: 1 / -1; margin: 0; padding: 11px 13px; border-radius: 10px; color: #475569; background: #f8fafc; font-size: 12px; line-height: 1.5; }
 .result-limit { width: min(260px, 100%); margin-bottom: 16px; }
+.input-help { color: #64748b; font-size: 11px; font-weight: 500; }
 #search-loading, #search-result { margin-top: 20px; padding: 24px; border: 1px solid #dce3ef; border-radius: 20px; background: white; box-shadow: 0 16px 50px rgba(15, 23, 42, .07); }
 .search-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
 .search-summary div { padding: 16px; border-radius: 12px; background: #f8fafc; }
 .search-summary strong { display: block; font-size: 23px; }
 .search-summary span { color: #64748b; font-size: 12px; }
 .search-notice { color: #64748b; font-size: 13px; line-height: 1.5; }
+.preview-toolbar, .save-actions { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin: 14px 0; }
+.preview-toolbar > div, .save-actions { display: flex; gap: 10px; }
+.preview-toolbar button, .save-actions button { grid-column: auto; width: auto; }
+.preview-toolbar span { color: #475569; font-size: 12px; font-weight: 700; }
+.row-selector { width: 17px; height: 17px; padding: 0; }
+.save-actions { justify-content: flex-end; }
+.save-actions button:disabled { color: #94a3b8; background: #e2e8f0; cursor: not-allowed; }
 .explorer-heading { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 20px; }
 .explorer-heading h2 { margin: 8px 0 5px; font-size: 34px; }
 .explorer-heading p, .explorer-cnpj-form p { margin: 0; color: #64748b; }
@@ -120,9 +130,10 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 .field-catalog { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .field-catalog article { padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; }
 .field-catalog p { margin: 6px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
-.explorer-cnpj-form { display: grid; grid-template-columns: 2fr 1fr 1fr; align-items: end; margin-bottom: 22px; }
+.explorer-cnpj-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; align-items: end; margin-bottom: 22px; }
 .explorer-cnpj-form h3 { margin: 0 0 6px; }
 .explorer-cnpj-form button { grid-column: auto; }
+.relation-button { justify-self: stretch; padding: 14px; }
 .company-detail-head { display: flex; justify-content: space-between; gap: 18px; }
 .company-detail-head h2 { margin: 10px 0 4px; font-size: 30px; }
 .company-detail-head > div > strong { color: #2563eb; font-size: 19px; }
@@ -145,3 +156,4 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 @media (max-width: 540px) { .tabs { display: flex; overflow-x: auto; } .tab-button { flex: 0 0 auto; } .search-form fieldset, .search-summary { grid-template-columns: 1fr; } }
 @media (max-width: 800px) { .explorer-summary, .field-catalog, .detail-grid { grid-template-columns: repeat(2, 1fr); } .explorer-cnpj-form { grid-template-columns: 1fr; } .explorer-cnpj-form button { grid-column: auto; } }
 @media (max-width: 560px) { .explorer-heading, .company-detail-head, .explorer-status { align-items: start; flex-direction: column; } .explorer-summary, .field-catalog, .detail-grid, .partners-list { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .preview-toolbar, .save-actions { align-items: stretch; flex-direction: column; } .preview-toolbar > div, .save-actions { flex-direction: column; } .preview-toolbar button, .save-actions button { width: 100%; } }

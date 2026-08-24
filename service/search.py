@@ -26,12 +26,16 @@ class SearchCapabilities:
     simples: bool = False
     company_details: bool = False
     establishment_details: bool = False
+    partners: bool = False
+    references: bool = False
 
     def as_dict(self) -> dict[str, bool]:
         return {
             "simples_mei": self.simples,
             "legal_nature": self.company_details,
             "establishment_details": self.establishment_details,
+            "partners": self.partners,
+            "references": self.references,
         }
 
 
@@ -77,12 +81,18 @@ def build_search_query(
         raise SearchCapabilityUnavailable("matriz/filial e contatos aguardam a carga complementar da Receita")
 
     if capabilities.simples:
-        joins.append("LEFT JOIN rfb_current_simples s ON s.cnpj_root=e.cnpj_root")
+        joins.append(
+            "LEFT JOIN rfb_simples s ON s.cnpj_root=e.cnpj_root "
+            "AND s.dataset_version=e.dataset_version"
+        )
         simples_columns = "s.is_simples,s.is_mei"
     else:
         simples_columns = "NULL::boolean AS is_simples,NULL::boolean AS is_mei"
     if capabilities.company_details:
-        joins.append("LEFT JOIN rfb_current_company_details c ON c.cnpj_root=e.cnpj_root")
+        joins.append(
+            "LEFT JOIN rfb_company_details c ON c.cnpj_root=e.cnpj_root "
+            "AND c.dataset_version=e.dataset_version"
+        )
         legal_nature_column = "c.legal_nature_code"
         company_size_expression = "e.company_size" if active_only else "coalesce(e.company_size,c.company_size)"
         share_capital_expression = "e.share_capital" if active_only else "coalesce(e.share_capital,c.share_capital)"
@@ -91,7 +101,10 @@ def build_search_query(
         company_size_expression = "e.company_size"
         share_capital_expression = "e.share_capital"
     if capabilities.establishment_details:
-        joins.append("LEFT JOIN rfb_current_establishment_details x ON x.cnpj=e.cnpj")
+        joins.append(
+            "LEFT JOIN rfb_establishment_details x ON x.cnpj=e.cnpj "
+            "AND x.dataset_version=e.dataset_version"
+        )
         detail_columns = "x.branch_type_code,x.email,x.phone1_area_code,x.phone1"
         if active_only:
             opened_expression = "e.opened_at"

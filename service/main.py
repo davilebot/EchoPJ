@@ -172,3 +172,15 @@ def explorer_company(cnpj: str, _: None = Depends(require_auth)) -> dict:
     if not company:
         raise HTTPException(status_code=404, detail="CNPJ nao encontrado na base da Receita")
     return company
+
+
+@app.get("/api/explorer/companies/{cnpj}/establishments")
+def explorer_company_establishments(cnpj: str, _: None = Depends(require_auth)) -> dict:
+    try:
+        normalized = normalize_cnpj_identifier(cnpj)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    group = repository.company_establishments(normalized)
+    if not group:
+        raise HTTPException(status_code=404, detail="CNPJ nao encontrado na base da Receita")
+    return group

@@ -14,10 +14,13 @@ const explorerOverview = document.querySelector("#explorer-overview");
 const explorerCnpjForm = document.querySelector("#explorer-cnpj-form");
 const explorerCompanyLoading = document.querySelector("#explorer-company-loading");
 const explorerCompanyResult = document.querySelector("#explorer-company-result");
+const explorerEstablishmentsLoading = document.querySelector("#explorer-establishments-loading");
+const explorerEstablishmentsResult = document.querySelector("#explorer-establishments-result");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
 let lastCompanySearch = [];
+let selectedCompanyCnpjs = new Set();
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const allRegistrationStatuses = ["ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"];
@@ -299,10 +302,15 @@ async function loadSearchCapabilities() {
     document.querySelectorAll("[data-capability]").forEach((field) => {
       field.disabled = !data.filters[field.dataset.capability];
     });
-    const available = Object.values(data.filters).every(Boolean);
+    const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details"];
+    const available = filterCapabilities.every((key) => data.filters[key]);
+    const availableCount = filterCapabilities.filter((key) => data.filters[key]).length;
     if (available) {
       document.querySelector("#complementary-filters legend span").textContent = "Disponível";
       document.querySelector("#complementary-note").textContent = `Dados complementares disponíveis na versão ${data.dataset_version}.`;
+    } else if (availableCount) {
+      document.querySelector("#complementary-filters legend span").textContent = "Parcialmente disponível";
+      document.querySelector("#complementary-note").textContent = "Os grupos já concluídos estão liberados. Os demais serão habilitados automaticamente quando terminarem.";
     }
     searchCapabilitiesLoaded = true;
   } catch (error) {
@@ -334,7 +342,7 @@ function companySearchPayload() {
     branch_type: document.querySelector("#search-branch-type").value || null,
     has_email: optionalBoolean(document.querySelector("#search-has-email").value),
     has_phone: optionalBoolean(document.querySelector("#search-has-phone").value),
-    limit: Number(document.querySelector("#search-limit").value),
+    limit: Math.max(1, Math.min(10000, Number(document.querySelector("#search-limit").value) || 1)),
   };
 }
 
@@ -485,10 +493,51 @@ explorerCnpjForm.addEventListener("submit", async (event) => {
   }
 });
 
+function renderCompanyEstablishments(data) {
+  const rows = data.establishments.map((company) => `<tr>
+    <td>${company.branch_type_code === "1" ? "Matriz" : company.branch_type_code === "2" ? "Filial" : "Mesmo CNPJ-base"}</td>
+    <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
+    <td>${escapeHtml(company.trade_name || company.legal_name || "—")}</td>
+    <td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td>
+    <td>${escapeHtml(company.registration_status || "—")}</td>
+    <td>${escapeHtml(company.primary_cnae || "—")}</td>
+  </tr>`).join("");
+  const branchNote = data.branch_type_available
+    ? "A classificação matriz/filial vem do arquivo oficial de estabelecimentos da Receita."
+    : "A relação pelo CNPJ-base já é exata. A etiqueta matriz/filial aparecerá quando o arquivo complementar de estabelecimentos terminar.";
+  explorerEstablishmentsResult.innerHTML = `<article class="company-detail">
+    <div class="company-detail-head"><div><span class="eyebrow">MESMA PESSOA JURÍDICA</span><h2>Matriz e filiais</h2><p>CNPJ-base ${escapeHtml(data.cnpj_root)}</p></div><strong>${data.returned.toLocaleString("pt-BR")} estabelecimentos</strong></div>
+    <p class="search-notice">${escapeHtml(branchNote)} Isso identifica filiais da mesma empresa; não identifica franqueados independentes ou um grupo econômico.</p>
+    ${data.has_more ? `<p class="search-notice">A lista foi limitada aos primeiros 10.000 CNPJs.</p>` : ""}
+    <div class="table-wrap"><table><thead><tr><th>Relação</th><th>CNPJ</th><th>Nome</th><th>Município/UF</th><th>Situação</th><th>CNAE</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </article>`;
+}
+
+async function loadCompanyEstablishments() {
+  explorerEstablishmentsResult.classList.add("hidden");
+  explorerEstablishmentsLoading.classList.remove("hidden");
+  try {
+    const cnpj = document.querySelector("#explorer-cnpj").value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+    if (cnpj.length !== 14) throw new Error("Informe um CNPJ completo com 14 caracteres.");
+    const response = await fetch(`/api/explorer/companies/${encodeURIComponent(cnpj)}/establishments`);
+    if (!response.ok) throw new Error((await response.json()).detail || "Não foi possível localizar matriz e filiais");
+    renderCompanyEstablishments(await response.json());
+  } catch (error) {
+    explorerEstablishmentsResult.innerHTML = `<div class="error explorer-card"><strong>Não foi possível abrir a relação.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  } finally {
+    explorerEstablishmentsLoading.classList.add("hidden");
+    explorerEstablishmentsResult.classList.remove("hidden");
+  }
+}
+
+document.querySelector("#explorer-establishments").addEventListener("click", loadCompanyEstablishments);
+
 function renderCompanySearch(data) {
   lastCompanySearch = data.results;
+  selectedCompanyCnpjs = new Set();
   const preview = data.results.slice(0, 100);
   const rows = preview.map((company) => `<tr>
+    <td><input class="row-selector" type="checkbox" data-select-company="${escapeHtml(company.cnpj)}" aria-label="Selecionar ${escapeHtml(company.legal_name || company.cnpj)}"></td>
     <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
     <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
     <td>${escapeHtml(company.primary_cnae || "—")}</td>
@@ -506,15 +555,37 @@ function renderCompanySearch(data) {
       <div><strong>${(data.timing_ms / 1000).toFixed(1)}s</strong><span>Tempo de consulta</span></div>
       <div><strong>${escapeHtml(data.dataset_version || "—")}</strong><span>Versão da Receita</span></div>
     </div>
-    <p class="search-notice">${escapeHtml(limitNotice)} A tabela mostra os primeiros ${Math.min(100, data.returned)}; o CSV contém todos.</p>
-    ${data.results.length ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <button id="download-company-search" class="download" type="button">Baixar ${data.returned.toLocaleString("pt-BR")} empresas em CSV</button>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
-  document.querySelector("#download-company-search")?.addEventListener("click", downloadCompanySearch);
+    <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
+    ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Salvar selecionadas em CSV</button><button id="download-company-search" type="button">Salvar todas as ${data.returned.toLocaleString("pt-BR")} em CSV</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+  document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
+  document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
+    downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas");
+  });
+  document.querySelector("#select-preview")?.addEventListener("click", () => {
+    preview.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
+    companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = true; });
+    updateSearchSelection();
+  });
+  document.querySelector("#clear-preview-selection")?.addEventListener("click", () => {
+    selectedCompanyCnpjs.clear();
+    companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = false; });
+    updateSearchSelection();
+  });
 }
 
-function downloadCompanySearch() {
+function updateSearchSelection() {
+  const count = selectedCompanyCnpjs.size;
+  const label = document.querySelector("#selection-count");
+  const button = document.querySelector("#download-selected-company-search");
+  if (label) label.textContent = `${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}`;
+  if (button) button.disabled = count === 0;
+}
+
+function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
   const headers = ["CNPJ", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "E-mail", "Telefone", "Versão Receita"];
-  const rows = lastCompanySearch.map((company) => [
+  const rows = companies.map((company) => [
     company.cnpj, company.legal_name, company.trade_name, company.registration_status,
     company.registration_status_date, company.opened_at, company.company_size, company.share_capital,
     company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
@@ -526,7 +597,7 @@ function downloadCompanySearch() {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `empresas-receita-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -558,6 +629,20 @@ document.querySelector("#refresh-history").addEventListener("click", loadHistory
 document.querySelector("#refresh-explorer").addEventListener("click", loadExplorerOverview);
 document.querySelector("#download-template").addEventListener("click", downloadTemplate);
 companySearchResult.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-company-cnpj]");
+  if (!button) return;
+  document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;
+  explorerCnpjForm.requestSubmit();
+  explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+companySearchResult.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-select-company]");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedCompanyCnpjs.add(checkbox.dataset.selectCompany);
+  else selectedCompanyCnpjs.delete(checkbox.dataset.selectCompany);
+  updateSearchSelection();
+});
+explorerEstablishmentsResult.addEventListener("click", (event) => {
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;
   document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;

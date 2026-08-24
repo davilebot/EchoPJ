@@ -87,14 +87,17 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
 
       <form id="explorer-cnpj-form" class="explorer-cnpj-form">
         <div>
-          <h3>Abrir empresa por CNPJ</h3>
-          <p>Consulta exata e rápida, incluindo Simples, MEI e sócios quando a carga estiver publicada.</p>
+          <h3>Abrir empresa ou ver matriz e filiais</h3>
+          <p>Os estabelecimentos da mesma empresa são identificados com precisão pelos oito primeiros caracteres do CNPJ.</p>
         </div>
         <label>CNPJ<input id="explorer-cnpj" required maxlength="18" placeholder="00.000.000/0001-00"></label>
         <button type="submit">Ver empresa completa</button>
+        <button id="explorer-establishments" class="secondary relation-button" type="button">Ver matriz e filiais</button>
       </form>
       <section id="explorer-company-loading" class="explorer-card hidden">Abrindo empresa…</section>
       <section id="explorer-company-result" class="hidden"></section>
+      <section id="explorer-establishments-loading" class="explorer-card hidden">Localizando os CNPJs da mesma empresa…</section>
+      <section id="explorer-establishments-result" class="hidden"></section>
 
       <div class="search-heading">
         <span class="eyebrow">BUSCA AVANÇADA</span>
@@ -112,7 +115,7 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
               <option value="any">Principal ou secundário</option>
             </select>
           </label>
-          <label>Nome contém<input id="search-name" placeholder="Razão social ou fantasia"></label>
+          <label>Nome ou marca contém<input id="search-name" placeholder="Razão social, fantasia ou marca"></label>
           <label>Situação cadastral
             <select id="search-status">
               <option value="ATIVA">Ativa</option>
@@ -137,6 +140,10 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
           <label>Abertura a partir de<input id="search-opened-from" type="date"></label>
           <label>Abertura até<input id="search-opened-to" type="date"></label>
           <p class="fieldset-note">Para pesquisar também nos CNAEs secundários, informe o código completo de 7 dígitos.</p>
+          <aside class="network-note">
+            <strong>Buscando franquias ou unidades de uma rede?</strong>
+            <p>Digite a marca em “Nome ou marca contém” e combine com CNAE e localização. A Receita não possui um campo “franquia”; por isso esses resultados são possíveis unidades cujo nome oficial contém a marca. Franqueados com outra razão social podem não aparecer.</p>
+          </aside>
         </fieldset>
 
         <fieldset>
@@ -189,16 +196,11 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
           <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga de Simples, MEI e dados complementares.</p>
         </fieldset>
 
-        <label class="result-limit">Quantidade máxima
-          <select id="search-limit">
-            <option value="100">100 empresas</option>
-            <option value="500" selected>500 empresas</option>
-            <option value="1000">1.000 empresas</option>
-            <option value="5000">5.000 empresas</option>
-            <option value="10000">10.000 empresas</option>
-          </select>
+        <label class="result-limit">Quantas empresas você quer
+          <input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric">
+          <span class="input-help">Digite qualquer quantidade entre 1 e 10.000.</span>
         </label>
-        <button type="submit">Buscar empresas</button>
+        <button type="submit">Encontrar e mostrar prévia</button>
       </form>
       <section id="search-loading" class="hidden">Consultando a base da Receita…</section>
       <section id="search-result" class="hidden"></section>
