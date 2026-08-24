@@ -2,6 +2,8 @@
 
 Aplicação independente para encontrar e validar CNPJs na base aberta da Receita Federal. O serviço compartilha a base oficial já existente no VPS, mas tem código, interface, autenticação, cache e implantação próprios. O Radar de Concessionárias não é alterado.
 
+Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host/`
+
 ## Primeira versão
 
 - consulta individual por nome, endereço, município, UF e CEP;
@@ -34,4 +36,6 @@ A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cach
 
 ## Execução
 
-O contêiner exige `POSTGRES_DSN`, `APP_USERNAME` e `APP_PASSWORD` no ambiente. O arquivo `compose.vps.yml` conecta o serviço à rede privada da base compartilhada e a uma rede separada com saída para consultar websites. Nenhum segredo deve ser salvo no repositório.
+O serviço está no projeto EasyPanel `plataforma-receita`, Compose `matcher`. O contêiner exige `POSTGRES_DSN`, `APP_USERNAME` e `APP_PASSWORD` no ambiente. O arquivo `compose.vps.yml` reproduz a configuração publicada: conecta o serviço à rede privada da base compartilhada e a uma rede separada com saída para consultar websites.
+
+O usuário PostgreSQL `plataforma_receita_ro` tem somente leitura. O contêiner roda com sistema de arquivos somente leitura, sem capabilities Linux e com limite de 1 GB de memória. Nenhum segredo deve ser salvo no repositório.
