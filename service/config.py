@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     database_workers: int = 8
     database_statement_timeout_ms: int = 1800
     max_batch_size: int = 200
+    max_job_size: int = 10000
+    job_database_path: str = "/data/jobs.sqlite"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

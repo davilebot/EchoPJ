@@ -13,34 +13,76 @@
       <h1>Encontrar o CNPJ correto</h1>
       <p>Compare nome e endereço com a base completa da Receita Federal.</p>
     </header>
-    <form id="match-form">
-      <h2 class="form-title wide">Consulta individual</h2>
-      <label class="wide">Nome da empresa<input id="name" required placeholder="Ex.: BrasilcomZ - Zootecnia Tropical"></label>
-      <label class="wide">Endereço<input id="address" placeholder="Rua, número e complemento"></label>
-      <label>Município<input id="municipality" placeholder="Ex.: Jaboticabal"></label>
-      <label>UF<input id="uf" value="SP" maxlength="2" required></label>
-      <label>CEP<input id="postal-code" placeholder="00000-000"></label>
-      <label class="wide">Website<input id="website" placeholder="https://empresa.com.br"></label>
-      <label class="check wide"><input id="check-website" type="checkbox" checked> Se necessário, procurar CNPJ automaticamente no site</label>
-      <button type="submit">Consultar CNPJ</button>
-    </form>
-    <section id="loading" class="hidden">Consultando a Receita…</section>
-    <section id="result" class="hidden"></section>
+    <nav class="tabs" aria-label="Navegação principal">
+      <button class="tab-button active" data-tab="consulta" type="button">Nova consulta</button>
+      <button class="tab-button" data-tab="history" type="button">Últimas consultas</button>
+    </nav>
 
-    <section class="batch-section">
-      <div>
-        <span class="eyebrow">CONSULTA EM LOTE</span>
-        <h2>Enviar CSV</h2>
-        <p>Use até 200 linhas. A ordem original será preservada.</p>
-      </div>
-      <form id="batch-form" class="batch-form">
-        <label class="wide">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required></label>
-        <p class="hint wide">Reconhecemos automaticamente as colunas do Apollo: Company Name, Website, Company Street, Company City, Company State e Company Postal Code.</p>
-        <label class="check wide"><input id="batch-check-website" type="checkbox"> Procurar CNPJ nos sites quando o banco não for suficiente</label>
-        <button type="submit">Consultar primeiras 200 linhas</button>
+    <section id="consulta-tab" class="tab-panel">
+      <form id="match-form">
+        <h2 class="form-title wide">Consulta individual</h2>
+        <label class="wide">Nome da empresa<input id="name" required placeholder="Ex.: BrasilcomZ - Zootecnia Tropical"></label>
+        <label class="wide">Endereço<input id="address" placeholder="Rua, número e complemento"></label>
+        <label>Município<input id="municipality" placeholder="Ex.: Jaboticabal"></label>
+        <label>UF<input id="uf" value="SP" maxlength="2" required></label>
+        <label>CEP<input id="postal-code" placeholder="00000-000"></label>
+        <label class="wide">Website<input id="website" placeholder="https://empresa.com.br"></label>
+        <label class="check wide"><input id="check-website" type="checkbox" checked> Se necessário, procurar CNPJ automaticamente no site</label>
+        <button type="submit">Consultar CNPJ</button>
       </form>
-      <section id="batch-loading" class="hidden">Processando o lote na ordem do arquivo…</section>
-      <section id="batch-result" class="hidden"></section>
+      <section id="loading" class="hidden">Consultando a Receita…</section>
+      <section id="result" class="hidden"></section>
+
+      <section class="batch-section">
+        <div>
+          <span class="eyebrow">CONSULTA EM LOTE</span>
+          <h2>Enviar CSV</h2>
+          <p>Use até 10.000 linhas. A consulta roda uma empresa por vez, salva o progresso e preserva a ordem original.</p>
+        </div>
+
+        <aside class="csv-guide">
+          <div>
+            <span class="guide-number">1</span>
+            <strong>Uma linha por empresa</strong>
+            <p>A primeira linha deve conter os nomes das colunas.</p>
+          </div>
+          <div>
+            <span class="guide-number">2</span>
+            <strong>Nome e UF são obrigatórios</strong>
+            <p>Endereço, cidade, CEP e website aumentam muito a qualidade.</p>
+          </div>
+          <div>
+            <span class="guide-number">3</span>
+            <strong>Colunas reconhecidas</strong>
+            <p>Company Name, Company Street, Company City, Company State, Company Postal Code e Website.</p>
+          </div>
+          <pre>Company Name,Company Street,Company City,Company State,Company Postal Code,Website
+Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre>
+          <button id="download-template" class="secondary" type="button">Baixar modelo de CSV</button>
+        </aside>
+
+        <form id="batch-form" class="batch-form">
+          <label class="wide">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required></label>
+          <p class="hint wide">Também aceitamos os equivalentes em português: Nome da empresa, Endereço, Município, UF, CEP e Site.</p>
+          <label class="check wide"><input id="batch-check-website" type="checkbox"> Procurar CNPJ nos sites quando o banco não for suficiente — mais lento</label>
+          <button type="submit">Enviar e iniciar consulta</button>
+        </form>
+        <section id="batch-loading" class="hidden">Validando e colocando o arquivo na fila…</section>
+        <section id="batch-result" class="hidden"></section>
+      </section>
+    </section>
+
+    <section id="history-tab" class="tab-panel hidden">
+      <div class="history-heading">
+        <div>
+          <span class="eyebrow">HISTÓRICO</span>
+          <h2>Últimas consultas</h2>
+          <p>O progresso fica salvo. Você pode sair e voltar depois para baixar.</p>
+        </div>
+        <button id="refresh-history" class="secondary compact" type="button">Atualizar</button>
+      </div>
+      <section id="history-loading">Carregando consultas…</section>
+      <section id="history-list" class="history-list hidden"></section>
     </section>
   </main>
   <script src="/static/app.js"></script>

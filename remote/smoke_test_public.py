@@ -58,14 +58,22 @@ def main() -> None:
         payload = json.loads(response.read())
     result = payload["results"][0]
 
+    jobs_request = Request(f"{BASE_URL}/api/jobs", headers={"Authorization": authorization()})
+    with urlopen(jobs_request, timeout=10) as response:
+        jobs_payload = json.loads(response.read())
+
     assert unauthenticated_status == 401
     assert index_status == 200
     assert "Encontrar o CNPJ correto" in html
+    assert "Últimas consultas" in html
+    assert "Baixar modelo de CSV" in html
     assert result["status"] == "confirmado"
     assert result["selected"]["cnpj"] == "12484145000194"
+    assert isinstance(jobs_payload["jobs"], list)
     print(json.dumps({
         "public_authentication": "ok",
         "interface": "ok",
+        "history_api": "ok",
         "status": result["status"],
         "cnpj": result["selected"]["cnpj"],
         "dataset_version": payload["dataset_version"],

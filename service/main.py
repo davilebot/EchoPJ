@@ -2,14 +2,15 @@ import base64
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
-from time import monotonic
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .models import BatchRequest
+from .jobs import JobRunner, JobStore
+from .matching import MatchingService
+from .models import BatchRequest, JobRequest
 from .repository import Repository
 from .website import WebsiteChecker
 
@@ -25,14 +26,20 @@ website_checker = WebsiteChecker(
     timeout=settings.website_timeout_seconds,
     workers=settings.website_workers,
 )
+matching_service = MatchingService(repository, website_checker)
+job_store = JobStore(settings.job_database_path)
+job_runner = JobRunner(job_store, matching_service.match_items)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     repository.open()
+    job_runner.start()
     yield
+    job_runner.stop()
     repository.close()
     website_checker.close()
+    job_store.close()
 
 
 app = FastAPI(title="Plataforma Receita - Matcher CNPJ", version="0.1.0", lifespan=lifespan)
@@ -68,38 +75,49 @@ def index(_: None = Depends(require_auth)):
 def matches(payload: BatchRequest, _: None = Depends(require_auth)) -> dict:
     if len(payload.items) > settings.max_batch_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_batch_size} itens")
-    started = monotonic()
     items = [item.model_dump() for item in payload.items]
-    results, version, database_ms = repository.match_batch(items, payload.active_only)
-    website_ms = 0
-    website_evidence = {}
-    if payload.check_website:
-        unresolved_ids = {result["local_id"] for result in results if result["status"] != "confirmado"}
-        unresolved = [item for item in items if item["local_id"] in unresolved_ids and item.get("website")]
-        if unresolved:
-            website_started = monotonic()
-            website_evidence = website_checker.check_many(unresolved)
-            website_ms = round((monotonic() - website_started) * 1000)
-            refined = []
-            for item in unresolved:
-                evidence = website_evidence.get(item["local_id"], {})
-                refined.append({
-                    **item,
-                    "site_cnpjs": evidence.get("cnpjs", []),
-                    "site_names": evidence.get("names", []),
-                })
-            refined_results, _, refined_database_ms = repository.match_batch(refined, payload.active_only)
-            database_ms += refined_database_ms
-            refined_by_id = {result["local_id"]: result for result in refined_results}
-            results = [refined_by_id.get(result["local_id"], result) for result in results]
-    for result in results:
-        result["website_evidence"] = website_evidence.get(result["local_id"])
-    return {
-        "results": results,
-        "dataset_version": version,
-        "timing_ms": {
-            "database": database_ms,
-            "website": website_ms,
-            "total": round((monotonic() - started) * 1000),
-        },
-    }
+    return matching_service.match_items(
+        items,
+        active_only=payload.active_only,
+        check_website=payload.check_website,
+    )
+
+
+@app.post("/api/jobs")
+def create_job(payload: JobRequest, _: None = Depends(require_auth)) -> dict:
+    if len(payload.items) > settings.max_job_size:
+        raise HTTPException(status_code=422, detail=f"maximo de {settings.max_job_size} itens")
+    items = [item.model_dump() for item in payload.items]
+    job = job_store.create_job(
+        payload.filename,
+        items,
+        active_only=payload.active_only,
+        check_website=payload.check_website,
+    )
+    job_runner.notify()
+    return job
+
+
+@app.get("/api/jobs")
+def list_jobs(_: None = Depends(require_auth)) -> dict:
+    return {"jobs": job_store.list_jobs()}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str, _: None = Depends(require_auth)) -> dict:
+    job = job_store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="consulta nao encontrada")
+    return job
+
+
+@app.get("/api/jobs/{job_id}/export.csv")
+def export_job(job_id: str, _: None = Depends(require_auth)) -> Response:
+    content = job_store.export_csv(job_id)
+    if content is None:
+        raise HTTPException(status_code=404, detail="consulta nao encontrada")
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="resultado-{job_id}.csv"'},
+    )

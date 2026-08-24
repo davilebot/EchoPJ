@@ -42,6 +42,8 @@ app_password=$(openssl rand -hex 20)
   printf "DATABASE_WORKERS=8\n"
   printf "DATABASE_STATEMENT_TIMEOUT_MS=1800\n"
   printf "MAX_BATCH_SIZE=200\n"
+  printf "MAX_JOB_SIZE=10000\n"
+  printf "JOB_DATABASE_PATH=/data/jobs.sqlite\n"
 } > "$env_file"
 install -m 600 "$env_file" "$easypanel_env_file"
 

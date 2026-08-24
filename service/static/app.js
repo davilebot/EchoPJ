@@ -4,8 +4,10 @@ const result = document.querySelector("#result");
 const batchForm = document.querySelector("#batch-form");
 const batchLoading = document.querySelector("#batch-loading");
 const batchResult = document.querySelector("#batch-result");
+const historyLoading = document.querySelector("#history-loading");
+const historyList = document.querySelector("#history-list");
 let batchSourceRows = [];
-let batchResponse = null;
+let historyPoll = null;
 
 const statusLabel = {
   confirmado: "Confirmado",
@@ -143,6 +145,7 @@ function batchItem(row, index) {
     uf,
     postal_code: pick(row, ["Company Postal Code", "CEP"]) || null,
     website: pick(row, ["Website", "Site", "Company Website"]) || null,
+    source: row,
   };
 }
 
@@ -151,59 +154,82 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function downloadBatch() {
-  if (!batchResponse) return;
-  const extraHeaders = ["Matcher Status", "CNPJ Receita", "Razão Social Receita", "Nome Fantasia Receita", "Score", "Confiança", "Versão Receita"];
-  const originalHeaders = Object.keys(batchSourceRows[0] || {});
-  const lines = [[...originalHeaders, ...extraHeaders].map(csvCell).join(",")];
-  batchResponse.results.forEach((result, index) => {
-    const source = batchSourceRows[index];
-    const selected = result.selected || {};
-    lines.push([
-      ...originalHeaders.map((header) => source[header]),
-      result.status,
-      selected.cnpj || "",
-      selected.legal_name || "",
-      selected.trade_name || "",
-      selected.score ?? "",
-      result.confidence,
-      batchResponse.dataset_version,
-    ].map(csvCell).join(","));
-  });
-  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+function downloadTemplate() {
+  const lines = [
+    ["Company Name", "Company Street", "Company City", "Company State", "Company Postal Code", "Website"],
+    ["Empresa Exemplo", "Rua Brasil 100", "Campinas", "SP", "13010-000", "https://empresa.com.br"],
+  ];
+  const blob = new Blob(["\uFEFF" + lines.map((row) => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = "resultado-matcher-cnpj.csv";
+  link.download = "modelo-matcher-cnpj.csv";
   link.click();
   URL.revokeObjectURL(link.href);
 }
 
-function renderBatch(data) {
-  batchResponse = data;
-  const counts = { confirmado: 0, revisao: 0, nao_encontrado: 0 };
-  data.results.forEach((item) => { counts[item.status] = (counts[item.status] || 0) + 1; });
-  const rows = data.results.map((item, index) => {
-    const selected = item.selected || {};
-    return `<tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(pick(batchSourceRows[index], ["Company Name", "Nome da empresa", "Razão Social", "Nome"]))}</td>
-      <td><span class="status ${item.status}">${statusLabel[item.status]}</span></td>
-      <td>${escapeHtml(formatCnpj(selected.cnpj || "—"))}</td>
-      <td>${escapeHtml(selected.legal_name || "—")}</td>
-      <td>${selected.score ?? "—"}</td>
-    </tr>`;
+const jobStatusLabel = {
+  queued: "Na fila",
+  running: "Processando",
+  completed: "Concluída",
+  completed_with_errors: "Concluída com avisos",
+};
+
+function switchTab(tabName) {
+  document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
+  document.querySelector("#consulta-tab").classList.toggle("hidden", tabName !== "consulta");
+  document.querySelector("#history-tab").classList.toggle("hidden", tabName !== "history");
+  if (tabName === "history") loadHistory();
+}
+
+function formatDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+function renderHistory(jobs) {
+  if (!jobs.length) {
+    historyList.innerHTML = `<div class="empty-state"><strong>Nenhuma consulta em lote ainda.</strong><p>Envie um CSV na aba “Nova consulta”.</p></div>`;
+    return;
+  }
+  historyList.innerHTML = jobs.map((job) => {
+    const active = job.status === "queued" || job.status === "running";
+    const download = job.processed > 0
+      ? `<a class="download-link" href="/api/jobs/${job.id}/export.csv">${active ? "Baixar parcial" : "Baixar CSV"}</a>`
+      : `<span class="download-disabled">Download após a primeira linha</span>`;
+    return `<article class="job-card">
+      <div class="job-topline">
+        <div><strong>${escapeHtml(job.filename)}</strong><span>${formatDate(job.created_at)}</span></div>
+        <span class="job-status ${job.status}">${jobStatusLabel[job.status] || job.status}</span>
+      </div>
+      <div class="progress-label"><span>${job.processed.toLocaleString("pt-BR")} de ${job.total.toLocaleString("pt-BR")} empresas</span><strong>${job.progress_percent}%</strong></div>
+      <div class="progress-track"><span style="width:${Math.min(100, job.progress_percent)}%"></span></div>
+      <div class="job-counts">
+        <span><strong>${job.confirmed}</strong> confirmadas</span>
+        <span><strong>${job.review}</strong> revisão</span>
+        <span><strong>${job.not_found}</strong> sem resultado</span>
+        ${job.failed ? `<span><strong>${job.failed}</strong> erros</span>` : ""}
+      </div>
+      <div class="job-footer"><span>${job.check_website ? "Banco + websites" : "Somente banco"}</span>${download}</div>
+    </article>`;
   }).join("");
-  batchResult.innerHTML = `
-    <div class="summary">
-      <div><strong>${data.results.length}</strong><span>consultadas</span></div>
-      <div><strong>${counts.confirmado}</strong><span>confirmadas</span></div>
-      <div><strong>${counts.revisao}</strong><span>para revisão</span></div>
-      <div><strong>${counts.nao_encontrado}</strong><span>sem resultado</span></div>
-    </div>
-    <div class="table-wrap"><table><thead><tr><th>#</th><th>Empresa</th><th>Resultado</th><th>CNPJ</th><th>Razão social</th><th>Score</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="timing">Lote concluído em ${(data.timing_ms.total / 1000).toFixed(1)}s · Receita ${escapeHtml(data.dataset_version)}</p>
-    <button id="download-batch" class="download" type="button">Baixar resultado em CSV</button>`;
-  document.querySelector("#download-batch").addEventListener("click", downloadBatch);
+}
+
+async function loadHistory() {
+  try {
+    const response = await fetch("/api/jobs");
+    if (!response.ok) throw new Error("Não foi possível carregar o histórico");
+    const data = await response.json();
+    renderHistory(data.jobs);
+    historyLoading.classList.add("hidden");
+    historyList.classList.remove("hidden");
+    const hasActive = data.jobs.some((job) => job.status === "queued" || job.status === "running");
+    clearTimeout(historyPoll);
+    if (hasActive && !document.querySelector("#history-tab").classList.contains("hidden")) {
+      historyPoll = setTimeout(loadHistory, 3000);
+    }
+  } catch (error) {
+    historyLoading.textContent = error.message;
+  }
 }
 
 batchForm.addEventListener("submit", async (event) => {
@@ -213,19 +239,23 @@ batchForm.addEventListener("submit", async (event) => {
   try {
     const file = document.querySelector("#csv-file").files[0];
     const allRows = parseCsv(await file.text());
-    batchSourceRows = allRows.slice(0, 200);
+    if (allRows.length > 10000) throw new Error(`O arquivo tem ${allRows.length.toLocaleString("pt-BR")} linhas. O limite atual é 10.000.`);
+    batchSourceRows = allRows;
     const items = batchSourceRows.map(batchItem);
-    const response = await fetch("/api/matches/batch", {
+    const response = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        filename: file.name,
         active_only: true,
         check_website: document.querySelector("#batch-check-website").checked,
         items,
       }),
     });
     if (!response.ok) throw new Error((await response.json()).detail || "Falha na consulta em lote");
-    renderBatch(await response.json());
+    const job = await response.json();
+    batchResult.innerHTML = `<div class="queued-message"><strong>Arquivo recebido.</strong><p>${job.total.toLocaleString("pt-BR")} empresas foram colocadas na fila. O processamento continuará uma por vez mesmo se você fechar esta página.</p><button id="view-job" type="button">Acompanhar nas últimas consultas</button></div>`;
+    document.querySelector("#view-job").addEventListener("click", () => switchTab("history"));
   } catch (error) {
     batchResult.innerHTML = `<div class="error"><strong>Não foi possível processar o CSV.</strong><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
@@ -233,3 +263,7 @@ batchForm.addEventListener("submit", async (event) => {
     batchResult.classList.remove("hidden");
   }
 });
+
+document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+document.querySelector("#refresh-history").addEventListener("click", loadHistory);
+document.querySelector("#download-template").addEventListener("click", downloadTemplate);

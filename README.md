@@ -7,11 +7,15 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 ## Primeira versão
 
 - consulta individual por nome, endereço, município, UF e CEP;
-- envio de CSV com até 200 empresas, preservando a ordem original;
+- envio de CSV com até 10.000 empresas, preservando a ordem original;
+- processamento assíncrono e sequencial, uma empresa por vez;
+- retomada automática após reinício e histórico das últimas consultas;
+- download parcial durante o processamento ou final após a conclusão;
 - resultado classificado como confirmado, revisão necessária ou não encontrado;
 - download do CSV original acrescido do CNPJ e dos dados do match;
 - busca opcional e automática de CNPJ no HTML público do website;
-- API `POST /api/matches/batch`, com até 200 entradas;
+- API direta `POST /api/matches/batch`, com até 200 entradas;
+- fila persistente em `POST /api/jobs`, com até 10.000 entradas;
 - somente empresas ativas por padrão.
 
 ## Regras de segurança do match
@@ -32,7 +36,7 @@ Com a versão `2026-08` e 72.617.105 estabelecimentos:
 
 Em duas execuções consecutivas das primeiras 200 linhas, o resultado ficou estável em 44 confirmados, 93 para revisão e 63 sem resultado.
 
-A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cache de 30 dias.
+A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cache de 30 dias. Os jobs e os resultados ficam em `/data/jobs.sqlite`, separados da base da Receita.
 
 ## Execução
 

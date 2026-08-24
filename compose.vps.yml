@@ -1,6 +1,6 @@
 services:
   app:
-    image: plataforma-receita-matcher:2026-08-24
+    image: plataforma-receita-matcher:2026-08-24-jobs
     pull_policy: never
     restart: unless-stopped
     env_file:

@@ -16,6 +16,9 @@ input:focus { border-color: #2563eb; outline: 3px solid #dbeafe; }
 .check { flex-direction: row; align-items: center; font-weight: 500; }
 .check input { width: auto; }
 button { grid-column: 1 / -1; border: 0; border-radius: 11px; padding: 14px; background: #2563eb; color: white; font: inherit; font-weight: 800; cursor: pointer; }
+.tabs { display: inline-flex; gap: 6px; padding: 5px; margin-bottom: 22px; background: #e7edf7; border-radius: 13px; }
+.tab-button { grid-column: auto; padding: 10px 16px; color: #64748b; background: transparent; }
+.tab-button.active { color: #172033; background: white; box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
 #loading, #result { margin-top: 20px; }
 .hidden { display: none; }
 .status { display: inline-flex; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 800; }
@@ -38,6 +41,14 @@ dd { margin: 5px 0 0; font-weight: 700; }
 .batch-section { margin-top: 56px; }
 .batch-section > div h2 { margin: 8px 0 4px; font-size: 30px; }
 .batch-section > div p, .hint { color: #64748b; }
+.csv-guide { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; padding: 22px; border: 1px solid #bfdbfe; border-radius: 18px; background: #eff6ff; }
+.csv-guide > div { position: relative; padding-left: 36px; }
+.csv-guide strong { display: block; margin-bottom: 5px; }
+.csv-guide p { margin: 0; color: #475569; font-size: 13px; line-height: 1.45; }
+.guide-number { position: absolute; left: 0; top: -3px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; color: white; background: #2563eb; font-size: 12px; font-weight: 800; }
+.csv-guide pre { grid-column: 1 / -1; overflow-x: auto; margin: 2px 0 0; padding: 14px; border-radius: 10px; color: #1e3a8a; background: white; font-size: 11px; line-height: 1.6; }
+.secondary { grid-column: auto; justify-self: start; padding: 10px 14px; color: #1d4ed8; background: white; border: 1px solid #bfdbfe; }
+.secondary.compact { align-self: center; }
 .batch-form { margin-top: 18px; grid-template-columns: 1fr; }
 .batch-form input[type="file"] { background: #f8fafc; }
 .hint { margin: 0; font-size: 13px; line-height: 1.5; }
@@ -51,5 +62,29 @@ table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { border-bottom: 1px solid #e2e8f0; padding: 11px 9px; text-align: left; white-space: nowrap; }
 th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .download { margin-top: 18px; width: 100%; }
+.queued-message strong { font-size: 20px; }
+.queued-message p { color: #64748b; line-height: 1.5; }
+.history-heading { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 20px; }
+.history-heading h2 { margin: 8px 0 4px; font-size: 34px; }
+.history-heading p { margin: 0; color: #64748b; }
+#history-loading, .empty-state { padding: 28px; border: 1px solid #dce3ef; border-radius: 18px; background: white; color: #64748b; }
+.history-list { display: grid; gap: 14px; }
+.job-card { padding: 20px; border: 1px solid #dce3ef; border-radius: 18px; background: white; box-shadow: 0 10px 30px rgba(15, 23, 42, .05); }
+.job-topline, .job-footer, .progress-label { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.job-topline > div { min-width: 0; }
+.job-topline > div strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.job-topline > div span, .job-footer, .progress-label { color: #64748b; font-size: 12px; }
+.job-status { flex: 0 0 auto; border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 800; }
+.job-status.queued { color: #475569; background: #e2e8f0; }
+.job-status.running { color: #1d4ed8; background: #dbeafe; }
+.job-status.completed { color: #166534; background: #dcfce7; }
+.job-status.completed_with_errors { color: #92400e; background: #fef3c7; }
+.progress-label { margin-top: 18px; }
+.progress-track { height: 9px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: #e2e8f0; }
+.progress-track span { display: block; height: 100%; border-radius: inherit; background: #2563eb; transition: width .3s ease; }
+.job-counts { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; color: #475569; font-size: 12px; }
+.download-link { color: #2563eb; font-weight: 800; text-decoration: none; }
+.download-disabled { color: #94a3b8; }
 @media (max-width: 700px) { form { grid-template-columns: 1fr; } label.wide, button { grid-column: auto; } .candidates, dl { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .csv-guide { grid-template-columns: 1fr; } .csv-guide pre { grid-column: auto; } .history-heading { align-items: start; flex-direction: column; } }
