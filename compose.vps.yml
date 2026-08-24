@@ -1,0 +1,30 @@
+services:
+  matcher:
+    build: .
+    restart: unless-stopped
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DSN}
+      APP_USERNAME: ${APP_USERNAME}
+      APP_PASSWORD: ${APP_PASSWORD}
+      WEBSITE_CACHE_PATH: /data/website-cache.sqlite
+      WEBSITE_TIMEOUT_SECONDS: "3"
+      WEBSITE_WORKERS: "10"
+      DATABASE_WORKERS: "8"
+      DATABASE_STATEMENT_TIMEOUT_MS: "1800"
+    volumes:
+      - /srv/plataforma-receita/data:/data
+    expose: ["8000"]
+    mem_limit: 1g
+    networks:
+      - easypanel
+      - radar_backend
+      - egress
+
+networks:
+  easypanel:
+    external: true
+    name: easypanel
+  radar_backend:
+    external: true
+    name: radar-receita_plataforma_backend
+  egress:

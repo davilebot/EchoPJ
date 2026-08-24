@@ -40,7 +40,9 @@ def score_candidate(item: dict[str, Any], candidate: dict[str, Any]) -> dict[str
     number_match = bool(input_number and candidate_number and input_number == candidate_number)
     number_conflict = bool(input_number and candidate_number and input_number != candidate_number)
 
-    direct_cnpj = candidate.get("cnpj") in set(item.get("site_cnpjs", []))
+    site_cnpj = candidate.get("cnpj") in set(item.get("site_cnpjs", []))
+    provided_cnpj = bool(digits(item.get("cnpj")) and digits(item.get("cnpj")) == candidate.get("cnpj"))
+    direct_cnpj = site_cnpj or provided_cnpj
     exact_name = bool(normalize(item.get("company_name")) and normalize(item.get("company_name")) in {
         normalize(candidate.get("legal_name")), normalize(candidate.get("trade_name"))
     })
@@ -58,13 +60,16 @@ def score_candidate(item: dict[str, Any], candidate: dict[str, Any]) -> dict[str
 
     location_matches = sum([cep_match, city_match, street_match, number_match])
     if direct_cnpj:
-        if name_similarity >= 0.55 or (name_similarity >= 0.35 and location_matches >= 2):
+        if provided_cnpj:
+            score = 100
+        elif name_similarity >= 0.55 or (name_similarity >= 0.35 and location_matches >= 2):
             score = max(score, 94)
         elif location_matches >= 2:
             score = max(score, 78)
 
     signals = {
-        "cnpj_extraido_do_site": direct_cnpj,
+        "cnpj_extraido_do_site": site_cnpj,
+        "cnpj_informado_validado": provided_cnpj,
         "nome": round(name_similarity, 3),
         "nome_legal": round(legal_similarity, 3),
         "nome_fantasia": round(trade_similarity, 3),
@@ -93,6 +98,7 @@ def decide(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, 
     if top:
         signals = top["signals"]
         direct = signals["cnpj_extraido_do_site"]
+        provided = signals["cnpj_informado_validado"]
         name_similarity = signals["nome"]
         location_matches = signals["sinais_localizacao"]
         no_major_conflict = not signals["conflito_municipio"]
@@ -110,9 +116,9 @@ def decide(item: dict[str, Any], candidates: list[dict[str, Any]]) -> dict[str, 
             and no_major_conflict
         )
         strict_direct = direct and top["score"] >= 90 and name_similarity >= 0.35 and no_major_conflict
-        if strict_direct or strict_generic:
+        if provided or strict_direct or strict_generic:
             status = "confirmado"
-            confidence = 5 if top["score"] >= 92 and margin >= 12 else 4
+            confidence = 5 if provided or (top["score"] >= 92 and margin >= 12) else 4
             selected = top
         elif top["score"] >= 58 and name_similarity >= 0.32:
             status = "revisao"

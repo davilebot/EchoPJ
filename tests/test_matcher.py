@@ -33,6 +33,13 @@ class MatcherTests(unittest.TestCase):
         result = decide(item, [candidate])
         self.assertNotEqual(result["status"], "confirmado")
 
+    def test_provided_cnpj_is_validated_exactly(self):
+        item = {"row_number": 1, "company_name": "Nome desatualizado", "city": None, "postal_code": None, "address": None, "cnpj": "11222333000181", "site_cnpjs": [], "site_names": []}
+        candidate = {"cnpj": "11222333000181", "legal_name": "Empresa Atual Ltda", "trade_name": None, "municipality": "SAO PAULO", "postal_code": "01000000", "address": "RUA A 10"}
+        result = decide(item, [candidate])
+        self.assertEqual(result["status"], "confirmado")
+        self.assertTrue(result["selected"]["signals"]["cnpj_informado_validado"])
+
 
 if __name__ == "__main__":
     unittest.main()
