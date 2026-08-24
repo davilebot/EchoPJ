@@ -43,3 +43,11 @@ A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cach
 O serviço está no projeto EasyPanel `plataforma-receita`, Compose `matcher`. O contêiner exige `POSTGRES_DSN`, `APP_USERNAME` e `APP_PASSWORD` no ambiente. O arquivo `compose.vps.yml` reproduz a configuração publicada: conecta o serviço à rede privada da base compartilhada e a uma rede separada com saída para consultar websites.
 
 O usuário PostgreSQL `plataforma_receita_ro` tem somente leitura. O contêiner roda com sistema de arquivos somente leitura, sem capabilities Linux e com limite de 1 GB de memória. Nenhum segredo deve ser salvo no repositório.
+
+## Expansao da base oficial
+
+O importador complementar de socios, Simples/MEI, contatos e dicionarios esta
+preparado em `src/plataforma_receita/rfb_importer.py`. Ele e aditivo, possui
+retomada e pausa automaticamente enquanto houver consultas na fila. O roteiro
+operacional esta em `docs/carga-completa-receita.md`. Essa carga nao deve ser
+iniciada enquanto a plataforma estiver processando jobs de usuarios.
