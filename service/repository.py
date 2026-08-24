@@ -3,6 +3,7 @@ from decimal import Decimal
 from time import monotonic
 from typing import Any
 
+from psycopg.errors import QueryCanceled
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -183,12 +184,27 @@ class Repository:
             ORDER BY query_similarity DESC,cnpj
             LIMIT %s
         """
-        try:
+        def execute(threshold: float, timeout_ms: int) -> list[dict[str, Any]]:
             with self.pool.connection() as connection:
-                connection.execute(f"SET statement_timeout='{self.statement_timeout_ms}ms'")
-                connection.execute("SET pg_trgm.similarity_threshold=0.46")
+                connection.execute(f"SET statement_timeout='{timeout_ms}ms'")
+                connection.execute(f"SET pg_trgm.similarity_threshold={threshold}")
                 rows = connection.execute(sql, [name, name, *where_values, 30]).fetchall()
             return [self._candidate(row) for row in rows]
+
+        try:
+            return execute(0.46, self.statement_timeout_ms)
+        except QueryCanceled:
+            # A more selective retry avoids turning temporary database pressure
+            # into a false "not found" result.
+            try:
+                return execute(0.55, max(5000, self.statement_timeout_ms * 2))
+            except QueryCanceled:
+                try:
+                    return execute(0.68, max(8000, self.statement_timeout_ms * 3))
+                except Exception:
+                    return []
+            except Exception:
+                return []
         except Exception:
             return []
 

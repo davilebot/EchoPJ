@@ -24,9 +24,11 @@ Aplicação independente para encontrar e validar CNPJs na base aberta da Receit
 
 Com a versão `2026-08` e 72.617.105 estabelecimentos:
 
-- 1 empresa: 32 ms no benchmark e 18 ms no teste funcional;
-- 10 empresas: 2,07 s;
-- 200 empresas: 33,57 s.
+- 1 empresa: 26–32 ms no benchmark e 18 ms no teste funcional;
+- 10 empresas: 4,2–4,5 s;
+- 200 empresas: 52–59 s.
+
+Em duas execuções consecutivas das primeiras 200 linhas, o resultado ficou estável em 44 confirmados, 93 para revisão e 63 sem resultado.
 
 A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cache de 30 dias.
 
