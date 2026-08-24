@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 import zipfile
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,7 +26,7 @@ class LayoutTests(unittest.TestCase):
         row = ["12345678", "EMPRESA X", "2062", "49", "1.234,56", "03", "UNIAO"]
         self.assertEqual(
             company_details_row(row, "2026-08"),
-            ("2026-08", "12345678", "2062", "49", "UNIAO"),
+            ("2026-08", "12345678", "2062", "49", "03", "EMPRESA DE PEQUENO PORTE", Decimal("1234.56"), "UNIAO"),
         )
 
     def test_establishment_parser_keeps_all_complementary_fields(self):
@@ -38,6 +39,16 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(parsed[1], "12345678000195")
         self.assertEqual(parsed[2:6], ("1", "01", "LISBOA", "149"))
         self.assertEqual(parsed[-3:], ("x@example.com", "ESPECIAL", "2026-08-24"))
+
+    def test_inactive_establishment_preserves_fields_summarized_by_old_import(self):
+        row = [""] * 30
+        row[0:3] = ["12345678", "0001", "95"]
+        row[5] = "08"
+        row[10:18] = ["20100102", "6201501", "6202300,6311900", "RUA", "BRASIL", "10", "SALA 1", "CENTRO"]
+        parsed = establishment_details_row(row, "2026-08")
+        self.assertEqual(parsed[6], "2010-01-02")
+        self.assertEqual(parsed[7], "6201501")
+        self.assertEqual(parsed[8], ["6202300", "6311900"])
 
     def test_alphanumeric_cnpj_is_preserved(self):
         row = [""] * 30

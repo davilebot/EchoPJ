@@ -31,6 +31,13 @@ AGE_RANGE_LABELS = {
     "9": "MAIOR DE 80 ANOS",
 }
 
+COMPANY_SIZE_LABELS = {
+    "00": "NAO INFORMADO",
+    "01": "MICRO EMPRESA",
+    "03": "EMPRESA DE PEQUENO PORTE",
+    "05": "DEMAIS",
+}
+
 REFERENCE_KINDS = {
     "reference_cnaes": "cnae",
     "reference_countries": "country",
@@ -86,11 +93,7 @@ def row_hash(row: list[str]) -> bytes:
 
 
 def company_details_row(row: list[str], version: str) -> tuple | None:
-    """Fields not already retained in ``rfb_establishments``.
-
-    Legal name, size and share capital already exist in the current database,
-    so repeating them for every CNPJ root would waste substantial disk space.
-    """
+    """Canonical company fields, including values summarized for inactive CNPJs."""
     if len(row) < 7 or len(identifier(row[0])) != 8:
         return None
     return (
@@ -98,6 +101,9 @@ def company_details_row(row: list[str], version: str) -> tuple | None:
         identifier(row[0]),
         clean(row[2]),
         clean(row[3]),
+        clean(row[5]),
+        COMPANY_SIZE_LABELS.get((row[5] or "").strip(), "NAO INFORMADO"),
+        decimal_or_none(row[4]),
         clean(row[6]),
     )
 
@@ -108,6 +114,7 @@ def establishment_details_row(row: list[str], version: str) -> tuple | None:
     cnpj = identifier(row[0]) + identifier(row[1]) + digits(row[2])
     if len(cnpj) != 14:
         return None
+    inactive = (row[5] or "").strip() != "02"
     return (
         version,
         cnpj,
@@ -115,6 +122,14 @@ def establishment_details_row(row: list[str], version: str) -> tuple | None:
         clean(row[7]),
         clean(row[8]),
         clean(row[9]),
+        date_or_none(row[10]) if inactive else None,
+        clean(row[11]) if inactive else None,
+        [value for value in (clean(row[12]) or "").split(",") if value] if inactive else None,
+        clean(row[13]) if inactive else None,
+        clean(row[14]) if inactive else None,
+        clean(row[15]) if inactive else None,
+        clean(row[16]) if inactive else None,
+        clean(row[17]) if inactive else None,
         clean(row[21]),
         clean(row[22]),
         clean(row[23]),
@@ -190,6 +205,9 @@ LAYOUTS = {
             "cnpj_root",
             "legal_nature_code",
             "responsible_qualification_code",
+            "company_size_code",
+            "company_size",
+            "share_capital",
             "federative_entity",
         ),
         ("dataset_version", "cnpj_root"),
@@ -204,6 +222,14 @@ LAYOUTS = {
             "registration_status_reason_code",
             "foreign_city_name",
             "country_code",
+            "opened_at",
+            "primary_cnae",
+            "secondary_cnaes",
+            "street_type",
+            "street",
+            "street_number",
+            "address_extra",
+            "district",
             "phone1_area_code",
             "phone1",
             "phone2_area_code",

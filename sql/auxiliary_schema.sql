@@ -30,13 +30,16 @@ CREATE TABLE IF NOT EXISTS rfb_aux_import_files (
   PRIMARY KEY (dataset_version, file_name)
 );
 
--- O nome, porte e capital social ja existem em rfb_establishments. Guardamos
--- aqui apenas os campos da empresa que ainda nao existem, evitando duplicacao.
+-- Porte e capital aparecem na tabela atual apenas para estabelecimentos ativos.
+-- A copia canonica por raiz preserva esses campos tambem para CNPJs nao ativos.
 CREATE TABLE IF NOT EXISTS rfb_company_details (
   dataset_version text NOT NULL REFERENCES rfb_aux_datasets(version) ON DELETE CASCADE,
   cnpj_root text NOT NULL CHECK (cnpj_root ~ '^[0-9A-Z]{8}$'),
   legal_nature_code text,
   responsible_qualification_code text,
+  company_size_code text,
+  company_size text,
+  share_capital numeric(20,2),
   federative_entity text,
   PRIMARY KEY (dataset_version, cnpj_root)
 );
@@ -48,6 +51,14 @@ CREATE TABLE IF NOT EXISTS rfb_establishment_details (
   registration_status_reason_code text,
   foreign_city_name text,
   country_code text,
+  opened_at date,
+  primary_cnae text,
+  secondary_cnaes text[],
+  street_type text,
+  street text,
+  street_number text,
+  address_extra text,
+  district text,
   phone1_area_code text,
   phone1 text,
   phone2_area_code text,

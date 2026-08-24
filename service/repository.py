@@ -10,6 +10,8 @@ from psycopg_pool import ConnectionPool
 from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 
+from .search import SearchCapabilities, build_search_query
+
 
 class Repository:
     def __init__(self, dsn: str, *, database_workers: int = 8, statement_timeout_ms: int = 1800):
@@ -35,6 +37,30 @@ class Repository:
                 "SELECT version FROM dataset_versions WHERE is_current AND status='ready' ORDER BY imported_at DESC LIMIT 1"
             ).fetchone()
             return row["version"] if row else None
+
+    def search_capabilities(self) -> SearchCapabilities:
+        with self.pool.connection() as connection:
+            row = connection.execute("""
+                SELECT
+                  to_regclass('public.rfb_current_simples') IS NOT NULL AS simples,
+                  to_regclass('public.rfb_current_company_details') IS NOT NULL AS company_details,
+                  to_regclass('public.rfb_current_establishment_details') IS NOT NULL AS establishment_details,
+                  to_regclass('public.rfb_aux_datasets') IS NOT NULL AS datasets
+            """).fetchone()
+            compatible_current = False
+            if row["datasets"]:
+                auxiliary = connection.execute(
+                    "SELECT version FROM rfb_aux_datasets WHERE status='current' LIMIT 1"
+                ).fetchone()
+                base = connection.execute(
+                    "SELECT version FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
+                ).fetchone()
+                compatible_current = bool(auxiliary and base and auxiliary["version"] == base["version"])
+        return SearchCapabilities(
+            simples=bool(row["simples"] and compatible_current),
+            company_details=bool(row["company_details"] and compatible_current),
+            establishment_details=bool(row["establishment_details"] and compatible_current),
+        )
 
     @staticmethod
     def _serializable(value: Any) -> Any:
@@ -69,6 +95,54 @@ class Repository:
             "dataset_version": row.get("dataset_version"),
         }
         return {key: cls._serializable(value) for key, value in fields.items()}
+
+    @classmethod
+    def _search_result(cls, row: dict[str, Any]) -> dict[str, Any]:
+        address = " ".join(filter(None, [
+            row.get("street_type"), row.get("street"), row.get("street_number"),
+            row.get("address_extra"), row.get("district"),
+        ]))
+        fields = {
+            "cnpj": row["cnpj"],
+            "legal_name": row.get("legal_name"),
+            "trade_name": row.get("trade_name"),
+            "registration_status": row.get("registration_status"),
+            "registration_status_date": row.get("registration_status_date"),
+            "opened_at": row.get("opened_at"),
+            "company_size": row.get("company_size"),
+            "share_capital": row.get("share_capital"),
+            "primary_cnae": row.get("primary_cnae"),
+            "secondary_cnaes": row.get("secondary_cnaes") or [],
+            "municipality": row.get("municipality"),
+            "uf": row.get("uf"),
+            "postal_code": row.get("postal_code"),
+            "address": address,
+            "is_simples": row.get("is_simples"),
+            "is_mei": row.get("is_mei"),
+            "legal_nature_code": row.get("legal_nature_code"),
+            "branch_type_code": row.get("branch_type_code"),
+            "email": row.get("email"),
+            "phone_area_code": row.get("phone1_area_code"),
+            "phone": row.get("phone1"),
+            "dataset_version": row.get("dataset_version"),
+        }
+        return {key: cls._serializable(value) for key, value in fields.items()}
+
+    def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool]:
+        started = monotonic()
+        capabilities = self.search_capabilities()
+        sql, parameters = build_search_query(filters, capabilities)
+        with self.pool.connection() as connection:
+            connection.execute(
+                "SELECT set_config('statement_timeout',%s,true)",
+                (str(max(15_000, self.statement_timeout_ms * 5)),),
+            )
+            rows = connection.execute(sql, parameters).fetchall()
+        limit = int(filters["limit"])
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        duration_ms = round((monotonic() - started) * 1000)
+        return [self._search_result(row) for row in rows], capabilities, duration_ms, has_more
 
     @staticmethod
     def _matcher_item(item: dict[str, Any]) -> dict[str, Any]:

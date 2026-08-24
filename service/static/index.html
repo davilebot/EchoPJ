@@ -3,18 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Plataforma Receita — Encontrar CNPJ</title>
+  <title>Plataforma Receita</title>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <main>
     <header>
       <span class="eyebrow">PLATAFORMA RECEITA</span>
-      <h1>Encontrar o CNPJ correto</h1>
-      <p>Compare nome e endereço com a base completa da Receita Federal.</p>
+      <h1>Dados empresariais da Receita</h1>
+      <p>Encontre o CNPJ correto ou crie listas de empresas usando filtros.</p>
     </header>
     <nav class="tabs" aria-label="Navegação principal">
-      <button class="tab-button active" data-tab="consulta" type="button">Nova consulta</button>
+      <button class="tab-button active" data-tab="consulta" type="button">Encontrar CNPJ</button>
+      <button class="tab-button" data-tab="search" type="button">Buscar empresas</button>
       <button class="tab-button" data-tab="history" type="button">Últimas consultas</button>
     </nav>
 
@@ -70,6 +71,115 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
         <section id="batch-loading" class="hidden">Validando e colocando o arquivo na fila…</section>
         <section id="batch-result" class="hidden"></section>
       </section>
+    </section>
+
+    <section id="search-tab" class="tab-panel hidden">
+      <div class="search-heading">
+        <span class="eyebrow">CONSULTA DIRETA</span>
+        <h2>Buscar empresas por características</h2>
+        <p>Combine os filtros e receba uma lista de CNPJs. Empresas ativas são o padrão.</p>
+      </div>
+
+      <form id="company-search-form" class="search-form">
+        <fieldset>
+          <legend>Atividade e perfil</legend>
+          <label>CNAE principal<input id="search-cnae" placeholder="Ex.: 6201501 ou 62"></label>
+          <label>Onde procurar o CNAE
+            <select id="search-cnae-scope">
+              <option value="primary">Somente CNAE principal</option>
+              <option value="any">Principal ou secundário</option>
+            </select>
+          </label>
+          <label>Nome contém<input id="search-name" placeholder="Razão social ou fantasia"></label>
+          <label>Situação cadastral
+            <select id="search-status">
+              <option value="ATIVA">Ativa</option>
+              <option value="TODAS">Todas as situações</option>
+              <option value="BAIXADA">Baixada</option>
+              <option value="INAPTA">Inapta</option>
+              <option value="SUSPENSA">Suspensa</option>
+              <option value="NULA">Nula</option>
+            </select>
+          </label>
+          <label>Porte
+            <select id="search-size">
+              <option value="">Todos os portes</option>
+              <option value="MICRO EMPRESA">Microempresa</option>
+              <option value="EMPRESA DE PEQUENO PORTE">Empresa de pequeno porte</option>
+              <option value="DEMAIS">Demais</option>
+              <option value="NAO INFORMADO">Não informado</option>
+            </select>
+          </label>
+          <label>Capital social mínimo<input id="search-capital-min" type="number" min="0" step="0.01" placeholder="0,00"></label>
+          <label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
+          <label>Abertura a partir de<input id="search-opened-from" type="date"></label>
+          <label>Abertura até<input id="search-opened-to" type="date"></label>
+          <p class="fieldset-note">Para pesquisar também nos CNAEs secundários, informe o código completo de 7 dígitos.</p>
+        </fieldset>
+
+        <fieldset>
+          <legend>Localização</legend>
+          <label>Região
+            <select id="search-region">
+              <option value="">Brasil inteiro</option>
+              <option value="N">Norte</option>
+              <option value="NE">Nordeste</option>
+              <option value="CO">Centro-Oeste</option>
+              <option value="SE">Sudeste</option>
+              <option value="S">Sul</option>
+            </select>
+          </label>
+          <label>UF
+            <select id="search-uf"><option value="">Todas as UFs</option></select>
+          </label>
+          <label>Município<input id="search-municipality" placeholder="Ex.: Campinas"></label>
+          <label>CEP ou início do CEP<input id="search-postal-code" placeholder="Ex.: 130 ou 13010-000"></label>
+        </fieldset>
+
+        <fieldset id="complementary-filters" class="complementary-filters">
+          <legend>Dados complementares <span>Aguardando carga</span></legend>
+          <label>Simples Nacional
+            <select id="search-simples" data-capability="simples_mei" disabled>
+              <option value="">Tanto faz</option><option value="true">Optante</option><option value="false">Não optante</option>
+            </select>
+          </label>
+          <label>MEI
+            <select id="search-mei" data-capability="simples_mei" disabled>
+              <option value="">Tanto faz</option><option value="true">É MEI</option><option value="false">Não é MEI</option>
+            </select>
+          </label>
+          <label>Natureza jurídica (código)<input id="search-legal-nature" data-capability="legal_nature" disabled placeholder="Ex.: 2062"></label>
+          <label>Matriz ou filial
+            <select id="search-branch-type" data-capability="establishment_details" disabled>
+              <option value="">Tanto faz</option><option value="1">Matriz</option><option value="2">Filial</option>
+            </select>
+          </label>
+          <label>Possui e-mail
+            <select id="search-has-email" data-capability="establishment_details" disabled>
+              <option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option>
+            </select>
+          </label>
+          <label>Possui telefone
+            <select id="search-has-phone" data-capability="establishment_details" disabled>
+              <option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option>
+            </select>
+          </label>
+          <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga de Simples, MEI e dados complementares.</p>
+        </fieldset>
+
+        <label class="result-limit">Quantidade máxima
+          <select id="search-limit">
+            <option value="100">100 empresas</option>
+            <option value="500" selected>500 empresas</option>
+            <option value="1000">1.000 empresas</option>
+            <option value="5000">5.000 empresas</option>
+            <option value="10000">10.000 empresas</option>
+          </select>
+        </label>
+        <button type="submit">Buscar empresas</button>
+      </form>
+      <section id="search-loading" class="hidden">Consultando a base da Receita…</section>
+      <section id="search-result" class="hidden"></section>
     </section>
 
     <section id="history-tab" class="tab-panel hidden">

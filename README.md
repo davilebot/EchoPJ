@@ -16,6 +16,12 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - busca opcional e automática de CNPJ no HTML público do website;
 - API direta `POST /api/matches/batch`, com até 200 entradas;
 - fila persistente em `POST /api/jobs`, com até 10.000 entradas;
+- busca direta por CNAE, região, UF, município, CEP, situação, porte, nome,
+  capital social e data de abertura, com até 10.000 resultados por consulta;
+- filtros preparados para Simples, MEI, natureza jurídica, matriz/filial,
+  telefone e e-mail, liberados somente quando a carga complementar estiver
+  na mesma versão da base principal;
+- exportação da busca por filtros para CSV;
 - somente empresas ativas por padrão.
 
 ## Regras de segurança do match

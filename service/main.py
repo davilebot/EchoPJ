@@ -6,12 +6,14 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from psycopg.errors import QueryCanceled
 
 from .config import get_settings
 from .jobs import JobRunner, JobStore
 from .matching import MatchingService
-from .models import BatchRequest, JobRequest
+from .models import BatchRequest, CompanySearchRequest, JobRequest
 from .repository import Repository
+from .search import SearchCapabilityUnavailable
 from .website import WebsiteChecker
 
 
@@ -121,3 +123,34 @@ def export_job(job_id: str, _: None = Depends(require_auth)) -> Response:
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="resultado-{job_id}.csv"'},
     )
+
+
+@app.get("/api/search/capabilities")
+def search_capabilities(_: None = Depends(require_auth)) -> dict:
+    return {
+        "dataset_version": repository.current_version(),
+        "filters": repository.search_capabilities().as_dict(),
+        "max_results": 10000,
+    }
+
+
+@app.post("/api/search")
+def search_companies(payload: CompanySearchRequest, _: None = Depends(require_auth)) -> dict:
+    try:
+        results, capabilities, duration_ms, has_more = repository.search_companies(payload.model_dump())
+    except SearchCapabilityUnavailable as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except QueryCanceled as error:
+        raise HTTPException(
+            status_code=408,
+            detail="A busca ficou ampla demais. Acrescente uma regiao, UF ou CNAE e tente novamente.",
+        ) from error
+    return {
+        "results": results,
+        "returned": len(results),
+        "limit": payload.limit,
+        "has_more": has_more,
+        "dataset_version": repository.current_version(),
+        "capabilities": capabilities.as_dict(),
+        "timing_ms": duration_ms,
+    }

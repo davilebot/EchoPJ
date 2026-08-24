@@ -5,15 +5,16 @@ matcher continuam consultando a tabela atual durante toda a importacao.
 
 ## O que sera acrescentado
 
-- empresa: natureza juridica, qualificacao do responsavel e ente federativo;
+- empresa: natureza juridica, qualificacao do responsavel, porte, capital e ente federativo;
 - estabelecimento: matriz/filial, motivo da situacao, pais/cidade no exterior,
   telefones, fax, e-mail e situacao especial;
 - Simples Nacional e MEI, incluindo datas de entrada e saida;
 - quadro de socios e administradores, com todos os campos publicos do arquivo;
 - dicionarios oficiais de CNAE, pais, natureza, municipio, qualificacao e motivo.
 
-O nome, porte, capital social, abertura, situacao, CNAEs e endereco ja estao na
-base atual e nao serao duplicados.
+O nome, situacao e os dados completos dos estabelecimentos ativos ja estao na
+base atual. A carga complementar preserva porte, capital, abertura, CNAEs e
+endereco que a importacao anterior resumiu nos estabelecimentos nao ativos.
 
 ## Limite dos dados de socios
 

@@ -1,4 +1,8 @@
-from pydantic import BaseModel, Field, field_validator
+from datetime import date
+from decimal import Decimal
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from plataforma_receita.normalization import digits, valid_cnpj
 
@@ -62,3 +66,101 @@ class WebsiteEvidence(BaseModel):
     names: list[str] = Field(default_factory=list)
     pages_checked: list[str] = Field(default_factory=list)
     cached: bool = False
+
+
+REGISTRATION_STATUSES = {"ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"}
+COMPANY_SIZES = {"MICRO EMPRESA", "EMPRESA DE PEQUENO PORTE", "DEMAIS", "NAO INFORMADO"}
+VALID_UFS = {
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+}
+
+
+class CompanySearchRequest(BaseModel):
+    region: Literal["N", "NE", "CO", "SE", "S"] | None = None
+    ufs: list[str] = Field(default_factory=list, max_length=27)
+    municipality: str | None = Field(default=None, max_length=200)
+    postal_code_prefix: str | None = Field(default=None, max_length=9)
+    cnae: str | None = Field(default=None, max_length=10)
+    cnae_scope: Literal["primary", "any"] = "primary"
+    registration_statuses: list[str] = Field(default_factory=list, max_length=6)
+    company_sizes: list[str] = Field(default_factory=list, max_length=4)
+    company_name: str | None = Field(default=None, max_length=200)
+    share_capital_min: Decimal | None = Field(default=None, ge=0)
+    share_capital_max: Decimal | None = Field(default=None, ge=0)
+    opened_from: date | None = None
+    opened_to: date | None = None
+    simples: bool | None = None
+    mei: bool | None = None
+    legal_nature_code: str | None = Field(default=None, max_length=10)
+    branch_type: Literal["1", "2"] | None = None
+    has_email: bool | None = None
+    has_phone: bool | None = None
+    limit: int = Field(default=500, ge=1, le=10000)
+
+    @field_validator("company_name")
+    @classmethod
+    def validate_company_name(cls, value: str | None) -> str | None:
+        if not value or not value.strip():
+            return None
+        if len(value.strip()) < 3:
+            raise ValueError("informe pelo menos 3 caracteres do nome")
+        return value.strip()
+
+    @field_validator("ufs")
+    @classmethod
+    def validate_ufs(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip().upper() for item in value if item.strip()))
+        invalid = set(normalized) - VALID_UFS
+        if invalid:
+            raise ValueError(f"UF invalida: {', '.join(sorted(invalid))}")
+        return normalized
+
+    @field_validator("registration_statuses")
+    @classmethod
+    def validate_statuses(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip().upper() for item in value if item.strip()))
+        invalid = set(normalized) - REGISTRATION_STATUSES
+        if invalid:
+            raise ValueError("situacao cadastral invalida")
+        return normalized
+
+    @field_validator("company_sizes")
+    @classmethod
+    def validate_sizes(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip().upper() for item in value if item.strip()))
+        invalid = set(normalized) - COMPANY_SIZES
+        if invalid:
+            raise ValueError("porte de empresa invalido")
+        return normalized
+
+    @field_validator("cnae")
+    @classmethod
+    def validate_cnae(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        normalized = digits(value)
+        if len(normalized) < 2 or len(normalized) > 7:
+            raise ValueError("CNAE deve ter de 2 a 7 digitos")
+        return normalized
+
+    @field_validator("postal_code_prefix")
+    @classmethod
+    def validate_postal_code(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        normalized = digits(value)
+        if len(normalized) < 2 or len(normalized) > 8:
+            raise ValueError("CEP deve ter de 2 a 8 digitos")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_ranges(self):
+        if self.share_capital_min is not None and self.share_capital_max is not None:
+            if self.share_capital_min > self.share_capital_max:
+                raise ValueError("capital minimo nao pode ser maior que o maximo")
+        if self.opened_from and self.opened_to and self.opened_from > self.opened_to:
+            raise ValueError("data inicial nao pode ser posterior a data final")
+        if self.cnae_scope == "any" and self.cnae and len(self.cnae) != 7:
+            raise ValueError("para incluir CNAEs secundarios, informe o codigo completo de 7 digitos")
+        return self
