@@ -50,6 +50,15 @@ static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.middleware("http")
+async def prevent_stale_application_state(request, call_next):
+    response = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def require_auth(authorization: str | None = Header(default=None)) -> None:
     if not settings.app_username or not settings.app_password:
         raise HTTPException(status_code=503, detail="autenticacao nao configurada")
@@ -71,7 +80,10 @@ def health() -> dict:
 
 @app.get("/")
 def index(_: None = Depends(require_auth)):
-    return FileResponse(static_dir / "index.html")
+    return FileResponse(
+        static_dir / "index.html",
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
 
 
 @app.post("/api/matches/batch")

@@ -1,6 +1,6 @@
 services:
   app:
-    image: plataforma-receita-matcher:2026-08-24-company-lists
+    image: plataforma-receita-matcher:2026-08-24-cache-fix
     pull_policy: never
     restart: unless-stopped
     env_file:
