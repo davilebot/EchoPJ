@@ -103,8 +103,45 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 .search-summary strong { display: block; font-size: 23px; }
 .search-summary span { color: #64748b; font-size: 12px; }
 .search-notice { color: #64748b; font-size: 13px; line-height: 1.5; }
+.explorer-heading { display: flex; justify-content: space-between; gap: 20px; align-items: end; margin-bottom: 20px; }
+.explorer-heading h2 { margin: 8px 0 5px; font-size: 34px; }
+.explorer-heading p, .explorer-cnpj-form p { margin: 0; color: #64748b; }
+.explorer-card, #explorer-overview, #explorer-company-result { margin-bottom: 22px; padding: 24px; border: 1px solid #dce3ef; border-radius: 20px; background: white; box-shadow: 0 16px 50px rgba(15, 23, 42, .07); }
+.explorer-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.explorer-summary div { padding: 16px; border-radius: 12px; background: #f8fafc; }
+.explorer-summary strong { display: block; font-size: 23px; }
+.explorer-summary span { color: #64748b; font-size: 12px; }
+.explorer-status { display: flex; justify-content: space-between; gap: 18px; align-items: center; margin: 16px 0; padding: 16px; border: 1px solid #dbeafe; border-radius: 14px; background: #eff6ff; }
+.explorer-status p { margin: 4px 0 0; color: #475569; font-size: 13px; }
+.aux-status { flex: 0 0 auto; border-radius: 999px; padding: 6px 10px; font-size: 11px; font-weight: 800; color: #1d4ed8; background: #dbeafe; }
+.aux-status.current { color: #166534; background: #dcfce7; }
+.aux-status.failed { color: #991b1b; background: #fee2e2; }
+.explorer-progress { margin-bottom: 16px; }
+.field-catalog { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.field-catalog article { padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; }
+.field-catalog p { margin: 6px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
+.explorer-cnpj-form { display: grid; grid-template-columns: 2fr 1fr 1fr; align-items: end; margin-bottom: 22px; }
+.explorer-cnpj-form h3 { margin: 0 0 6px; }
+.explorer-cnpj-form button { grid-column: auto; }
+.company-detail-head { display: flex; justify-content: space-between; gap: 18px; }
+.company-detail-head h2 { margin: 10px 0 4px; font-size: 30px; }
+.company-detail-head > div > strong { color: #2563eb; font-size: 19px; }
+.company-detail-head p, .company-detail-head > span { color: #64748b; }
+.company-detail h3 { margin: 26px 0 12px; }
+.detail-grid { grid-template-columns: repeat(4, 1fr); }
+.detail-grid dd { overflow-wrap: anywhere; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag-list span { padding: 8px 10px; border-radius: 9px; color: #334155; background: #f1f5f9; font-size: 12px; }
+.partners-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.partner-card { padding: 16px; border: 1px solid #e2e8f0; border-radius: 14px; }
+.partner-card > span { display: block; margin-top: 4px; color: #64748b; font-size: 12px; }
+.partner-card dl { margin-bottom: 0; }
+.partner-card dd { overflow-wrap: anywhere; }
+.table-link { grid-column: auto; padding: 0; color: #2563eb; background: transparent; text-align: left; font-weight: 800; }
 @media (max-width: 700px) { form { grid-template-columns: 1fr; } label.wide, button { grid-column: auto; } .candidates, dl { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .summary { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 700px) { .csv-guide { grid-template-columns: 1fr; } .csv-guide pre { grid-column: auto; } .history-heading { align-items: start; flex-direction: column; } }
 @media (max-width: 800px) { .search-form fieldset { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 540px) { .tabs { display: flex; overflow-x: auto; } .tab-button { flex: 0 0 auto; } .search-form fieldset, .search-summary { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .explorer-summary, .field-catalog, .detail-grid { grid-template-columns: repeat(2, 1fr); } .explorer-cnpj-form { grid-template-columns: 1fr; } .explorer-cnpj-form button { grid-column: auto; } }
+@media (max-width: 560px) { .explorer-heading, .company-detail-head, .explorer-status { align-items: start; flex-direction: column; } .explorer-summary, .field-catalog, .detail-grid, .partners-list { grid-template-columns: 1fr; } }

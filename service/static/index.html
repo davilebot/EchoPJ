@@ -15,7 +15,7 @@
     </header>
     <nav class="tabs" aria-label="Navegação principal">
       <button class="tab-button active" data-tab="consulta" type="button">Encontrar CNPJ</button>
-      <button class="tab-button" data-tab="search" type="button">Buscar empresas</button>
+      <button class="tab-button" data-tab="search" type="button">Explorar base</button>
       <button class="tab-button" data-tab="history" type="button">Últimas consultas</button>
     </nav>
 
@@ -74,9 +74,31 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
     </section>
 
     <section id="search-tab" class="tab-panel hidden">
+      <div class="explorer-heading">
+        <div>
+          <span class="eyebrow">EXPLORADOR DA BASE</span>
+          <h2>Entenda e consulte os dados</h2>
+          <p>Veja a cobertura da Receita e abra uma empresa completa sem acessar tabelas técnicas.</p>
+        </div>
+        <button id="refresh-explorer" class="secondary compact" type="button">Atualizar visão</button>
+      </div>
+      <section id="explorer-overview-loading" class="explorer-card">Carregando visão da base…</section>
+      <section id="explorer-overview" class="hidden"></section>
+
+      <form id="explorer-cnpj-form" class="explorer-cnpj-form">
+        <div>
+          <h3>Abrir empresa por CNPJ</h3>
+          <p>Consulta exata e rápida, incluindo Simples, MEI e sócios quando a carga estiver publicada.</p>
+        </div>
+        <label>CNPJ<input id="explorer-cnpj" required maxlength="18" placeholder="00.000.000/0001-00"></label>
+        <button type="submit">Ver empresa completa</button>
+      </form>
+      <section id="explorer-company-loading" class="explorer-card hidden">Abrindo empresa…</section>
+      <section id="explorer-company-result" class="hidden"></section>
+
       <div class="search-heading">
-        <span class="eyebrow">CONSULTA DIRETA</span>
-        <h2>Buscar empresas por características</h2>
+        <span class="eyebrow">BUSCA AVANÇADA</span>
+        <h2>Criar uma lista por características</h2>
         <p>Combine os filtros e receba uma lista de CNPJs. Empresas ativas são o padrão.</p>
       </div>
 

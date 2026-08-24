@@ -14,6 +14,7 @@ from .matching import MatchingService
 from .models import BatchRequest, CompanySearchRequest, JobRequest
 from .repository import Repository
 from .search import SearchCapabilityUnavailable
+from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 
 
@@ -154,3 +155,20 @@ def search_companies(payload: CompanySearchRequest, _: None = Depends(require_au
         "capabilities": capabilities.as_dict(),
         "timing_ms": duration_ms,
     }
+
+
+@app.get("/api/explorer/overview")
+def explorer_overview(_: None = Depends(require_auth)) -> dict:
+    return repository.explorer_overview()
+
+
+@app.get("/api/explorer/companies/{cnpj}")
+def explorer_company(cnpj: str, _: None = Depends(require_auth)) -> dict:
+    try:
+        normalized = normalize_cnpj_identifier(cnpj)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    company = repository.company_detail(normalized)
+    if not company:
+        raise HTTPException(status_code=404, detail="CNPJ nao encontrado na base da Receita")
+    return company

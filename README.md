@@ -18,6 +18,8 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - fila persistente em `POST /api/jobs`, com até 10.000 entradas;
 - busca direta por CNAE, região, UF, município, CEP, situação, porte, nome,
   capital social e data de abertura, com até 10.000 resultados por consulta;
+- explorador da base com números de cobertura, andamento da carga complementar
+  e ficha exata por CNPJ, sem liberar comandos SQL ao usuário;
 - filtros preparados para Simples, MEI, natureza jurídica, matriz/filial,
   telefone e e-mail, liberados somente quando a carga complementar estiver
   na mesma versão da base principal;

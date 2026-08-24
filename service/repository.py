@@ -11,6 +11,7 @@ from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 
 from .search import SearchCapabilities, build_search_query
+from .explorer import FIELD_GROUPS
 
 
 class Repository:
@@ -143,6 +144,143 @@ class Repository:
         rows = rows[:limit]
         duration_ms = round((monotonic() - started) * 1000)
         return [self._search_result(row) for row in rows], capabilities, duration_ms, has_more
+
+    def explorer_overview(self) -> dict[str, Any]:
+        with self.pool.connection() as connection:
+            base = connection.execute("""
+                SELECT version,imported_at,active_count,inactive_count
+                FROM dataset_versions
+                WHERE is_current AND status='ready'
+                ORDER BY imported_at DESC LIMIT 1
+            """).fetchone()
+            database_size = connection.execute(
+                "SELECT pg_database_size(current_database()) AS bytes"
+            ).fetchone()["bytes"]
+            auxiliary = None
+            progress: list[dict[str, Any]] = []
+            if connection.execute(
+                "SELECT to_regclass('public.rfb_aux_datasets') IS NOT NULL AS available"
+            ).fetchone()["available"]:
+                auxiliary = connection.execute("""
+                    SELECT version,status,started_at,published_at,completed_at,error,metadata
+                    FROM rfb_aux_datasets
+                    ORDER BY started_at DESC LIMIT 1
+                """).fetchone()
+                if auxiliary:
+                    progress = connection.execute("""
+                        SELECT kind,
+                               count(*) AS files,
+                               count(*) FILTER (WHERE status='completed') AS completed_files,
+                               coalesce(sum(rows_loaded),0) AS rows_loaded,
+                               bool_or(status='running') AS running,
+                               bool_or(status='failed') AS failed
+                        FROM rfb_aux_import_files
+                        WHERE dataset_version=%s
+                        GROUP BY kind ORDER BY kind
+                    """, (auxiliary["version"],)).fetchall()
+        active = int(base["active_count"]) if base else 0
+        inactive = int(base["inactive_count"]) if base else 0
+        return {
+            "dataset_version": base["version"] if base else None,
+            "imported_at": self._serializable(base["imported_at"]) if base else None,
+            "active_establishments": active,
+            "inactive_establishments": inactive,
+            "total_establishments": active + inactive,
+            "database_bytes": int(database_size),
+            "auxiliary": {
+                key: self._serializable(value)
+                for key, value in dict(auxiliary).items()
+            } if auxiliary else None,
+            "progress": [
+                {key: self._serializable(value) for key, value in dict(row).items()}
+                for row in progress
+            ],
+            "field_groups": FIELD_GROUPS,
+        }
+
+    @classmethod
+    def _company_detail_core(cls, row: dict[str, Any]) -> dict[str, Any]:
+        fields = dict(row)
+        fields["address"] = " ".join(filter(None, [
+            row.get("street_type"), row.get("street"), row.get("street_number"),
+            row.get("address_extra"), row.get("district"),
+        ]))
+        return {key: cls._serializable(value) for key, value in fields.items()}
+
+    def company_detail(self, cnpj: str) -> dict[str, Any] | None:
+        capabilities = self.search_capabilities()
+        with self.pool.connection() as connection:
+            core = connection.execute(
+                "SELECT * FROM rfb_establishments WHERE cnpj=%s LIMIT 1", (cnpj,)
+            ).fetchone()
+            if not core:
+                return None
+            company = establishment = simples = None
+            partners: list[dict[str, Any]] = []
+            references: dict[str, str] = {}
+            if capabilities.company_details:
+                company = connection.execute(
+                    "SELECT * FROM rfb_current_company_details WHERE cnpj_root=%s",
+                    (core["cnpj_root"],),
+                ).fetchone()
+            if capabilities.establishment_details:
+                establishment = connection.execute(
+                    "SELECT * FROM rfb_current_establishment_details WHERE cnpj=%s",
+                    (cnpj,),
+                ).fetchone()
+            if capabilities.simples:
+                simples = connection.execute(
+                    "SELECT * FROM rfb_current_simples WHERE cnpj_root=%s",
+                    (core["cnpj_root"],),
+                ).fetchone()
+                partners = connection.execute("""
+                    SELECT p.dataset_version,p.cnpj_root,p.partner_type_code,p.partner_type,
+                           p.partner_name,p.partner_document,p.qualification_code,p.joined_at,
+                           p.country_code,p.legal_representative_document,
+                           p.legal_representative_name,p.legal_representative_qualification_code,
+                           p.age_range_code,p.age_range,
+                           q.label AS qualification,
+                           co.label AS country,
+                           rq.label AS legal_representative_qualification
+                    FROM rfb_current_partners p
+                    LEFT JOIN rfb_current_aux_reference q
+                      ON q.kind='qualification' AND q.code=p.qualification_code
+                    LEFT JOIN rfb_current_aux_reference co
+                      ON co.kind='country' AND co.code=p.country_code
+                    LEFT JOIN rfb_current_aux_reference rq
+                      ON rq.kind='qualification' AND rq.code=p.legal_representative_qualification_code
+                    WHERE p.cnpj_root=%s
+                    ORDER BY p.partner_name,p.qualification_code
+                """, (core["cnpj_root"],)).fetchall()
+                reference_codes = {
+                    "cnae": [core.get("primary_cnae"), *(core.get("secondary_cnaes") or [])],
+                    "legal_nature": [company.get("legal_nature_code") if company else None],
+                    "qualification": [company.get("responsible_qualification_code") if company else None],
+                    "status_reason": [establishment.get("registration_status_reason_code") if establishment else None],
+                    "country": [establishment.get("country_code") if establishment else None],
+                }
+                for kind, codes in reference_codes.items():
+                    clean_codes = [code for code in codes if code]
+                    if not clean_codes:
+                        continue
+                    rows = connection.execute("""
+                        SELECT kind,code,label FROM rfb_current_aux_reference
+                        WHERE kind=%s AND code=ANY(%s)
+                    """, (kind, clean_codes)).fetchall()
+                    references.update({f"{row['kind']}:{row['code']}": row["label"] for row in rows})
+        serialize = lambda value: (
+            {key: self._serializable(item) for key, item in dict(value).items()}
+            if value else None
+        )
+        return {
+            "core": self._company_detail_core(core),
+            "company": serialize(company),
+            "establishment": serialize(establishment),
+            "simples": serialize(simples),
+            "partners": [serialize(partner) for partner in partners],
+            "references": references,
+            "capabilities": capabilities.as_dict(),
+        }
 
     @staticmethod
     def _matcher_item(item: dict[str, Any]) -> dict[str, Any]:

@@ -9,6 +9,11 @@ const historyList = document.querySelector("#history-list");
 const companySearchForm = document.querySelector("#company-search-form");
 const companySearchLoading = document.querySelector("#search-loading");
 const companySearchResult = document.querySelector("#search-result");
+const explorerOverviewLoading = document.querySelector("#explorer-overview-loading");
+const explorerOverview = document.querySelector("#explorer-overview");
+const explorerCnpjForm = document.querySelector("#explorer-cnpj-form");
+const explorerCompanyLoading = document.querySelector("#explorer-company-loading");
+const explorerCompanyResult = document.querySelector("#explorer-company-result");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
@@ -186,7 +191,10 @@ function switchTab(tabName) {
   document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("hidden", panel.id !== `${tabName}-tab`));
   if (tabName === "history") loadHistory();
-  if (tabName === "search") loadSearchCapabilities();
+  if (tabName === "search") {
+    loadSearchCapabilities();
+    loadExplorerOverview();
+  }
 }
 
 function formatDate(value) {
@@ -339,11 +347,149 @@ function formatMoney(value) {
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatBytes(value) {
+  if (!value) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let size = Number(value);
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) { size /= 1024; index += 1; }
+  return `${size.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} ${units[index]}`;
+}
+
+function yesNo(value) {
+  if (value === true) return "Sim";
+  if (value === false) return "Não";
+  return "Não informado";
+}
+
+const explorerKindLabels = {
+  companies: "Dados da empresa",
+  establishments: "Contatos e complementos",
+  partners: "Sócios e administradores",
+  simples: "Simples e MEI",
+  reference_cnaes: "CNAEs",
+  reference_countries: "Países",
+  reference_legal_natures: "Naturezas jurídicas",
+  reference_municipalities: "Municípios",
+  reference_qualifications: "Qualificações",
+  reference_status_reasons: "Motivos cadastrais",
+};
+
+function renderExplorerOverview(data) {
+  const auxiliary = data.auxiliary;
+  const status = auxiliary?.status || "não iniciada";
+  const statusText = { staging: "Carga em andamento", current: "Disponível", ready: "Versão anterior", failed: "Falha na carga" }[status] || status;
+  const progressRows = (data.progress || []).map((item) => {
+    const percent = item.files ? Math.round(100 * item.completed_files / item.files) : 0;
+    const state = item.failed ? "Falha" : item.running ? "Processando" : percent === 100 ? "Concluído" : "Aguardando";
+    return `<tr><td>${escapeHtml(explorerKindLabels[item.kind] || item.kind)}</td><td>${item.completed_files}/${item.files} arquivos</td><td>${Number(item.rows_loaded).toLocaleString("pt-BR")}</td><td>${state}</td></tr>`;
+  }).join("");
+  const groups = (data.field_groups || []).map((group) => `<article><strong>${escapeHtml(group.label)}</strong><p>${escapeHtml(group.description)}</p></article>`).join("");
+  explorerOverview.innerHTML = `<div class="explorer-summary">
+      <div><strong>${Number(data.total_establishments).toLocaleString("pt-BR")}</strong><span>Estabelecimentos</span></div>
+      <div><strong>${Number(data.active_establishments).toLocaleString("pt-BR")}</strong><span>Ativos</span></div>
+      <div><strong>${escapeHtml(data.dataset_version || "—")}</strong><span>Versão da Receita</span></div>
+      <div><strong>${formatBytes(data.database_bytes)}</strong><span>Tamanho do banco</span></div>
+    </div>
+    <div class="explorer-status"><div><strong>Dados complementares: ${escapeHtml(statusText)}</strong><p>${auxiliary ? `Versão ${escapeHtml(auxiliary.version)} · dados parciais não são exibidos nas consultas.` : "Nenhuma carga complementar encontrada."}</p></div><span class="aux-status ${escapeHtml(status)}">${escapeHtml(statusText)}</span></div>
+    ${progressRows ? `<div class="table-wrap explorer-progress"><table><thead><tr><th>Grupo</th><th>Arquivos</th><th>Linhas carregadas</th><th>Estado</th></tr></thead><tbody>${progressRows}</tbody></table></div>` : ""}
+    <div class="field-catalog">${groups}</div>`;
+}
+
+async function loadExplorerOverview() {
+  explorerOverviewLoading.classList.remove("hidden");
+  explorerOverview.classList.add("hidden");
+  try {
+    const response = await fetch("/api/explorer/overview");
+    if (!response.ok) throw new Error("Não foi possível carregar a visão da base");
+    renderExplorerOverview(await response.json());
+    explorerOverview.classList.remove("hidden");
+    explorerOverviewLoading.classList.add("hidden");
+  } catch (error) {
+    explorerOverviewLoading.textContent = error.message;
+  }
+}
+
+function referenceLabel(data, kind, code) {
+  if (!code) return "—";
+  const label = data.references?.[`${kind}:${code}`];
+  return label ? `${code} — ${label}` : code;
+}
+
+function renderCompanyDetail(data) {
+  const core = data.core;
+  const company = data.company || {};
+  const establishment = data.establishment || {};
+  const simples = data.simples;
+  const partners = data.partners || [];
+  const cnaes = [core.primary_cnae, ...(core.secondary_cnaes || [])].filter(Boolean);
+  const partnersHtml = partners.length ? partners.map((partner) => `<article class="partner-card">
+      <strong>${escapeHtml(partner.partner_name || "Não informado")}</strong>
+      <span>${escapeHtml(partner.qualification || partner.qualification_code || partner.partner_type || "—")}</span>
+      <dl>
+        <div><dt>Tipo</dt><dd>${escapeHtml(partner.partner_type || "—")}</dd></div>
+        <div><dt>Documento público</dt><dd>${escapeHtml(partner.partner_document || "—")}</dd></div>
+        <div><dt>Entrada</dt><dd>${escapeHtml(partner.joined_at || "—")}</dd></div>
+        <div><dt>Faixa etária</dt><dd>${escapeHtml(partner.age_range || "—")}</dd></div>
+        <div><dt>País</dt><dd>${escapeHtml(partner.country || "—")}</dd></div>
+        <div><dt>Representante legal</dt><dd>${escapeHtml(partner.legal_representative_name || "—")}</dd></div>
+      </dl>
+    </article>`).join("") : `<div class="empty-state"><strong>Nenhum sócio publicado para esta empresa.</strong><p>Algumas naturezas jurídicas não possuem QSA ou a carga complementar ainda está em andamento.</p></div>`;
+  const complementaryNote = data.capabilities.simples_mei
+    ? "Dados complementares da mesma versão da Receita."
+    : "A carga complementar ainda não foi publicada; por enquanto mostramos os dados cadastrais já disponíveis.";
+  explorerCompanyResult.innerHTML = `<article class="company-detail">
+      <div class="company-detail-head"><div><span class="status ${core.is_active ? "confirmado" : "revisao"}">${escapeHtml(core.registration_status)}</span><h2>${escapeHtml(core.trade_name || core.legal_name || "Empresa")}</h2><strong>${escapeHtml(formatCnpj(core.cnpj))}</strong><p>${escapeHtml(core.legal_name || "—")}</p></div><span>Receita ${escapeHtml(core.dataset_version)}</span></div>
+      <p class="search-notice">${escapeHtml(complementaryNote)}</p>
+      <h3>Cadastro</h3><dl class="detail-grid">
+        <div><dt>Abertura</dt><dd>${escapeHtml(core.opened_at || establishment.opened_at || "—")}</dd></div>
+        <div><dt>Porte</dt><dd>${escapeHtml(core.company_size || company.company_size || "—")}</dd></div>
+        <div><dt>Capital social</dt><dd>${escapeHtml(formatMoney(core.share_capital ?? company.share_capital))}</dd></div>
+        <div><dt>Matriz/filial</dt><dd>${establishment.branch_type_code === "1" ? "Matriz" : establishment.branch_type_code === "2" ? "Filial" : "—"}</dd></div>
+        <div><dt>Natureza jurídica</dt><dd>${escapeHtml(referenceLabel(data, "legal_nature", company.legal_nature_code))}</dd></div>
+        <div><dt>Qualificação do responsável</dt><dd>${escapeHtml(referenceLabel(data, "qualification", company.responsible_qualification_code))}</dd></div>
+        <div><dt>Endereço</dt><dd>${escapeHtml(core.address || "—")}</dd></div>
+        <div><dt>Município/UF/CEP</dt><dd>${escapeHtml(`${core.municipality || "—"}/${core.uf || "—"} · ${core.postal_code || "—"}`)}</dd></div>
+      </dl>
+      <h3>Atividades</h3><div class="tag-list">${cnaes.length ? cnaes.map((code) => `<span>${escapeHtml(referenceLabel(data, "cnae", code))}</span>`).join("") : "—"}</div>
+      <h3>Simples Nacional e MEI</h3><dl class="detail-grid">
+        <div><dt>Optante pelo Simples</dt><dd>${simples ? yesNo(simples.is_simples) : "Aguardando carga"}</dd></div>
+        <div><dt>Início / exclusão</dt><dd>${simples ? `${simples.simples_started_at || "—"} / ${simples.simples_ended_at || "—"}` : "—"}</dd></div>
+        <div><dt>MEI</dt><dd>${simples ? yesNo(simples.is_mei) : "Aguardando carga"}</dd></div>
+        <div><dt>Início / exclusão MEI</dt><dd>${simples ? `${simples.mei_started_at || "—"} / ${simples.mei_ended_at || "—"}` : "—"}</dd></div>
+      </dl>
+      <h3>Contatos públicos</h3><dl class="detail-grid">
+        <div><dt>E-mail</dt><dd>${escapeHtml(establishment.email || "—")}</dd></div>
+        <div><dt>Telefone 1</dt><dd>${escapeHtml([establishment.phone1_area_code, establishment.phone1].filter(Boolean).join(" ") || "—")}</dd></div>
+        <div><dt>Telefone 2</dt><dd>${escapeHtml([establishment.phone2_area_code, establishment.phone2].filter(Boolean).join(" ") || "—")}</dd></div>
+        <div><dt>Situação especial</dt><dd>${escapeHtml(establishment.special_status || "—")}</dd></div>
+      </dl>
+      <h3>Sócios e administradores (${partners.length})</h3><div class="partners-list">${partnersHtml}</div>
+    </article>`;
+}
+
+explorerCnpjForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  explorerCompanyResult.classList.add("hidden");
+  explorerCompanyLoading.classList.remove("hidden");
+  try {
+    const cnpj = document.querySelector("#explorer-cnpj").value.toUpperCase().replace(/[^0-9A-Z]/g, "");
+    const response = await fetch(`/api/explorer/companies/${encodeURIComponent(cnpj)}`);
+    if (!response.ok) throw new Error((await response.json()).detail || "Não foi possível abrir a empresa");
+    renderCompanyDetail(await response.json());
+  } catch (error) {
+    explorerCompanyResult.innerHTML = `<div class="error explorer-card"><strong>Não foi possível abrir a empresa.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  } finally {
+    explorerCompanyLoading.classList.add("hidden");
+    explorerCompanyResult.classList.remove("hidden");
+  }
+});
+
 function renderCompanySearch(data) {
   lastCompanySearch = data.results;
   const preview = data.results.slice(0, 100);
   const rows = preview.map((company) => `<tr>
-    <td><strong>${escapeHtml(formatCnpj(company.cnpj))}</strong></td>
+    <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
     <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
     <td>${escapeHtml(company.primary_cnae || "—")}</td>
     <td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td>
@@ -409,4 +555,12 @@ document.querySelector("#search-uf").insertAdjacentHTML("beforeend", allUfs.map(
 
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);
+document.querySelector("#refresh-explorer").addEventListener("click", loadExplorerOverview);
 document.querySelector("#download-template").addEventListener("click", downloadTemplate);
+companySearchResult.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-company-cnpj]");
+  if (!button) return;
+  document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;
+  explorerCnpjForm.requestSubmit();
+  explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
+});
