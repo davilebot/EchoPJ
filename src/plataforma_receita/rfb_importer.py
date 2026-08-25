@@ -31,6 +31,10 @@ from .rfb_manifest import Manifest, ManifestFile, load_manifest
 LOGGER = logging.getLogger("plataforma-receita-full-import")
 ADVISORY_LOCK_NAME = "plataforma_receita_aux_import"
 REQUIRED_KINDS = {"companies", "establishments", "partners", "simples"}
+BRAZIL_STATES = (
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+)
 
 
 def read_semicolon_zip(path: Path) -> Iterator[list[str]]:
@@ -149,6 +153,7 @@ class AuxiliaryImporter:
                 self.gate.wait_until_idle()
                 self._assert_capacity()
                 self._process_file(manifest, entry)
+            self._build_branch_counts(manifest.version)
             self._publish(manifest)
         except Exception as error:
             self.connection.rollback()
@@ -343,6 +348,43 @@ class AuxiliaryImporter:
         if database_gb > self.settings.maximum_database_gb:
             raise RuntimeError("banco acima do limite operacional configurado")
 
+    def _build_branch_counts(self, version: str) -> None:
+        """Build a resumable-size summary one UF at a time after establishments finish."""
+        LOGGER.info("preparando resumo de filiais da versao %s", version)
+        self.connection.execute(
+            "UPDATE rfb_aux_datasets SET metadata=jsonb_set(metadata,'{branch_counts}','\"building\"') WHERE version=%s",
+            (version,),
+        )
+        self.connection.execute(
+            "DELETE FROM rfb_company_branch_counts WHERE dataset_version=%s", (version,)
+        )
+        self.connection.commit()
+        for uf in BRAZIL_STATES:
+            self.gate.wait_until_idle()
+            self._assert_capacity()
+            self.connection.execute("""
+                INSERT INTO rfb_company_branch_counts(
+                  dataset_version,cnpj_root,branch_count,active_branch_count
+                )
+                SELECT %s,e.cnpj_root,count(*)::integer,
+                       count(*) FILTER (WHERE e.is_active)::integer
+                FROM rfb_establishments e
+                JOIN rfb_establishment_details x
+                  ON x.dataset_version=e.dataset_version AND x.cnpj=e.cnpj
+                WHERE e.dataset_version=%s AND e.uf=%s AND x.branch_type_code='2'
+                GROUP BY e.cnpj_root
+                ON CONFLICT(dataset_version,cnpj_root) DO UPDATE SET
+                  branch_count=rfb_company_branch_counts.branch_count+excluded.branch_count,
+                  active_branch_count=rfb_company_branch_counts.active_branch_count+excluded.active_branch_count
+            """, (version, version, uf))
+            self.connection.commit()
+            LOGGER.info("resumo de filiais concluido para %s", uf)
+        self.connection.execute(
+            "UPDATE rfb_aux_datasets SET metadata=jsonb_set(metadata,'{branch_counts}','\"ready\"') WHERE version=%s",
+            (version,),
+        )
+        self.connection.commit()
+
     def _publish(self, manifest: Manifest) -> None:
         statuses = self.connection.execute(
             """SELECT kind,bool_and(status='completed')
@@ -360,7 +402,7 @@ class AuxiliaryImporter:
         )
         self.connection.execute(
             """UPDATE rfb_aux_datasets SET status='current',published_at=now(),completed_at=now(),
-                 error=NULL,metadata=jsonb_build_object(
+                 error=NULL,metadata=metadata || jsonb_build_object(
                    'files',(SELECT count(*) FROM rfb_aux_import_files WHERE dataset_version=%s),
                    'rows',(SELECT coalesce(sum(rows_loaded),0) FROM rfb_aux_import_files WHERE dataset_version=%s)
                  ) WHERE version=%s""",

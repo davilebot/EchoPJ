@@ -28,6 +28,7 @@ class SearchCapabilities:
     establishment_details: bool = False
     partners: bool = False
     references: bool = False
+    branch_counts: bool = False
 
     def as_dict(self) -> dict[str, bool]:
         return {
@@ -36,6 +37,7 @@ class SearchCapabilities:
             "establishment_details": self.establishment_details,
             "partners": self.partners,
             "references": self.references,
+            "branch_counts": self.branch_counts,
         }
 
 
@@ -73,12 +75,18 @@ def build_search_query(
         filters.get(field) is not None
         for field in ("branch_type", "has_email", "has_phone")
     )
+    needs_branch_counts = any(
+        filters.get(field) is not None
+        for field in ("active_branch_count_min", "active_branch_count_max")
+    )
     if needs_simples and not capabilities.simples:
         raise SearchCapabilityUnavailable("Simples e MEI aguardam a carga complementar da Receita")
     if needs_company and not capabilities.company_details:
         raise SearchCapabilityUnavailable("natureza juridica aguarda a carga complementar da Receita")
     if needs_establishment and not capabilities.establishment_details:
         raise SearchCapabilityUnavailable("matriz/filial e contatos aguardam a carga complementar da Receita")
+    if needs_branch_counts and not capabilities.branch_counts:
+        raise SearchCapabilityUnavailable("o resumo de filiais ainda esta sendo preparado")
 
     if capabilities.simples:
         joins.append(
@@ -134,6 +142,18 @@ def build_search_query(
             field: f"e.{field}"
             for field in ("street_type", "street", "street_number", "address_extra", "district")
         }
+
+    if capabilities.branch_counts:
+        joins.append(
+            "LEFT JOIN rfb_company_branch_counts b ON b.cnpj_root=e.cnpj_root "
+            "AND b.dataset_version=e.dataset_version"
+        )
+        branch_count_columns = (
+            "coalesce(b.branch_count,0) AS branch_count,"
+            "coalesce(b.active_branch_count,0) AS active_branch_count"
+        )
+    else:
+        branch_count_columns = "0::integer AS branch_count,0::integer AS active_branch_count"
 
     if set(statuses) == {"ATIVA"}:
         predicates.append("e.is_active")
@@ -212,6 +232,12 @@ def build_search_query(
         predicates.append("nullif(x.phone1,'') IS NOT NULL")
     elif filters.get("has_phone") is False:
         predicates.append("nullif(x.phone1,'') IS NULL")
+    if filters.get("active_branch_count_min") is not None:
+        predicates.append("coalesce(b.active_branch_count,0)>=%s")
+        parameters.append(filters["active_branch_count_min"])
+    if filters.get("active_branch_count_max") is not None:
+        predicates.append("coalesce(b.active_branch_count,0)<=%s")
+        parameters.append(filters["active_branch_count_max"])
 
     limit = int(filters["limit"])
     parameters.append(limit + 1)
@@ -227,7 +253,8 @@ def build_search_query(
           {address_expressions['street_number']} AS street_number,
           {address_expressions['address_extra']} AS address_extra,
           {address_expressions['district']} AS district,
-          e.dataset_version,{simples_columns},{legal_nature_column},{detail_columns}
+          e.dataset_version,{simples_columns},{legal_nature_column},{detail_columns},
+          {branch_count_columns}
         FROM rfb_establishments e
         {' '.join(joins)}
         WHERE {' AND '.join(predicates)}

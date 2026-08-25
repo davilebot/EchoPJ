@@ -105,6 +105,26 @@ CREATE TABLE IF NOT EXISTS rfb_partners (
 CREATE INDEX IF NOT EXISTS rfb_partners_root_idx
   ON rfb_partners (dataset_version, cnpj_root);
 
+-- Resumo pequeno por raiz para devolver e filtrar quantidade de filiais sem
+-- reagrupar os 72 milhoes de estabelecimentos em cada consulta.
+CREATE TABLE IF NOT EXISTS rfb_company_branch_counts (
+  dataset_version text NOT NULL REFERENCES rfb_aux_datasets(version) ON DELETE CASCADE,
+  cnpj_root text NOT NULL CHECK (cnpj_root ~ '^[0-9A-Z]{8}$'),
+  branch_count integer NOT NULL DEFAULT 0 CHECK (branch_count >= 0),
+  active_branch_count integer NOT NULL DEFAULT 0 CHECK (active_branch_count >= 0),
+  PRIMARY KEY (dataset_version, cnpj_root)
+);
+
+CREATE INDEX IF NOT EXISTS rfb_company_branch_counts_active_idx
+  ON rfb_company_branch_counts (dataset_version,active_branch_count,cnpj_root)
+  WHERE active_branch_count > 0;
+
+-- Em uma base nova este indice nasce vazio e recebe somente as filiais durante
+-- a carga. Em uma base ja carregada ele deve ser criado com CONCURRENTLY.
+CREATE INDEX IF NOT EXISTS rfb_establishment_details_branches_idx
+  ON rfb_establishment_details (dataset_version,cnpj)
+  WHERE branch_type_code = '2';
+
 -- Nao criamos indice pelo CPF/CNPJ do socio: a finalidade do produto e abrir
 -- o quadro societario de uma empresa, e nao fazer busca reversa de pessoas.
 
@@ -130,6 +150,10 @@ CREATE OR REPLACE VIEW rfb_current_simples AS
 
 CREATE OR REPLACE VIEW rfb_current_partners AS
   SELECT d.* FROM rfb_partners d
+  JOIN rfb_aux_datasets v ON v.version = d.dataset_version AND v.status = 'current';
+
+CREATE OR REPLACE VIEW rfb_current_company_branch_counts AS
+  SELECT d.* FROM rfb_company_branch_counts d
   JOIN rfb_aux_datasets v ON v.version = d.dataset_version AND v.status = 'current';
 
 CREATE OR REPLACE VIEW rfb_current_aux_reference AS

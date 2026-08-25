@@ -68,6 +68,18 @@ class WebsiteEvidence(BaseModel):
     cached: bool = False
 
 
+class CompanyLookupRequest(BaseModel):
+    cnpjs: list[str] = Field(min_length=1, max_length=10000)
+
+    @field_validator("cnpjs")
+    @classmethod
+    def clean_cnpjs(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(str(item).strip()[:40] for item in value if str(item).strip()))
+        if not cleaned:
+            raise ValueError("informe pelo menos um CNPJ")
+        return cleaned
+
+
 REGISTRATION_STATUSES = {"ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"}
 COMPANY_SIZES = {"MICRO EMPRESA", "EMPRESA DE PEQUENO PORTE", "DEMAIS", "NAO INFORMADO"}
 VALID_UFS = {
@@ -96,6 +108,8 @@ class CompanySearchRequest(BaseModel):
     branch_type: Literal["1", "2"] | None = None
     has_email: bool | None = None
     has_phone: bool | None = None
+    active_branch_count_min: int | None = Field(default=None, ge=0, le=100000)
+    active_branch_count_max: int | None = Field(default=None, ge=0, le=100000)
     limit: int = Field(default=500, ge=1, le=10000)
 
     @field_validator("company_name")
@@ -161,6 +175,9 @@ class CompanySearchRequest(BaseModel):
                 raise ValueError("capital minimo nao pode ser maior que o maximo")
         if self.opened_from and self.opened_to and self.opened_from > self.opened_to:
             raise ValueError("data inicial nao pode ser posterior a data final")
+        if self.active_branch_count_min is not None and self.active_branch_count_max is not None:
+            if self.active_branch_count_min > self.active_branch_count_max:
+                raise ValueError("minimo de filiais nao pode ser maior que o maximo")
         if self.cnae_scope == "any" and self.cnae and len(self.cnae) != 7:
             raise ValueError("para incluir CNAEs secundarios, informe o codigo completo de 7 digitos")
         return self

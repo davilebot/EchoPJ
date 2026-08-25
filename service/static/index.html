@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Plataforma Receita</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260824-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260825-1">
 </head>
 <body>
   <main>
@@ -98,6 +98,20 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <section id="explorer-company-result" class="hidden"></section>
       <section id="explorer-establishments-loading" class="explorer-card hidden">Localizando os CNPJs da mesma empresa…</section>
       <section id="explorer-establishments-result" class="hidden"></section>
+
+      <form id="bulk-cnpj-form" class="bulk-cnpj-form">
+        <div class="wide">
+          <span class="eyebrow">CONSULTA EXATA EM LOTE</span>
+          <h3>Consultar uma lista de CNPJs</h3>
+          <p>Cole até 10.000 CNPJs, um por linha. A ordem da lista será preservada e você poderá baixar o resultado completo.</p>
+        </div>
+        <label class="wide">Lista de CNPJs
+          <textarea id="bulk-cnpj-list" rows="7" required placeholder="00.000.000/0001-91&#10;11.222.333/0001-81&#10;44.555.666/0001-00"></textarea>
+        </label>
+        <button type="submit">Consultar lista de CNPJs</button>
+      </form>
+      <section id="bulk-cnpj-loading" class="explorer-card hidden">Consultando os CNPJs exatos na Receita…</section>
+      <section id="bulk-cnpj-result" class="hidden"></section>
 
       <div class="search-heading">
         <span class="eyebrow">BUSCA AVANÇADA</span>
@@ -193,6 +207,8 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
               <option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option>
             </select>
           </label>
+          <label>Mínimo de filiais ativas<input id="search-branches-min" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Ex.: 2"></label>
+          <label>Máximo de filiais ativas<input id="search-branches-max" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Sem limite"></label>
           <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga de Simples, MEI e dados complementares.</p>
         </fieldset>
 
@@ -219,6 +235,6 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <section id="history-list" class="history-list hidden"></section>
     </section>
   </main>
-  <script src="/static/app.js?v=20260824-3"></script>
+  <script src="/static/app.js?v=20260825-1"></script>
 </body>
 </html>

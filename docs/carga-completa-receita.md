@@ -10,6 +10,7 @@ matcher continuam consultando a tabela atual durante toda a importacao.
   telefones, fax, e-mail e situacao especial;
 - Simples Nacional e MEI, incluindo datas de entrada e saida;
 - quadro de socios e administradores, com todos os campos publicos do arquivo;
+- resumo por matriz com quantidade de filiais ativas e totais;
 - dicionarios oficiais de CNAE, pais, natureza, municipio, qualificacao e motivo.
 
 O nome, situacao e os dados completos dos estabelecimentos ativos ja estao na
@@ -35,6 +36,8 @@ reversa de pessoas.
 7. Uma trava do PostgreSQL impede dois importadores simultaneos.
 8. A nova versao permanece invisivel ate todos os arquivos obrigatorios
    terminarem; a publicacao final e uma troca curta e atomica.
+9. A contagem de filiais e calculada uma UF por vez antes da publicacao, para
+   que as consultas nao precisem reagrupar todos os estabelecimentos.
 
 ## Ordem recomendada no dia da carga
 

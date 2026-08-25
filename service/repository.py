@@ -48,9 +48,12 @@ class Repository:
                   to_regclass('public.rfb_establishment_details') IS NOT NULL AS establishment_details,
                   to_regclass('public.rfb_partners') IS NOT NULL AS partners,
                   to_regclass('public.rfb_aux_reference') IS NOT NULL AS references,
+                  to_regclass('public.rfb_company_branch_counts') IS NOT NULL AS branch_counts,
                   to_regclass('public.rfb_aux_datasets') IS NOT NULL AS datasets
             """).fetchone()
             readiness: dict[str, bool] = {}
+            base = auxiliary = None
+            branch_counts_ready = False
             if row["datasets"]:
                 base = connection.execute(
                     "SELECT version FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
@@ -70,6 +73,12 @@ class Repository:
                         progress_row["kind"]: bool(progress_row["files"] and progress_row["completed"])
                         for progress_row in progress
                     }
+                    if row["branch_counts"]:
+                        metadata = connection.execute(
+                            "SELECT metadata->>'branch_counts' AS status FROM rfb_aux_datasets WHERE version=%s",
+                            (base["version"],),
+                        ).fetchone()
+                        branch_counts_ready = bool(metadata and metadata["status"] == "ready")
         return SearchCapabilities(
             simples=bool(row["simples"] and readiness.get("simples")),
             company_details=bool(row["company_details"] and readiness.get("companies")),
@@ -86,6 +95,7 @@ class Repository:
                     )
                 )
             ),
+            branch_counts=branch_counts_ready,
         )
 
     @staticmethod
@@ -130,6 +140,7 @@ class Repository:
         ]))
         fields = {
             "cnpj": row["cnpj"],
+            "cnpj_root": row.get("cnpj_root"),
             "legal_name": row.get("legal_name"),
             "trade_name": row.get("trade_name"),
             "registration_status": row.get("registration_status"),
@@ -150,6 +161,9 @@ class Repository:
             "email": row.get("email"),
             "phone_area_code": row.get("phone1_area_code"),
             "phone": row.get("phone1"),
+            "branch_count": row.get("branch_count") or 0,
+            "active_branch_count": row.get("active_branch_count") or 0,
+            "partner_count": row.get("partner_count"),
             "dataset_version": row.get("dataset_version"),
         }
         return {key: cls._serializable(value) for key, value in fields.items()}
@@ -243,6 +257,7 @@ class Repository:
             company = establishment = simples = None
             partners: list[dict[str, Any]] = []
             references: dict[str, str] = {}
+            branch_counts = None
             if capabilities.company_details:
                 company = connection.execute(
                     "SELECT * FROM rfb_company_details WHERE dataset_version=%s AND cnpj_root=%s",
@@ -278,6 +293,13 @@ class Repository:
                     WHERE p.dataset_version=%s AND p.cnpj_root=%s
                     ORDER BY p.partner_name,p.qualification_code
                 """, (core["dataset_version"], core["cnpj_root"])).fetchall()
+            if capabilities.branch_counts:
+                branch_counts = connection.execute(
+                    """SELECT branch_count,active_branch_count
+                       FROM rfb_company_branch_counts
+                       WHERE dataset_version=%s AND cnpj_root=%s""",
+                    (core["dataset_version"], core["cnpj_root"]),
+                ).fetchone()
             if capabilities.references:
                 reference_codes = {
                     "cnae": [core.get("primary_cnae"), *(core.get("secondary_cnaes") or [])],
@@ -305,6 +327,9 @@ class Repository:
             "establishment": serialize(establishment),
             "simples": serialize(simples),
             "partners": [serialize(partner) for partner in partners],
+            "branch_counts": serialize(branch_counts) or {
+                "branch_count": 0, "active_branch_count": 0,
+            },
             "references": references,
             "capabilities": capabilities.as_dict(),
         }
@@ -355,6 +380,15 @@ class Repository:
         has_more = len(rows) > 10000
         establishments = [self._search_result(row) for row in rows[:10000]]
         matrix = next((item for item in establishments if item["branch_type_code"] == "1"), None)
+        branch_counts = None
+        if capabilities.branch_counts:
+            with self.pool.connection() as connection:
+                branch_counts = connection.execute(
+                    """SELECT branch_count,active_branch_count
+                       FROM rfb_company_branch_counts
+                       WHERE dataset_version=%s AND cnpj_root=%s""",
+                    (rows[0]["dataset_version"], root),
+                ).fetchone()
         return {
             "cnpj_root": root,
             "queried_cnpj": cnpj,
@@ -364,7 +398,94 @@ class Repository:
             "has_more": has_more,
             "dataset_version": rows[0]["dataset_version"],
             "branch_type_available": capabilities.establishment_details,
+            "branch_count": int(branch_counts["branch_count"]) if branch_counts else 0,
+            "active_branch_count": int(branch_counts["active_branch_count"]) if branch_counts else 0,
         }
+
+    def companies_by_cnpjs(self, cnpjs: list[str]) -> dict[str, dict[str, Any]]:
+        """Fetch exact CNPJs in bulk with one indexed query and preserve rich fields."""
+        if not cnpjs:
+            return {}
+        capabilities = self.search_capabilities()
+        joins: list[str] = []
+        if capabilities.simples:
+            joins.append(
+                "LEFT JOIN rfb_simples s ON s.dataset_version=e.dataset_version AND s.cnpj_root=e.cnpj_root"
+            )
+            simples_columns = "s.is_simples,s.is_mei"
+        else:
+            simples_columns = "NULL::boolean AS is_simples,NULL::boolean AS is_mei"
+        if capabilities.company_details:
+            joins.append(
+                "LEFT JOIN rfb_company_details c ON c.dataset_version=e.dataset_version AND c.cnpj_root=e.cnpj_root"
+            )
+            company_columns = (
+                "c.legal_nature_code,coalesce(e.company_size,c.company_size) AS company_size,"
+                "coalesce(e.share_capital,c.share_capital) AS share_capital"
+            )
+        else:
+            company_columns = (
+                "NULL::text AS legal_nature_code,e.company_size,e.share_capital"
+            )
+        if capabilities.establishment_details:
+            joins.append(
+                "LEFT JOIN rfb_establishment_details x ON x.dataset_version=e.dataset_version AND x.cnpj=e.cnpj"
+            )
+            detail_columns = """
+                x.branch_type_code,x.email,x.phone1_area_code,x.phone1,
+                coalesce(e.opened_at,x.opened_at) AS opened_at,
+                coalesce(e.primary_cnae,x.primary_cnae) AS primary_cnae,
+                coalesce(e.secondary_cnaes,x.secondary_cnaes) AS secondary_cnaes,
+                coalesce(e.street_type,x.street_type) AS street_type,
+                coalesce(e.street,x.street) AS street,
+                coalesce(e.street_number,x.street_number) AS street_number,
+                coalesce(e.address_extra,x.address_extra) AS address_extra,
+                coalesce(e.district,x.district) AS district
+            """
+        else:
+            detail_columns = """
+                NULL::text AS branch_type_code,NULL::text AS email,
+                NULL::text AS phone1_area_code,NULL::text AS phone1,
+                e.opened_at,e.primary_cnae,e.secondary_cnaes,
+                e.street_type,e.street,e.street_number,e.address_extra,e.district
+            """
+        if capabilities.branch_counts:
+            joins.append(
+                "LEFT JOIN rfb_company_branch_counts b ON b.dataset_version=e.dataset_version AND b.cnpj_root=e.cnpj_root"
+            )
+            branch_columns = (
+                "coalesce(b.branch_count,0) AS branch_count,"
+                "coalesce(b.active_branch_count,0) AS active_branch_count"
+            )
+        else:
+            branch_columns = "0::integer AS branch_count,0::integer AS active_branch_count"
+        sql = f"""
+            SELECT e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
+                   e.registration_status_date,e.municipality,e.uf,e.postal_code,e.dataset_version,
+                   {company_columns},{simples_columns},{detail_columns},{branch_columns}
+            FROM rfb_establishments e
+            {' '.join(joins)}
+            WHERE e.cnpj=ANY(%s)
+        """
+        with self.pool.connection() as connection:
+            connection.execute("SELECT set_config('statement_timeout','30000',true)")
+            rows = connection.execute(sql, (cnpjs,)).fetchall()
+            roots = list({row["cnpj_root"] for row in rows})
+            partner_counts: dict[str, int] = {}
+            if capabilities.partners and roots:
+                counts = connection.execute("""
+                    SELECT cnpj_root,count(*) AS partner_count
+                    FROM rfb_partners
+                    WHERE dataset_version=%s AND cnpj_root=ANY(%s)
+                    GROUP BY cnpj_root
+                """, (rows[0]["dataset_version"], roots)).fetchall()
+                partner_counts = {row["cnpj_root"]: int(row["partner_count"]) for row in counts}
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            enriched = dict(row)
+            enriched["partner_count"] = partner_counts.get(row["cnpj_root"], 0)
+            result[row["cnpj"]] = self._search_result(enriched)
+        return result
 
     @staticmethod
     def _matcher_item(item: dict[str, Any]) -> dict[str, Any]:

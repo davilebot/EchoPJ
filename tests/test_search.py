@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import ValidationError
 
-from service.models import CompanySearchRequest
+from service.models import CompanyLookupRequest, CompanySearchRequest
 from service.search import (
     SearchCapabilities,
     SearchCapabilityUnavailable,
@@ -31,6 +31,12 @@ class SearchModelTests(unittest.TestCase):
             CompanySearchRequest(opened_from="2026-01-01", opened_to="2025-01-01")
         with self.assertRaises(ValidationError):
             CompanySearchRequest(cnae="62", cnae_scope="any")
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(active_branch_count_min=5, active_branch_count_max=2)
+
+    def test_bulk_lookup_keeps_order_and_removes_exact_duplicates(self):
+        request = CompanyLookupRequest(cnpjs=["00.000.000/0001-91", "11.222.333/0001-81", "00.000.000/0001-91"])
+        self.assertEqual(request.cnpjs, ["00.000.000/0001-91", "11.222.333/0001-81"])
 
 
 class SearchSqlTests(unittest.TestCase):
@@ -112,6 +118,19 @@ class SearchSqlTests(unittest.TestCase):
         filters = CompanySearchRequest(region="S", ufs=["SP"]).model_dump()
         with self.assertRaisesRegex(ValueError, "regiao"):
             build_search_query(filters, SearchCapabilities())
+
+    def test_branch_count_filter_uses_precomputed_summary(self):
+        filters = CompanySearchRequest(
+            active_branch_count_min=2,
+            active_branch_count_max=20,
+        ).model_dump()
+        sql, parameters = build_search_query(
+            filters, SearchCapabilities(branch_counts=True)
+        )
+        self.assertIn("LEFT JOIN rfb_company_branch_counts", sql)
+        self.assertIn("coalesce(b.active_branch_count,0)>=%s", sql)
+        self.assertIn("coalesce(b.active_branch_count,0)<=%s", sql)
+        self.assertEqual(parameters[-3:-1], [2, 20])
 
 
 if __name__ == "__main__":

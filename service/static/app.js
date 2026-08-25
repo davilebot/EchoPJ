@@ -16,11 +16,15 @@ const explorerCompanyLoading = document.querySelector("#explorer-company-loading
 const explorerCompanyResult = document.querySelector("#explorer-company-result");
 const explorerEstablishmentsLoading = document.querySelector("#explorer-establishments-loading");
 const explorerEstablishmentsResult = document.querySelector("#explorer-establishments-result");
+const bulkCnpjForm = document.querySelector("#bulk-cnpj-form");
+const bulkCnpjLoading = document.querySelector("#bulk-cnpj-loading");
+const bulkCnpjResult = document.querySelector("#bulk-cnpj-result");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
 let lastCompanySearch = [];
 let selectedCompanyCnpjs = new Set();
+let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const allRegistrationStatuses = ["ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"];
@@ -302,7 +306,7 @@ async function loadSearchCapabilities() {
     document.querySelectorAll("[data-capability]").forEach((field) => {
       field.disabled = !data.filters[field.dataset.capability];
     });
-    const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details"];
+    const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details", "branch_counts"];
     const available = filterCapabilities.every((key) => data.filters[key]);
     const availableCount = filterCapabilities.filter((key) => data.filters[key]).length;
     if (available) {
@@ -342,6 +346,8 @@ function companySearchPayload() {
     branch_type: document.querySelector("#search-branch-type").value || null,
     has_email: optionalBoolean(document.querySelector("#search-has-email").value),
     has_phone: optionalBoolean(document.querySelector("#search-has-phone").value),
+    active_branch_count_min: optionalNumber(document.querySelector("#search-branches-min").value),
+    active_branch_count_max: optionalNumber(document.querySelector("#search-branches-max").value),
     limit: Math.max(1, Math.min(10000, Number(document.querySelector("#search-limit").value) || 1)),
   };
 }
@@ -430,6 +436,7 @@ function renderCompanyDetail(data) {
   const establishment = data.establishment || {};
   const simples = data.simples;
   const partners = data.partners || [];
+  const branchCounts = data.branch_counts || {};
   const cnaes = [core.primary_cnae, ...(core.secondary_cnaes || [])].filter(Boolean);
   const partnersHtml = partners.length ? partners.map((partner) => `<article class="partner-card">
       <strong>${escapeHtml(partner.partner_name || "Não informado")}</strong>
@@ -454,6 +461,8 @@ function renderCompanyDetail(data) {
         <div><dt>Porte</dt><dd>${escapeHtml(core.company_size || company.company_size || "—")}</dd></div>
         <div><dt>Capital social</dt><dd>${escapeHtml(formatMoney(core.share_capital ?? company.share_capital))}</dd></div>
         <div><dt>Matriz/filial</dt><dd>${establishment.branch_type_code === "1" ? "Matriz" : establishment.branch_type_code === "2" ? "Filial" : "—"}</dd></div>
+        <div><dt>Filiais ativas</dt><dd>${Number(branchCounts.active_branch_count || 0).toLocaleString("pt-BR")}</dd></div>
+        <div><dt>Filiais totais</dt><dd>${Number(branchCounts.branch_count || 0).toLocaleString("pt-BR")}</dd></div>
         <div><dt>Natureza jurídica</dt><dd>${escapeHtml(referenceLabel(data, "legal_nature", company.legal_nature_code))}</dd></div>
         <div><dt>Qualificação do responsável</dt><dd>${escapeHtml(referenceLabel(data, "qualification", company.responsible_qualification_code))}</dd></div>
         <div><dt>Endereço</dt><dd>${escapeHtml(core.address || "—")}</dd></div>
@@ -506,7 +515,7 @@ function renderCompanyEstablishments(data) {
     ? "A classificação matriz/filial vem do arquivo oficial de estabelecimentos da Receita."
     : "A relação pelo CNPJ-base já é exata. A etiqueta matriz/filial aparecerá quando o arquivo complementar de estabelecimentos terminar.";
   explorerEstablishmentsResult.innerHTML = `<article class="company-detail">
-    <div class="company-detail-head"><div><span class="eyebrow">MESMA PESSOA JURÍDICA</span><h2>Matriz e filiais</h2><p>CNPJ-base ${escapeHtml(data.cnpj_root)}</p></div><strong>${data.returned.toLocaleString("pt-BR")} estabelecimentos</strong></div>
+    <div class="company-detail-head"><div><span class="eyebrow">MESMA PESSOA JURÍDICA</span><h2>Matriz e filiais</h2><p>CNPJ-base ${escapeHtml(data.cnpj_root)}</p></div><strong>${Number(data.active_branch_count || 0).toLocaleString("pt-BR")} filiais ativas · ${Number(data.branch_count || 0).toLocaleString("pt-BR")} totais</strong></div>
     <p class="search-notice">${escapeHtml(branchNote)} Isso identifica filiais da mesma empresa; não identifica franqueados independentes ou um grupo econômico.</p>
     ${data.has_more ? `<p class="search-notice">A lista foi limitada aos primeiros 10.000 CNPJs.</p>` : ""}
     <div class="table-wrap"><table><thead><tr><th>Relação</th><th>CNPJ</th><th>Nome</th><th>Município/UF</th><th>Situação</th><th>CNAE</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -532,6 +541,85 @@ async function loadCompanyEstablishments() {
 
 document.querySelector("#explorer-establishments").addEventListener("click", loadCompanyEstablishments);
 
+function parseCnpjList(value) {
+  return value.split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function downloadBulkCnpjLookup() {
+  const headers = ["CNPJ informado", "Resultado", "CNPJ Receita", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "Município", "UF", "CEP", "Simples", "MEI", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail", "Telefone", "Versão Receita"];
+  const rows = lastBulkCnpjLookup.map((item) => {
+    const company = item.company || {};
+    return [
+      item.input, item.status, company.cnpj, company.cnpj_root, company.legal_name,
+      company.trade_name, company.registration_status, company.opened_at, company.company_size,
+      company.share_capital, company.primary_cnae, company.municipality, company.uf,
+      company.postal_code, company.is_simples, company.is_mei, company.branch_type_code,
+      company.active_branch_count, company.branch_count, company.partner_count, company.email,
+      [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
+    ];
+  });
+  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `consulta-cnpjs-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function renderBulkCnpjLookup(data) {
+  lastBulkCnpjLookup = data.results;
+  const preview = data.results.slice(0, 100);
+  const rows = preview.map((item) => {
+    const company = item.company;
+    if (!company) return `<tr><td>${escapeHtml(item.input)}</td><td colspan="8"><span class="status ${item.status === "invalid" ? "nao_encontrado" : "revisao"}">${item.status === "invalid" ? "CNPJ inválido" : "Não encontrado"}</span></td></tr>`;
+    return `<tr>
+      <td>${escapeHtml(item.input)}</td>
+      <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
+      <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
+      <td>${escapeHtml(company.registration_status || "—")}</td>
+      <td>${yesNo(company.is_simples)}</td><td>${yesNo(company.is_mei)}</td>
+      <td>${Number(company.active_branch_count || 0).toLocaleString("pt-BR")}</td>
+      <td>${Number(company.branch_count || 0).toLocaleString("pt-BR")}</td>
+      <td>${Number(company.partner_count || 0).toLocaleString("pt-BR")}</td>
+    </tr>`;
+  }).join("");
+  bulkCnpjResult.innerHTML = `<article class="company-detail">
+    <div class="search-summary">
+      <div><strong>${data.found.toLocaleString("pt-BR")}</strong><span>Encontrados</span></div>
+      <div><strong>${data.not_found.toLocaleString("pt-BR")}</strong><span>Não encontrados</span></div>
+      <div><strong>${data.invalid.toLocaleString("pt-BR")}</strong><span>Inválidos</span></div>
+    </div>
+    <p class="search-notice">Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s. A prévia mostra os primeiros ${Math.min(100, data.total)}; o CSV preserva toda a lista e sua ordem.</p>
+    <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <button id="download-bulk-cnpj" class="download" type="button">Baixar resultado completo em CSV</button>
+  </article>`;
+  document.querySelector("#download-bulk-cnpj").addEventListener("click", downloadBulkCnpjLookup);
+}
+
+bulkCnpjForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  bulkCnpjResult.classList.add("hidden");
+  bulkCnpjLoading.classList.remove("hidden");
+  try {
+    const cnpjs = parseCnpjList(document.querySelector("#bulk-cnpj-list").value);
+    if (!cnpjs.length) throw new Error("Cole pelo menos um CNPJ.");
+    if (cnpjs.length > 10000) throw new Error("O limite é de 10.000 CNPJs por consulta.");
+    const response = await fetch("/api/explorer/company-lookup", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cnpjs }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail || "Não foi possível consultar a lista");
+    renderBulkCnpjLookup(await response.json());
+  } catch (error) {
+    bulkCnpjResult.innerHTML = `<div class="error explorer-card"><strong>Não foi possível consultar a lista.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  } finally {
+    bulkCnpjLoading.classList.add("hidden");
+    bulkCnpjResult.classList.remove("hidden");
+  }
+});
+
 function renderCompanySearch(data) {
   lastCompanySearch = data.results;
   selectedCompanyCnpjs = new Set();
@@ -546,6 +634,7 @@ function renderCompanySearch(data) {
     <td>${escapeHtml(formatMoney(company.share_capital))}</td>
     <td>${escapeHtml(company.opened_at || "—")}</td>
     <td>${escapeHtml(company.registration_status || "—")}</td>
+    <td>${Number(company.active_branch_count || 0).toLocaleString("pt-BR")}</td>
   </tr>`).join("");
   const limitNotice = data.has_more
     ? `A busca atingiu o limite de ${data.limit.toLocaleString("pt-BR")}. Refine os filtros para ver outro recorte.`
@@ -557,7 +646,7 @@ function renderCompanySearch(data) {
     </div>
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Salvar selecionadas em CSV</button><button id="download-company-search" type="button">Salvar todas as ${data.returned.toLocaleString("pt-BR")} em CSV</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
   document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
   document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
@@ -584,13 +673,13 @@ function updateSearchSelection() {
 }
 
 function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
-  const headers = ["CNPJ", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "E-mail", "Telefone", "Versão Receita"];
+  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "E-mail", "Telefone", "Versão Receita"];
   const rows = companies.map((company) => [
-    company.cnpj, company.legal_name, company.trade_name, company.registration_status,
+    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
     company.registration_status_date, company.opened_at, company.company_size, company.share_capital,
     company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
     company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
-    company.branch_type_code, company.email,
+    company.branch_type_code, company.active_branch_count, company.branch_count, company.email,
     [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
   ]);
   const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -643,6 +732,13 @@ companySearchResult.addEventListener("change", (event) => {
   updateSearchSelection();
 });
 explorerEstablishmentsResult.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-company-cnpj]");
+  if (!button) return;
+  document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;
+  explorerCnpjForm.requestSubmit();
+  explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+bulkCnpjResult.addEventListener("click", (event) => {
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;
   document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;

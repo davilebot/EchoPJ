@@ -27,6 +27,9 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - quantidade digitável entre 1 e 10.000, com prévia antes de salvar o CSV;
 - seleção manual de empresas na prévia ou download de todo o recorte;
 - consulta exata de todos os estabelecimentos da mesma matriz pelo CNPJ-base;
+- consulta exata em lote com até 10.000 CNPJs, preservação da ordem, prévia e CSV;
+- quantidade de filiais ativas e totais na ficha, nas listas e nas exportações;
+- filtros mínimo e máximo de filiais ativas usando resumo pré-calculado por matriz;
 - busca genérica de possíveis unidades de redes pelo nome/marca, sempre
   distinguindo candidatos de uma relação oficial de franquia;
 - somente empresas ativas por padrão.

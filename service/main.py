@@ -2,6 +2,7 @@ import base64
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import monotonic
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, Response
@@ -11,7 +12,7 @@ from psycopg.errors import QueryCanceled
 from .config import get_settings
 from .jobs import JobRunner, JobStore
 from .matching import MatchingService
-from .models import BatchRequest, CompanySearchRequest, JobRequest
+from .models import BatchRequest, CompanyLookupRequest, CompanySearchRequest, JobRequest
 from .repository import Repository
 from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
@@ -172,6 +173,41 @@ def search_companies(payload: CompanySearchRequest, _: None = Depends(require_au
 @app.get("/api/explorer/overview")
 def explorer_overview(_: None = Depends(require_auth)) -> dict:
     return repository.explorer_overview()
+
+
+@app.post("/api/explorer/company-lookup")
+def explorer_company_lookup(payload: CompanyLookupRequest, _: None = Depends(require_auth)) -> dict:
+    started = monotonic()
+    entries: list[tuple[str, str | None]] = []
+    normalized_cnpjs: list[str] = []
+    for original in payload.cnpjs:
+        try:
+            normalized = normalize_cnpj_identifier(original)
+        except ValueError:
+            entries.append((original, None))
+            continue
+        entries.append((original, normalized))
+        if normalized not in normalized_cnpjs:
+            normalized_cnpjs.append(normalized)
+    found = repository.companies_by_cnpjs(normalized_cnpjs)
+    results = []
+    for original, normalized in entries:
+        company = found.get(normalized) if normalized else None
+        results.append({
+            "input": original,
+            "normalized_cnpj": normalized,
+            "status": "found" if company else "not_found" if normalized else "invalid",
+            "company": company,
+        })
+    return {
+        "results": results,
+        "total": len(results),
+        "found": sum(item["status"] == "found" for item in results),
+        "not_found": sum(item["status"] == "not_found" for item in results),
+        "invalid": sum(item["status"] == "invalid" for item in results),
+        "dataset_version": repository.current_version(),
+        "timing_ms": round((monotonic() - started) * 1000),
+    }
 
 
 @app.get("/api/explorer/companies/{cnpj}")

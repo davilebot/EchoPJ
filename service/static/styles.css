@@ -12,7 +12,8 @@ form { display: grid; grid-template-columns: 2fr 90px 1fr; gap: 16px; }
 label { display: flex; flex-direction: column; gap: 7px; color: #475569; font-size: 13px; font-weight: 700; }
 label.wide { grid-column: 1 / -1; }
 input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 13px; color: #172033; background: white; font: inherit; font-size: 15px; }
-input:focus, select:focus { border-color: #2563eb; outline: 3px solid #dbeafe; }
+textarea { width: 100%; resize: vertical; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 13px; color: #172033; background: white; font: inherit; font-size: 15px; line-height: 1.5; }
+input:focus, select:focus, textarea:focus { border-color: #2563eb; outline: 3px solid #dbeafe; }
 input:disabled, select:disabled { color: #94a3b8; background: #f1f5f9; cursor: not-allowed; }
 .check { flex-direction: row; align-items: center; font-weight: 500; }
 .check input { width: auto; }
@@ -134,6 +135,9 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 .explorer-cnpj-form h3 { margin: 0 0 6px; }
 .explorer-cnpj-form button { grid-column: auto; }
 .relation-button { justify-self: stretch; padding: 14px; }
+.bulk-cnpj-form { grid-template-columns: 1fr; margin: 0 0 32px; }
+.bulk-cnpj-form h3 { margin: 7px 0 5px; font-size: 24px; }
+.bulk-cnpj-form p { margin: 0; color: #64748b; font-weight: 400; line-height: 1.5; }
 .company-detail-head { display: flex; justify-content: space-between; gap: 18px; }
 .company-detail-head h2 { margin: 10px 0 4px; font-size: 30px; }
 .company-detail-head > div > strong { color: #2563eb; font-size: 19px; }

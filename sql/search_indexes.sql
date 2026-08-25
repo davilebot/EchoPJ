@@ -14,6 +14,16 @@ ORDER BY child.relname
 \gexec
 
 SELECT format(
+  'CREATE INDEX CONCURRENTLY IF NOT EXISTS %I ON %s (cnpj_root,cnpj) WHERE is_active',
+  child.relname || '_active_root_idx', child.oid::regclass
+)
+FROM pg_inherits inheritance
+JOIN pg_class child ON child.oid = inheritance.inhrelid
+WHERE inheritance.inhparent = 'rfb_establishments'::regclass
+ORDER BY child.relname
+\gexec
+
+SELECT format(
   'CREATE INDEX CONCURRENTLY IF NOT EXISTS %I ON %s (uf,opened_at,cnpj) WHERE is_active AND opened_at IS NOT NULL',
   child.relname || '_active_opened_idx', child.oid::regclass
 )
