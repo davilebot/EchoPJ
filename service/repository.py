@@ -471,20 +471,41 @@ class Repository:
             connection.execute("SELECT set_config('statement_timeout','60000',true)")
             rows = connection.execute(sql, (cnpjs,)).fetchall()
             roots = list({row["cnpj_root"] for row in rows})
-            partner_counts: dict[str, int] = {}
+            partners_by_root: dict[str, list[dict[str, Any]]] = {}
             if capabilities.partners and roots:
-                counts = connection.execute("""
-                    SELECT cnpj_root,count(*) AS partner_count
-                    FROM rfb_partners
-                    WHERE dataset_version=%s AND cnpj_root=ANY(%s)
-                    GROUP BY cnpj_root
+                partner_rows = connection.execute("""
+                    SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
+                           p.partner_document,p.qualification_code,p.joined_at,p.country_code,
+                           p.legal_representative_document,p.legal_representative_name,
+                           p.legal_representative_qualification_code,p.age_range_code,p.age_range,
+                           q.label AS qualification,co.label AS country,
+                           rq.label AS legal_representative_qualification
+                    FROM rfb_partners p
+                    LEFT JOIN rfb_aux_reference q
+                      ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
+                    LEFT JOIN rfb_aux_reference co
+                      ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
+                    LEFT JOIN rfb_aux_reference rq
+                      ON rq.dataset_version=p.dataset_version AND rq.kind='qualification'
+                     AND rq.code=p.legal_representative_qualification_code
+                    WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
+                    ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
                 """, (rows[0]["dataset_version"], roots)).fetchall()
-                partner_counts = {row["cnpj_root"]: int(row["partner_count"]) for row in counts}
+                for partner in partner_rows:
+                    serialized = {
+                        key: self._serializable(value)
+                        for key, value in dict(partner).items()
+                        if key != "cnpj_root"
+                    }
+                    partners_by_root.setdefault(partner["cnpj_root"], []).append(serialized)
         result: dict[str, dict[str, Any]] = {}
         for row in rows:
             enriched = dict(row)
-            enriched["partner_count"] = partner_counts.get(row["cnpj_root"], 0)
-            result[row["cnpj"]] = self._search_result(enriched)
+            partners = partners_by_root.get(row["cnpj_root"], [])
+            enriched["partner_count"] = len(partners)
+            company = self._search_result(enriched)
+            company["partners"] = partners
+            result[row["cnpj"]] = company
         return result
 
     @staticmethod

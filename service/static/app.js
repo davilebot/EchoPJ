@@ -548,13 +548,14 @@ function parseCnpjList(value) {
 }
 
 function downloadBulkCnpjLookup() {
-  const headers = ["CNPJ informado", "Resultado", "CNPJ Receita", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "Município", "UF", "CEP", "Simples", "MEI", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail", "Telefone", "Versão Receita"];
+  const headers = ["CNPJ informado", "Resultado", "CNPJ Receita", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Natureza Jurídica", "Endereço", "Município", "UF", "CEP", "Simples", "MEI", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail", "Telefone", "Versão Receita"];
   const rows = lastBulkCnpjLookup.map((item) => {
     const company = item.company || {};
     return [
       item.input, item.status, company.cnpj, company.cnpj_root, company.legal_name,
       company.trade_name, company.registration_status, company.opened_at, company.company_size,
-      company.share_capital, company.primary_cnae, company.municipality, company.uf,
+      company.share_capital, company.primary_cnae, (company.secondary_cnaes || []).join(";"),
+      company.legal_nature_code, company.address, company.municipality, company.uf,
       company.postal_code, company.is_simples, company.is_mei, company.branch_type_code,
       company.active_branch_count, company.branch_count, company.partner_count, company.email,
       [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
@@ -565,6 +566,30 @@ function downloadBulkCnpjLookup() {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = `consulta-cnpjs-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function downloadBulkCnpjPartners() {
+  const headers = ["CNPJ consultado", "CNPJ-base", "Razão Social", "Nome do Sócio/Administrador", "Tipo", "Documento Público", "Qualificação", "Data de Entrada", "País", "Faixa Etária", "Representante Legal", "Documento do Representante", "Qualificação do Representante", "Versão Receita"];
+  const rows = [];
+  lastBulkCnpjLookup.forEach((item) => {
+    const company = item.company;
+    if (!company) return;
+    (company.partners || []).forEach((partner) => rows.push([
+      company.cnpj, company.cnpj_root, company.legal_name, partner.partner_name,
+      partner.partner_type, partner.partner_document, partner.qualification || partner.qualification_code,
+      partner.joined_at, partner.country || partner.country_code, partner.age_range,
+      partner.legal_representative_name, partner.legal_representative_document,
+      partner.legal_representative_qualification || partner.legal_representative_qualification_code,
+      company.dataset_version,
+    ]));
+  });
+  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `socios-dos-cnpjs-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(link.href);
 }
@@ -594,9 +619,10 @@ function renderBulkCnpjLookup(data) {
     </div>
     <p class="search-notice">Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s. A prévia mostra os primeiros ${Math.min(100, data.total)}; o CSV preserva toda a lista e sua ordem.</p>
     <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <button id="download-bulk-cnpj" class="download" type="button">Baixar resultado completo em CSV</button>
+    <div class="save-actions"><button id="download-bulk-partners" class="secondary" type="button">Baixar sócios em CSV</button><button id="download-bulk-cnpj" type="button">Baixar empresas em CSV</button></div>
   </article>`;
   document.querySelector("#download-bulk-cnpj").addEventListener("click", downloadBulkCnpjLookup);
+  document.querySelector("#download-bulk-partners").addEventListener("click", downloadBulkCnpjPartners);
 }
 
 bulkCnpjForm.addEventListener("submit", async (event) => {
