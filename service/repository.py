@@ -469,7 +469,12 @@ class Repository:
         """
         with self.pool.connection() as connection:
             connection.execute("SELECT set_config('statement_timeout','30000',true)")
-            rows = connection.execute(sql, (cnpjs,)).fetchall()
+            rows: list[dict[str, Any]] = []
+            # Large ANY arrays can make PostgreSQL prefer a full partition scan.
+            # Small sequential chunks keep exact CNPJ indexes predictable while
+            # the user still receives one response in the original order.
+            for start in range(0, len(cnpjs), 1000):
+                rows.extend(connection.execute(sql, (cnpjs[start:start + 1000],)).fetchall())
             roots = list({row["cnpj_root"] for row in rows})
             partner_counts: dict[str, int] = {}
             if capabilities.partners and roots:

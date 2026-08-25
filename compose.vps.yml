@@ -1,6 +1,6 @@
 services:
   app:
-    image: plataforma-receita-matcher:2026-08-25-bulk-cnpj-branches
+    image: plataforma-receita-matcher:2026-08-25-bulk-cnpj-branches-v2
     pull_policy: never
     restart: unless-stopped
     env_file:
