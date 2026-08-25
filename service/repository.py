@@ -467,34 +467,19 @@ class Repository:
             {' '.join(joins)}
             WHERE e.cnpj=ANY(%s)
         """
-        def fetch_chunk(chunk: list[str]) -> list[dict[str, Any]]:
-            with self.pool.connection() as connection:
-                connection.execute("SELECT set_config('statement_timeout','30000',true)")
-                return connection.execute(sql, (chunk,)).fetchall()
-
-        chunks = [cnpjs[start:start + 1000] for start in range(0, len(cnpjs), 1000)]
-        rows: list[dict[str, Any]] = []
-        if len(chunks) == 1:
-            rows = fetch_chunk(chunks[0])
-        else:
-            # A small ceiling keeps the 10k lookup fast without monopolizing
-            # the shared PostgreSQL used by the Radar.
-            with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as executor:
-                futures = [executor.submit(fetch_chunk, chunk) for chunk in chunks]
-                for future in as_completed(futures):
-                    rows.extend(future.result())
-
-        roots = list({row["cnpj_root"] for row in rows})
-        partner_counts: dict[str, int] = {}
-        if capabilities.partners and roots:
-            with self.pool.connection() as connection:
+        with self.pool.connection() as connection:
+            connection.execute("SELECT set_config('statement_timeout','60000',true)")
+            rows = connection.execute(sql, (cnpjs,)).fetchall()
+            roots = list({row["cnpj_root"] for row in rows})
+            partner_counts: dict[str, int] = {}
+            if capabilities.partners and roots:
                 counts = connection.execute("""
                     SELECT cnpj_root,count(*) AS partner_count
                     FROM rfb_partners
                     WHERE dataset_version=%s AND cnpj_root=ANY(%s)
                     GROUP BY cnpj_root
                 """, (rows[0]["dataset_version"], roots)).fetchall()
-            partner_counts = {row["cnpj_root"]: int(row["partner_count"]) for row in counts}
+                partner_counts = {row["cnpj_root"]: int(row["partner_count"]) for row in counts}
         result: dict[str, dict[str, Any]] = {}
         for row in rows:
             enriched = dict(row)
