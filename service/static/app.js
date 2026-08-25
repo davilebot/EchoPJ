@@ -11,6 +11,9 @@ const companySearchLoading = document.querySelector("#search-loading");
 const companySearchResult = document.querySelector("#search-result");
 const explorerOverviewLoading = document.querySelector("#explorer-overview-loading");
 const explorerOverview = document.querySelector("#explorer-overview");
+const schemaLoading = document.querySelector("#schema-loading");
+const schemaCatalog = document.querySelector("#schema-catalog");
+const relationPreview = document.querySelector("#relation-preview");
 const explorerCnpjForm = document.querySelector("#explorer-cnpj-form");
 const explorerCompanyLoading = document.querySelector("#explorer-company-loading");
 const explorerCompanyResult = document.querySelector("#explorer-company-result");
@@ -22,6 +25,7 @@ const bulkCnpjResult = document.querySelector("#bulk-cnpj-result");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
+let explorerSchemaLoaded = false;
 let lastCompanySearch = [];
 let selectedCompanyCnpjs = new Set();
 let lastBulkCnpjLookup = [];
@@ -201,6 +205,7 @@ function switchTab(tabName) {
   if (tabName === "search") {
     loadSearchCapabilities();
     loadExplorerOverview();
+    loadDatabaseSchema();
   }
 }
 
@@ -421,6 +426,83 @@ async function loadExplorerOverview() {
     explorerOverviewLoading.classList.add("hidden");
   } catch (error) {
     explorerOverviewLoading.textContent = error.message;
+  }
+}
+
+function renderDatabaseSchema(data) {
+  const relationsByGroup = new Map();
+  (data.relations || []).forEach((relation) => {
+    if (!relationsByGroup.has(relation.group)) relationsByGroup.set(relation.group, []);
+    relationsByGroup.get(relation.group).push(relation);
+  });
+  const groupsHtml = (data.groups || []).map((group) => {
+    const relations = relationsByGroup.get(group.key) || [];
+    if (!relations.length) return "";
+    const cards = relations.map((relation) => {
+      const type = relation.relation_type === "view" ? "Visão" : "Tabela";
+      const rows = relation.approximate_rows === null || relation.approximate_rows === undefined
+        ? "Contagem sob demanda"
+        : `≈ ${Number(relation.approximate_rows).toLocaleString("pt-BR")} linhas`;
+      return `<article class="relation-card ${relation.recommended ? "recommended" : ""}">
+        <div class="relation-card-top"><span class="relation-type ${relation.relation_type}">${type}</span>${relation.recommended ? `<span class="recommended-label">Recomendada</span>` : ""}</div>
+        <h4>${escapeHtml(relation.label)}</h4>
+        <code>${escapeHtml(relation.name)}</code>
+        <p>${escapeHtml(relation.description)}</p>
+        <div class="relation-stats"><span>${relation.columns.length} colunas</span><span>${escapeHtml(rows)}</span>${relation.size_bytes ? `<span>${formatBytes(relation.size_bytes)}</span>` : ""}</div>
+        <button class="secondary compact" type="button" data-preview-relation="${escapeHtml(relation.name)}">Ver estrutura e registros</button>
+      </article>`;
+    }).join("");
+    return `<section class="schema-group"><h4>${escapeHtml(group.label)}</h4><div class="relation-grid">${cards}</div></section>`;
+  }).join("");
+  schemaCatalog.innerHTML = `${groupsHtml}<p class="schema-note">${escapeHtml(data.hidden_note || "")}</p>`;
+}
+
+async function loadDatabaseSchema(force = false) {
+  if (explorerSchemaLoaded && !force) return;
+  schemaLoading.classList.remove("hidden");
+  schemaCatalog.classList.add("hidden");
+  try {
+    const response = await fetch("/api/explorer/schema");
+    if (!response.ok) throw new Error("Não foi possível mapear as tabelas e visões");
+    renderDatabaseSchema(await response.json());
+    explorerSchemaLoaded = true;
+    schemaCatalog.classList.remove("hidden");
+    schemaLoading.classList.add("hidden");
+  } catch (error) {
+    schemaLoading.textContent = error.message;
+  }
+}
+
+function previewCell(value) {
+  if (value === null || value === undefined || value === "") return `<span class="null-value">NULL</span>`;
+  const full = typeof value === "object" ? JSON.stringify(value) : String(value);
+  const shortened = full.length > 180 ? `${full.slice(0, 177)}…` : full;
+  return `<code title="${escapeHtml(full.slice(0, 500))}">${escapeHtml(shortened)}</code>`;
+}
+
+function renderRelationPreview(data) {
+  const relation = data.relation;
+  const columnRows = data.columns.map((column) => `<tr><td><code>${escapeHtml(column.name)}</code></td><td>${escapeHtml(column.type)}</td><td>${column.nullable ? "Pode ficar vazio" : "Obrigatória"}</td></tr>`).join("");
+  const headers = data.columns.map((column) => `<th>${escapeHtml(column.name)}</th>`).join("");
+  const rows = data.rows.map((row) => `<tr>${data.columns.map((column) => `<td>${previewCell(row[column.name])}</td>`).join("")}</tr>`).join("");
+  relationPreview.innerHTML = `<div class="relation-preview-head"><div><span class="eyebrow">${relation.group === "ready" ? "PRONTA PARA CONSULTA" : "ESTRUTURA TÉCNICA"}</span><h3>${escapeHtml(relation.label)}</h3><code>${escapeHtml(relation.name)}</code><p>${escapeHtml(relation.description)}</p></div><button class="secondary compact" type="button" data-close-preview>Fechar prévia</button></div>
+    <h4>Dicionário de colunas</h4>
+    <div class="table-wrap column-dictionary"><table><thead><tr><th>Coluna</th><th>Tipo PostgreSQL</th><th>Preenchimento</th></tr></thead><tbody>${columnRows}</tbody></table></div>
+    <h4>Pré-visualização de ${data.rows.length} registro${data.rows.length === 1 ? "" : "s"}</h4>
+    ${rows ? `<div class="table-wrap raw-preview"><table><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty-state"><strong>Esta relação não possui registros visíveis agora.</strong><p>Uma visão vigente pode ficar vazia enquanto sua carga ainda não foi publicada.</p></div>`}`;
+  relationPreview.classList.remove("hidden");
+  relationPreview.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadRelationPreview(relationName) {
+  relationPreview.innerHTML = `<div class="loading-inline">Abrindo ${escapeHtml(relationName)} em modo somente leitura…</div>`;
+  relationPreview.classList.remove("hidden");
+  try {
+    const response = await fetch(`/api/explorer/relations/${encodeURIComponent(relationName)}/preview?limit=10`);
+    if (!response.ok) throw new Error((await response.json()).detail || "Não foi possível abrir a prévia");
+    renderRelationPreview(await response.json());
+  } catch (error) {
+    relationPreview.innerHTML = `<div class="error"><strong>Não foi possível abrir esta relação.</strong><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
@@ -742,7 +824,17 @@ document.querySelector("#search-uf").insertAdjacentHTML("beforeend", allUfs.map(
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);
 document.querySelector("#refresh-explorer").addEventListener("click", loadExplorerOverview);
+document.querySelector("#refresh-schema").addEventListener("click", () => loadDatabaseSchema(true));
 document.querySelector("#download-template").addEventListener("click", downloadTemplate);
+schemaCatalog.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-preview-relation]");
+  if (button) loadRelationPreview(button.dataset.previewRelation);
+});
+relationPreview.addEventListener("click", (event) => {
+  if (!event.target.closest("[data-close-preview]")) return;
+  relationPreview.classList.add("hidden");
+  schemaCatalog.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 companySearchResult.addEventListener("click", (event) => {
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;

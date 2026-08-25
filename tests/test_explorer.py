@@ -1,6 +1,12 @@
 import unittest
 
-from service.explorer import FIELD_GROUPS, cnpj_root_bounds, normalize_cnpj_identifier
+from service.explorer import (
+    FIELD_GROUPS,
+    RELATION_CATALOG,
+    RELATION_CATALOG_BY_NAME,
+    cnpj_root_bounds,
+    normalize_cnpj_identifier,
+)
 
 
 class ExplorerTests(unittest.TestCase):
@@ -23,6 +29,17 @@ class ExplorerTests(unittest.TestCase):
     def test_catalog_covers_the_business_groups(self):
         keys = {group["key"] for group in FIELD_GROUPS}
         self.assertTrue({"establishments", "simples", "partners", "references"} <= keys)
+
+    def test_database_catalog_includes_tables_and_current_views(self):
+        self.assertIn("rfb_establishments", RELATION_CATALOG_BY_NAME)
+        self.assertIn("rfb_partners", RELATION_CATALOG_BY_NAME)
+        self.assertIn("rfb_current_partners", RELATION_CATALOG_BY_NAME)
+        self.assertTrue(RELATION_CATALOG_BY_NAME["rfb_current_partners"]["recommended"])
+
+    def test_database_catalog_hides_staging_and_state_partitions(self):
+        names = {relation["name"] for relation in RELATION_CATALOG}
+        self.assertFalse(any(name.endswith("_stage") for name in names))
+        self.assertFalse(any(name.startswith("rfb_establishments_") for name in names))
 
 
 if __name__ == "__main__":

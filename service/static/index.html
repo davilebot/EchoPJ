@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Plataforma Receita</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260825-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260825-4">
 </head>
 <body>
   <main>
@@ -84,6 +84,20 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       </div>
       <section id="explorer-overview-loading" class="explorer-card">Carregando visão da base…</section>
       <section id="explorer-overview" class="hidden"></section>
+
+      <section class="schema-explorer explorer-card">
+        <div class="schema-heading">
+          <div>
+            <span class="eyebrow">POR DENTRO DO POSTGRESQL</span>
+            <h3>Tabelas, visões e colunas</h3>
+            <p>Abra uma relação para entender sua estrutura e ver até 20 registros reais, sempre em modo somente leitura.</p>
+          </div>
+          <button id="refresh-schema" class="secondary compact" type="button">Atualizar estrutura</button>
+        </div>
+        <section id="schema-loading">Mapeando tabelas e visões…</section>
+        <section id="schema-catalog" class="hidden"></section>
+        <section id="relation-preview" class="hidden"></section>
+      </section>
 
       <form id="explorer-cnpj-form" class="explorer-cnpj-form">
         <div>
@@ -235,6 +249,6 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <section id="history-list" class="history-list hidden"></section>
     </section>
   </main>
-  <script src="/static/app.js?v=20260825-3"></script>
+  <script src="/static/app.js?v=20260825-4"></script>
 </body>
 </html>

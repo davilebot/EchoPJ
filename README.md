@@ -20,6 +20,8 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
   capital social e data de abertura, com até 10.000 resultados por consulta;
 - explorador da base com números de cobertura, andamento da carga complementar
   e ficha exata por CNPJ, sem liberar comandos SQL ao usuário;
+- catálogo técnico somente leitura das tabelas e visões do PostgreSQL, com
+  colunas, tipos e prévia limitada de registros reais;
 - filtros preparados para Simples, MEI, natureza jurídica, matriz/filial,
   telefone e e-mail, liberados somente quando a carga complementar estiver
   na mesma versão da base principal;

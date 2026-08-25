@@ -131,6 +131,35 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 .field-catalog { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .field-catalog article { padding: 15px; border: 1px solid #e2e8f0; border-radius: 12px; }
 .field-catalog p { margin: 6px 0 0; color: #64748b; font-size: 12px; line-height: 1.45; }
+.schema-explorer { margin-top: 0; }
+.schema-heading, .relation-preview-head { display: flex; justify-content: space-between; gap: 20px; align-items: start; }
+.schema-heading h3, .relation-preview-head h3 { margin: 7px 0 5px; font-size: 25px; }
+.schema-heading p, .relation-preview-head p { margin: 0; color: #64748b; line-height: 1.5; }
+.schema-heading button, .relation-preview-head button { grid-column: auto; flex: 0 0 auto; }
+.schema-group { margin-top: 24px; }
+.schema-group > h4 { margin: 0 0 12px; font-size: 17px; }
+.relation-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.relation-card { display: flex; min-width: 0; flex-direction: column; padding: 16px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
+.relation-card.recommended { border-color: #bfdbfe; background: #f8fbff; }
+.relation-card-top { display: flex; min-height: 25px; justify-content: space-between; gap: 8px; align-items: center; }
+.relation-type, .recommended-label { border-radius: 999px; padding: 4px 8px; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.relation-type.table { color: #6b21a8; background: #f3e8ff; }
+.relation-type.view { color: #166534; background: #dcfce7; }
+.recommended-label { color: #1d4ed8; background: #dbeafe; }
+.relation-card h4 { margin: 13px 0 5px; font-size: 16px; }
+.relation-card > code, .relation-preview-head code { overflow-wrap: anywhere; color: #475569; font-size: 11px; }
+.relation-card p { flex: 1; margin: 10px 0; color: #64748b; font-size: 12px; line-height: 1.5; }
+.relation-stats { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 12px; color: #64748b; font-size: 11px; }
+.relation-card button { grid-column: auto; width: 100%; }
+.schema-note { margin: 18px 0 0; padding: 13px 15px; border-radius: 10px; color: #475569; background: #f8fafc; font-size: 12px; line-height: 1.5; }
+#relation-preview { margin-top: 24px; padding-top: 24px; border-top: 1px solid #e2e8f0; scroll-margin-top: 18px; }
+#relation-preview > h4 { margin: 24px 0 10px; }
+.column-dictionary { max-height: 330px; }
+.raw-preview { max-height: 520px; }
+.raw-preview th, .raw-preview td { max-width: 280px; white-space: nowrap; }
+.raw-preview td code { font-size: 11px; }
+.null-value { color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; font-style: italic; }
+.loading-inline { padding: 18px; border-radius: 12px; color: #475569; background: #f8fafc; }
 .explorer-cnpj-form { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; align-items: end; margin-bottom: 22px; }
 .explorer-cnpj-form h3 { margin: 0 0 6px; }
 .explorer-cnpj-form button { grid-column: auto; }
@@ -159,5 +188,7 @@ th { color: #64748b; font-size: 11px; text-transform: uppercase; letter-spacing:
 @media (max-width: 800px) { .search-form fieldset { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 540px) { .tabs { display: flex; overflow-x: auto; } .tab-button { flex: 0 0 auto; } .search-form fieldset, .search-summary { grid-template-columns: 1fr; } }
 @media (max-width: 800px) { .explorer-summary, .field-catalog, .detail-grid { grid-template-columns: repeat(2, 1fr); } .explorer-cnpj-form { grid-template-columns: 1fr; } .explorer-cnpj-form button { grid-column: auto; } }
+@media (max-width: 1000px) { .relation-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 650px) { .schema-heading, .relation-preview-head { flex-direction: column; } .relation-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .explorer-heading, .company-detail-head, .explorer-status { align-items: start; flex-direction: column; } .explorer-summary, .field-catalog, .detail-grid, .partners-list { grid-template-columns: 1fr; } }
 @media (max-width: 700px) { .preview-toolbar, .save-actions { align-items: stretch; flex-direction: column; } .preview-toolbar > div, .save-actions { flex-direction: column; } .preview-toolbar button, .save-actions button { width: 100%; } }

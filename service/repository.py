@@ -3,6 +3,7 @@ from decimal import Decimal
 from time import monotonic
 from typing import Any
 
+from psycopg import sql
 from psycopg.errors import QueryCanceled
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
@@ -11,7 +12,7 @@ from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 
 from .search import SearchCapabilities, build_search_query
-from .explorer import FIELD_GROUPS, cnpj_root_bounds
+from .explorer import FIELD_GROUPS, RELATION_CATALOG, RELATION_CATALOG_BY_NAME, cnpj_root_bounds
 
 
 class Repository:
@@ -235,6 +236,124 @@ class Repository:
                 for row in progress
             ],
             "field_groups": FIELD_GROUPS,
+        }
+
+    @classmethod
+    def _preview_value(cls, value: Any) -> Any:
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return f"<{len(value)} bytes tecnicos>"
+        if isinstance(value, dict):
+            return {key: cls._preview_value(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [cls._preview_value(item) for item in value]
+        return cls._serializable(value)
+
+    def database_schema(self) -> dict[str, Any]:
+        relation_names = list(RELATION_CATALOG_BY_NAME)
+        with self.pool.connection() as connection:
+            columns = connection.execute("""
+                SELECT table_name,column_name,ordinal_position,data_type,udt_name,is_nullable
+                FROM information_schema.columns
+                WHERE table_schema='public' AND table_name=ANY(%s)
+                ORDER BY table_name,ordinal_position
+            """, (relation_names,)).fetchall()
+            table_types = connection.execute("""
+                SELECT table_name,table_type
+                FROM information_schema.tables
+                WHERE table_schema='public' AND table_name=ANY(%s)
+            """, (relation_names,)).fetchall()
+            statistics = connection.execute("""
+                SELECT c.relname,c.relkind,c.reltuples::bigint AS approximate_rows,
+                       pg_total_relation_size(c.oid) AS size_bytes
+                FROM pg_class c
+                JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='public' AND c.relname=ANY(%s)
+            """, (relation_names,)).fetchall()
+            base_statistics = connection.execute("""
+                SELECT active_count + inactive_count AS rows,
+                       (SELECT coalesce(sum(pg_total_relation_size(inhrelid)),0)
+                        FROM pg_inherits
+                        WHERE inhparent='public.rfb_establishments'::regclass) AS size_bytes
+                FROM dataset_versions
+                WHERE is_current AND status='ready'
+                ORDER BY imported_at DESC LIMIT 1
+            """).fetchone()
+        columns_by_relation: dict[str, list[dict[str, Any]]] = {}
+        for column in columns:
+            if column["column_name"] == "row_hash":
+                continue
+            columns_by_relation.setdefault(column["table_name"], []).append({
+                "name": column["column_name"],
+                "position": column["ordinal_position"],
+                "type": column["udt_name"] if column["data_type"] in {"ARRAY", "USER-DEFINED"} else column["data_type"],
+                "nullable": column["is_nullable"] == "YES",
+            })
+        type_by_relation = {row["table_name"]: row["table_type"] for row in table_types}
+        stats_by_relation = {row["relname"]: row for row in statistics}
+        relations = []
+        for catalog_item in RELATION_CATALOG:
+            name = catalog_item["name"]
+            if name not in type_by_relation:
+                continue
+            stats = stats_by_relation.get(name) or {}
+            approximate_rows = stats.get("approximate_rows")
+            size_bytes = int(stats.get("size_bytes") or 0)
+            if name == "rfb_establishments" and base_statistics:
+                approximate_rows = int(base_statistics["rows"])
+                size_bytes = int(base_statistics["size_bytes"] or 0)
+            if approximate_rows is not None and approximate_rows < 0:
+                approximate_rows = None
+            relations.append({
+                **catalog_item,
+                "relation_type": "view" if type_by_relation[name] == "VIEW" else "table",
+                "approximate_rows": approximate_rows,
+                "size_bytes": size_bytes,
+                "columns": columns_by_relation.get(name, []),
+            })
+        return {
+            "relations": relations,
+            "groups": [
+                {"key": "ready", "label": "Visões prontas para consultar"},
+                {"key": "storage", "label": "Tabelas físicas e histórico"},
+                {"key": "operations", "label": "Controle e operação da carga"},
+            ],
+            "hidden_note": "As 27 partições físicas por UF e as tabelas temporárias de importação foram ocultadas desta navegação porque repetem a estrutura principal ou são apenas área de trabalho.",
+        }
+
+    def preview_relation(self, relation_name: str, *, limit: int = 10) -> dict[str, Any]:
+        catalog_item = RELATION_CATALOG_BY_NAME.get(relation_name)
+        if not catalog_item:
+            raise KeyError(relation_name)
+        safe_limit = max(1, min(20, int(limit)))
+        with self.pool.connection() as connection:
+            columns = connection.execute("""
+                SELECT column_name,ordinal_position,data_type,udt_name,is_nullable
+                FROM information_schema.columns
+                WHERE table_schema='public' AND table_name=%s
+                ORDER BY ordinal_position
+            """, (relation_name,)).fetchall()
+            visible_columns = [column for column in columns if column["column_name"] != "row_hash"]
+            if not visible_columns:
+                raise KeyError(relation_name)
+            connection.execute("SELECT set_config('statement_timeout','5000',true)")
+            query = sql.SQL("SELECT {} FROM {} LIMIT %s").format(
+                sql.SQL(",").join(sql.Identifier(column["column_name"]) for column in visible_columns),
+                sql.Identifier(relation_name),
+            )
+            rows = connection.execute(query, (safe_limit,)).fetchall()
+        return {
+            "relation": catalog_item,
+            "columns": [{
+                "name": column["column_name"],
+                "position": column["ordinal_position"],
+                "type": column["udt_name"] if column["data_type"] in {"ARRAY", "USER-DEFINED"} else column["data_type"],
+                "nullable": column["is_nullable"] == "YES",
+            } for column in visible_columns],
+            "rows": [
+                {key: self._preview_value(value) for key, value in dict(row).items()}
+                for row in rows
+            ],
+            "limit": safe_limit,
         }
 
     @classmethod

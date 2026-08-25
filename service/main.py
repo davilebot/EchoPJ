@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from psycopg.errors import QueryCanceled
@@ -173,6 +173,25 @@ def search_companies(payload: CompanySearchRequest, _: None = Depends(require_au
 @app.get("/api/explorer/overview")
 def explorer_overview(_: None = Depends(require_auth)) -> dict:
     return repository.explorer_overview()
+
+
+@app.get("/api/explorer/schema")
+def explorer_schema(_: None = Depends(require_auth)) -> dict:
+    return repository.database_schema()
+
+
+@app.get("/api/explorer/relations/{relation_name}/preview")
+def explorer_relation_preview(
+    relation_name: str,
+    limit: int = Query(default=10, ge=1, le=20),
+    _: None = Depends(require_auth),
+) -> dict:
+    try:
+        return repository.preview_relation(relation_name, limit=limit)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="tabela ou visao nao disponivel para pre-visualizacao") from error
+    except QueryCanceled as error:
+        raise HTTPException(status_code=408, detail="a pre-visualizacao excedeu o limite seguro de tempo") from error
 
 
 @app.post("/api/explorer/company-lookup")
