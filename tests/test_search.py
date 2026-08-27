@@ -16,11 +16,17 @@ class SearchModelTests(unittest.TestCase):
         request = CompanySearchRequest(
             ufs=["sp", "SP"],
             cnae="62.01-5/01",
+            cnaes=["62.01-5/01", "6202300", "62.01-5/01"],
+            municipalities=["São Paulo", "Campinas", "SÃO PAULO"],
+            excluded_company_names=["Marca A", "marca a", "Marca B"],
             postal_code_prefix="13010-",
             registration_statuses=["ativa"],
         )
         self.assertEqual(request.ufs, ["SP"])
         self.assertEqual(request.cnae, "6201501")
+        self.assertEqual(request.cnaes, ["6201501", "6202300"])
+        self.assertEqual(request.municipalities, ["SAO PAULO", "CAMPINAS"])
+        self.assertEqual(request.excluded_company_names, ["Marca A", "Marca B"])
         self.assertEqual(request.postal_code_prefix, "13010")
         self.assertEqual(request.registration_statuses, ["ATIVA"])
 
@@ -33,6 +39,10 @@ class SearchModelTests(unittest.TestCase):
             CompanySearchRequest(cnae="62", cnae_scope="any")
         with self.assertRaises(ValidationError):
             CompanySearchRequest(active_branch_count_min=5, active_branch_count_max=2)
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(cnaes=["62"])
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(excluded_company_names=["A"])
 
     def test_bulk_lookup_keeps_order_and_removes_exact_duplicates(self):
         request = CompanyLookupRequest(cnpjs=["00.000.000/0001-91", "11.222.333/0001-81", "00.000.000/0001-91"])
@@ -61,6 +71,32 @@ class SearchSqlTests(unittest.TestCase):
         sql, parameters = build_search_query(filters, SearchCapabilities())
         self.assertIn("e.primary_cnae=%s OR e.secondary_cnaes @> ARRAY[%s]::text[]", sql)
         self.assertEqual(parameters[-3:-1], ["6201501", "6201501"])
+
+    def test_multiple_cnaes_are_combined_with_or(self):
+        filters = CompanySearchRequest(cnaes=["6201501", "6202300"]).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn("e.primary_cnae=ANY(%s)", sql)
+        self.assertEqual(parameters[-2], ["6201501", "6202300"])
+
+    def test_multiple_cnaes_can_include_secondary_activities(self):
+        filters = CompanySearchRequest(
+            cnaes=["6201501", "6202300"], cnae_scope="any"
+        ).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn("e.primary_cnae=ANY(%s) OR e.secondary_cnaes && %s", sql)
+        self.assertEqual(parameters[-3:-1], [["6201501", "6202300"], ["6201501", "6202300"]])
+
+    def test_multiple_municipalities_and_excluded_names_are_safe_arrays(self):
+        filters = CompanySearchRequest(
+            ufs=["SP"],
+            municipalities=["Campinas", "São Paulo"],
+            excluded_company_names=["Franquia A", "Marca B"],
+        ).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn("e.municipality=ANY(%s)", sql)
+        self.assertIn("coalesce(e.normalized_legal_name,'') LIKE ANY(%s)", sql)
+        self.assertIn(["CAMPINAS", "SAO PAULO"], parameters)
+        self.assertIn(["%FRANQUIA A%", "%MARCA B%"], parameters)
 
     def test_status_selection_replaces_active_default(self):
         filters = CompanySearchRequest(registration_statuses=["BAIXADA"]).model_dump()

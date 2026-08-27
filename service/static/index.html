@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Plataforma Receita</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260825-4">
+  <link rel="stylesheet" href="/static/styles.css?v=20260827-1">
 </head>
 <body>
   <main>
@@ -136,7 +136,18 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <form id="company-search-form" class="search-form">
         <fieldset>
           <legend>Atividade e perfil</legend>
-          <label>CNAE principal<input id="search-cnae" placeholder="Ex.: 6201501 ou 62"></label>
+          <div id="search-cnae-picker" class="multi-picker span-2">
+            <span class="field-label">CNAEs</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false">
+              <span>Selecionar CNAEs</span><small>Nenhum selecionado</small>
+            </button>
+            <div class="multi-picker-panel hidden">
+              <input class="multi-picker-search" type="search" placeholder="Buscar por código ou atividade">
+              <div class="multi-picker-toolbar"><span>Marque quantos CNAEs quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div>
+              <div class="multi-picker-options"></div>
+            </div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
           <label>Onde procurar o CNAE
             <select id="search-cnae-scope">
               <option value="primary">Somente CNAE principal</option>
@@ -144,6 +155,10 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
             </select>
           </label>
           <label>Nome ou marca contém<input id="search-name" placeholder="Razão social, fantasia ou marca"></label>
+          <label class="wide">Excluir nomes ou marcas que contenham
+            <textarea id="search-excluded-names" rows="3" placeholder="Digite um por linha. Ex.:&#10;MARCA A&#10;MARCA B"></textarea>
+            <span class="input-help">A empresa será retirada se qualquer termo aparecer na razão social ou no nome fantasia. Aceita também vírgula ou ponto e vírgula.</span>
+          </label>
           <label>Situação cadastral
             <select id="search-status">
               <option value="ATIVA">Ativa</option>
@@ -167,7 +182,7 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
           <label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
           <label>Abertura a partir de<input id="search-opened-from" type="date"></label>
           <label>Abertura até<input id="search-opened-to" type="date"></label>
-          <p class="fieldset-note">Para pesquisar também nos CNAEs secundários, informe o código completo de 7 dígitos.</p>
+          <p class="fieldset-note">Pesquise pelo código ou pela descrição, marque vários CNAEs e remova qualquer seleção pelos cartões abaixo do campo.</p>
           <aside class="network-note">
             <strong>Buscando franquias ou unidades de uma rede?</strong>
             <p>Digite a marca em “Nome ou marca contém” e combine com CNAE e localização. A Receita não possui um campo “franquia”; por isso esses resultados são possíveis unidades cujo nome oficial contém a marca. Franqueados com outra razão social podem não aparecer.</p>
@@ -189,7 +204,18 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
           <label>UF
             <select id="search-uf"><option value="">Todas as UFs</option></select>
           </label>
-          <label>Município<input id="search-municipality" placeholder="Ex.: Campinas"></label>
+          <div id="search-municipality-picker" class="multi-picker span-2 disabled">
+            <span class="field-label">Municípios</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false" disabled>
+              <span>Escolha uma UF primeiro</span><small>Nenhum selecionado</small>
+            </button>
+            <div class="multi-picker-panel hidden">
+              <input class="multi-picker-search" type="search" placeholder="Buscar município">
+              <div class="multi-picker-toolbar"><span>Marque quantos municípios quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div>
+              <div class="multi-picker-options"></div>
+            </div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
           <label>CEP ou início do CEP<input id="search-postal-code" placeholder="Ex.: 130 ou 13010-000"></label>
         </fieldset>
 
@@ -249,6 +275,6 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <section id="history-list" class="history-list hidden"></section>
     </section>
   </main>
-  <script src="/static/app.js?v=20260825-4"></script>
+  <script src="/static/app.js?v=20260827-1"></script>
 </body>
 </html>

@@ -168,27 +168,52 @@ def build_search_query(
         predicates.append("e.uf=ANY(%s)")
         parameters.append(list(states))
 
-    municipality = normalize(filters.get("municipality"))
-    if municipality:
-        predicates.append("e.municipality=%s")
-        parameters.append(municipality)
+    municipalities = [normalize(value) for value in (filters.get("municipalities") or [])]
+    legacy_municipality = normalize(filters.get("municipality"))
+    if legacy_municipality:
+        municipalities.append(legacy_municipality)
+    municipalities = list(dict.fromkeys(value for value in municipalities if value))
+    if municipalities:
+        if len(municipalities) == 1:
+            predicates.append("e.municipality=%s")
+            parameters.append(municipalities[0])
+        else:
+            predicates.append("e.municipality=ANY(%s)")
+            parameters.append(municipalities)
 
     postal_code = digits(filters.get("postal_code_prefix"))
     if postal_code:
         predicates.append("e.postal_code LIKE %s")
         parameters.append(f"{postal_code}%")
 
-    cnae = digits(filters.get("cnae"))
-    if cnae:
+    cnaes = [digits(value) for value in (filters.get("cnaes") or [])]
+    legacy_cnae = digits(filters.get("cnae"))
+    if legacy_cnae:
+        cnaes.append(legacy_cnae)
+    cnaes = list(dict.fromkeys(value for value in cnaes if value))
+    if cnaes:
         if filters.get("cnae_scope") == "any":
-            predicates.append(f"({cnae_expression}=%s OR {secondary_cnaes_expression} @> ARRAY[%s]::text[])")
-            parameters.extend([cnae, cnae])
-        elif len(cnae) == 7:
-            predicates.append(f"{cnae_expression}=%s")
-            parameters.append(cnae)
+            if len(cnaes) == 1:
+                predicates.append(f"({cnae_expression}=%s OR {secondary_cnaes_expression} @> ARRAY[%s]::text[])")
+                parameters.extend([cnaes[0], cnaes[0]])
+            else:
+                predicates.append(f"({cnae_expression}=ANY(%s) OR {secondary_cnaes_expression} && %s)")
+                parameters.extend([cnaes, cnaes])
+        elif all(len(cnae) == 7 for cnae in cnaes):
+            if len(cnaes) == 1:
+                predicates.append(f"{cnae_expression}=%s")
+                parameters.append(cnaes[0])
+            else:
+                predicates.append(f"{cnae_expression}=ANY(%s)")
+                parameters.append(cnaes)
         else:
-            predicates.append(f"{cnae_expression} LIKE %s")
-            parameters.append(f"{cnae}%")
+            patterns = [f"{cnae}%" for cnae in cnaes]
+            if len(patterns) == 1:
+                predicates.append(f"{cnae_expression} LIKE %s")
+                parameters.append(patterns[0])
+            else:
+                predicates.append(f"{cnae_expression} LIKE ANY(%s)")
+                parameters.append(patterns)
 
     sizes = filters.get("company_sizes") or []
     if sizes:
@@ -200,6 +225,15 @@ def build_search_query(
         predicates.append("(e.normalized_legal_name LIKE %s OR e.normalized_trade_name LIKE %s)")
         name_pattern = f"%{company_name}%"
         parameters.extend([name_pattern, name_pattern])
+
+    excluded_names = [normalize(value) for value in (filters.get("excluded_company_names") or [])]
+    excluded_patterns = [f"%{value}%" for value in dict.fromkeys(value for value in excluded_names if value)]
+    if excluded_patterns:
+        predicates.append(
+            "NOT (coalesce(e.normalized_legal_name,'') LIKE ANY(%s) "
+            "OR coalesce(e.normalized_trade_name,'') LIKE ANY(%s))"
+        )
+        parameters.extend([excluded_patterns, excluded_patterns])
 
     for field, operator in (
         ("share_capital_min", ">="),

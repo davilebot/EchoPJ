@@ -185,6 +185,34 @@ class Repository:
         duration_ms = round((monotonic() - started) * 1000)
         return [self._search_result(row) for row in rows], capabilities, duration_ms, has_more
 
+    def search_cnae_options(self) -> list[dict[str, str]]:
+        with self.pool.connection() as connection:
+            rows = connection.execute("""
+                SELECT code,label
+                FROM rfb_current_aux_reference
+                WHERE kind='cnae'
+                ORDER BY code
+            """).fetchall()
+        return [{"value": row["code"], "label": row["label"]} for row in rows]
+
+    def search_municipality_options(self, uf: str) -> list[dict[str, str]]:
+        with self.pool.connection() as connection:
+            rows = connection.execute("""
+                SELECT DISTINCT reference.label
+                FROM rfb_current_aux_reference reference
+                WHERE reference.kind='municipality'
+                  AND EXISTS (
+                    SELECT 1
+                    FROM rfb_establishments establishment
+                    WHERE establishment.uf=%s
+                      AND establishment.is_active
+                      AND establishment.municipality=reference.label
+                    LIMIT 1
+                  )
+                ORDER BY reference.label
+            """, (uf,)).fetchall()
+        return [{"value": row["label"], "label": row["label"]} for row in rows]
+
     def explorer_overview(self) -> dict[str, Any]:
         with self.pool.connection() as connection:
             base = connection.execute("""

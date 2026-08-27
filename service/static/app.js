@@ -25,6 +25,8 @@ const bulkCnpjResult = document.querySelector("#bulk-cnpj-result");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
+let searchCnaeOptionsLoaded = false;
+let municipalityOptionsRequest = 0;
 let explorerSchemaLoaded = false;
 let lastCompanySearch = [];
 let selectedCompanyCnpjs = new Set();
@@ -32,6 +34,133 @@ let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const allRegistrationStatuses = ["ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"];
+
+function createMultiPicker(root, emptyLabel) {
+  const trigger = root.querySelector(".multi-picker-trigger");
+  const triggerLabel = trigger.querySelector("span");
+  const triggerCount = trigger.querySelector("small");
+  const panel = root.querySelector(".multi-picker-panel");
+  const search = root.querySelector(".multi-picker-search");
+  const optionsContainer = root.querySelector(".multi-picker-options");
+  const tags = root.querySelector(".multi-picker-tags");
+  const clearButton = root.querySelector(".multi-picker-clear");
+  let options = [];
+  let optionByValue = new Map();
+  const selected = new Map();
+  let disabled = trigger.disabled;
+
+  function renderSummary() {
+    const count = selected.size;
+    triggerLabel.textContent = count === 0
+      ? emptyLabel
+      : count === 1
+        ? [...selected.values()][0].displayLabel
+        : `${count.toLocaleString("pt-BR")} selecionados`;
+    triggerCount.textContent = count === 0 ? "Nenhum selecionado" : `${count.toLocaleString("pt-BR")} marcado${count === 1 ? "" : "s"}`;
+    tags.innerHTML = [...selected.values()].map((option) => `
+      <button type="button" class="multi-picker-tag" data-remove-value="${escapeHtml(option.value)}" title="Remover ${escapeHtml(option.displayLabel)}">
+        <span>${escapeHtml(option.displayLabel)}</span><strong aria-hidden="true">×</strong>
+      </button>`).join("");
+  }
+
+  function renderOptions() {
+    const query = search.value.trim().toLocaleUpperCase("pt-BR");
+    const matches = options.filter((option) => !query || option.searchText.includes(query));
+    const visible = matches.slice(0, 250);
+    optionsContainer.innerHTML = visible.length
+      ? `${visible.map((option) => `
+          <label class="multi-picker-option">
+            <input type="checkbox" value="${escapeHtml(option.value)}" ${selected.has(option.value) ? "checked" : ""}>
+            <span><strong>${escapeHtml(option.value)}</strong>${option.label !== option.value ? `<small>${escapeHtml(option.label)}</small>` : ""}</span>
+          </label>`).join("")}
+          ${matches.length > visible.length ? `<p class="multi-picker-more">Mais ${matches.length - visible.length} opções. Digite parte do código ou nome para refinar.</p>` : ""}`
+      : `<p class="multi-picker-empty">Nenhuma opção encontrada.</p>`;
+  }
+
+  trigger.addEventListener("click", () => {
+    if (disabled) return;
+    const willOpen = panel.classList.contains("hidden");
+    document.querySelectorAll(".multi-picker-panel").forEach((otherPanel) => otherPanel.classList.add("hidden"));
+    document.querySelectorAll(".multi-picker-trigger").forEach((otherTrigger) => otherTrigger.setAttribute("aria-expanded", "false"));
+    panel.classList.toggle("hidden", !willOpen);
+    trigger.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) {
+      renderOptions();
+      search.focus();
+    }
+  });
+  search.addEventListener("input", renderOptions);
+  optionsContainer.addEventListener("change", (event) => {
+    const checkbox = event.target.closest("input[type='checkbox']");
+    if (!checkbox) return;
+    const option = optionByValue.get(checkbox.value);
+    if (checkbox.checked && option) selected.set(option.value, option);
+    else selected.delete(checkbox.value);
+    renderSummary();
+  });
+  tags.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove-value]");
+    if (!button) return;
+    selected.delete(button.dataset.removeValue);
+    renderSummary();
+    renderOptions();
+  });
+  clearButton.addEventListener("click", () => {
+    selected.clear();
+    renderSummary();
+    renderOptions();
+  });
+
+  return {
+    values: () => [...selected.keys()],
+    setOptions(newOptions, { clear = false } = {}) {
+      options = newOptions.map((option) => ({
+        value: String(option.value),
+        label: String(option.label || option.value),
+        displayLabel: option.label && option.label !== option.value ? `${option.value} — ${option.label}` : String(option.value),
+        searchText: `${option.value} ${option.label || ""}`.toLocaleUpperCase("pt-BR"),
+      }));
+      optionByValue = new Map(options.map((option) => [option.value, option]));
+      if (clear) selected.clear();
+      else [...selected.keys()].forEach((value) => {
+        if (!optionByValue.has(value)) selected.delete(value);
+      });
+      search.value = "";
+      renderSummary();
+      renderOptions();
+    },
+    clear() {
+      selected.clear();
+      renderSummary();
+      renderOptions();
+    },
+    setDisabled(value, label = emptyLabel) {
+      disabled = value;
+      trigger.disabled = value;
+      root.classList.toggle("disabled", value);
+      if (value) {
+        panel.classList.add("hidden");
+        trigger.setAttribute("aria-expanded", "false");
+      }
+      if (!selected.size) triggerLabel.textContent = label;
+    },
+    setLoading(label) {
+      disabled = true;
+      trigger.disabled = true;
+      root.classList.add("disabled");
+      triggerLabel.textContent = label;
+    },
+  };
+}
+
+const cnaePicker = createMultiPicker(document.querySelector("#search-cnae-picker"), "Selecionar CNAEs");
+const municipalityPicker = createMultiPicker(document.querySelector("#search-municipality-picker"), "Selecionar municípios");
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".multi-picker")) return;
+  document.querySelectorAll(".multi-picker-panel").forEach((panel) => panel.classList.add("hidden"));
+  document.querySelectorAll(".multi-picker-trigger").forEach((trigger) => trigger.setAttribute("aria-expanded", "false"));
+});
 
 const statusLabel = {
   confirmado: "Confirmado",
@@ -204,6 +333,7 @@ function switchTab(tabName) {
   if (tabName === "history") loadHistory();
   if (tabName === "search") {
     loadSearchCapabilities();
+    loadCnaeOptions();
     loadExplorerOverview();
     loadDatabaseSchema();
   }
@@ -327,14 +457,53 @@ async function loadSearchCapabilities() {
   }
 }
 
+async function loadCnaeOptions() {
+  if (searchCnaeOptionsLoaded) return;
+  cnaePicker.setLoading("Carregando CNAEs da Receita…");
+  try {
+    const response = await fetch("/api/search/options/cnaes");
+    if (!response.ok) throw new Error("Não foi possível carregar os CNAEs");
+    const data = await response.json();
+    cnaePicker.setOptions(data.options);
+    cnaePicker.setDisabled(false);
+    searchCnaeOptionsLoaded = true;
+  } catch (error) {
+    cnaePicker.setDisabled(true, error.message);
+  }
+}
+
+async function loadMunicipalityOptions() {
+  const uf = document.querySelector("#search-uf").value;
+  const requestNumber = ++municipalityOptionsRequest;
+  municipalityPicker.clear();
+  if (!uf) {
+    municipalityPicker.setOptions([], { clear: true });
+    municipalityPicker.setDisabled(true, "Escolha uma UF primeiro");
+    return;
+  }
+  municipalityPicker.setLoading(`Carregando municípios de ${uf}…`);
+  try {
+    const response = await fetch(`/api/search/options/municipalities?uf=${encodeURIComponent(uf)}`);
+    if (!response.ok) throw new Error("Não foi possível carregar os municípios");
+    const data = await response.json();
+    if (requestNumber !== municipalityOptionsRequest) return;
+    municipalityPicker.setOptions(data.options, { clear: true });
+    municipalityPicker.setDisabled(false);
+  } catch (error) {
+    if (requestNumber === municipalityOptionsRequest) municipalityPicker.setDisabled(true, error.message);
+  }
+}
+
 function companySearchPayload() {
   const status = document.querySelector("#search-status").value;
   const size = document.querySelector("#search-size").value;
   const uf = document.querySelector("#search-uf").value;
   return {
-    cnae: document.querySelector("#search-cnae").value || null,
+    cnaes: cnaePicker.values(),
     cnae_scope: document.querySelector("#search-cnae-scope").value,
     company_name: document.querySelector("#search-name").value || null,
+    excluded_company_names: document.querySelector("#search-excluded-names").value
+      .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
     registration_statuses: status === "TODAS" ? allRegistrationStatuses : [status],
     company_sizes: size ? [size] : [],
     share_capital_min: optionalNumber(document.querySelector("#search-capital-min").value),
@@ -343,7 +512,7 @@ function companySearchPayload() {
     opened_to: document.querySelector("#search-opened-to").value || null,
     region: document.querySelector("#search-region").value || null,
     ufs: uf ? [uf] : [],
-    municipality: document.querySelector("#search-municipality").value || null,
+    municipalities: municipalityPicker.values(),
     postal_code_prefix: document.querySelector("#search-postal-code").value || null,
     simples: optionalBoolean(document.querySelector("#search-simples").value),
     mei: optionalBoolean(document.querySelector("#search-mei").value),
@@ -820,6 +989,7 @@ companySearchForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelector("#search-uf").insertAdjacentHTML("beforeend", allUfs.map((uf) => `<option value="${uf}">${uf}</option>`).join(""));
+document.querySelector("#search-uf").addEventListener("change", loadMunicipalityOptions);
 
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);

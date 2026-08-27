@@ -18,6 +18,10 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - fila persistente em `POST /api/jobs`, com até 10.000 entradas;
 - busca direta por CNAE, região, UF, município, CEP, situação, porte, nome,
   capital social e data de abertura, com até 10.000 resultados por consulta;
+- seletores pesquisáveis com múltiplos CNAEs e múltiplos municípios da UF
+  escolhida, alimentados pela própria versão corrente da Receita;
+- exclusão de até 100 nomes ou marcas, aplicada à razão social e ao nome
+  fantasia sem interpolar texto do usuário no SQL;
 - explorador da base com números de cobertura, andamento da carga complementar
   e ficha exata por CNPJ, sem liberar comandos SQL ao usuário;
 - catálogo técnico somente leitura das tabelas e visões do PostgreSQL, com

@@ -12,7 +12,7 @@ from psycopg.errors import QueryCanceled
 from .config import get_settings
 from .jobs import JobRunner, JobStore
 from .matching import MatchingService
-from .models import BatchRequest, CompanyLookupRequest, CompanySearchRequest, JobRequest
+from .models import BatchRequest, CompanyLookupRequest, CompanySearchRequest, JobRequest, VALID_UFS
 from .repository import Repository
 from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
@@ -145,6 +145,29 @@ def search_capabilities(_: None = Depends(require_auth)) -> dict:
         "dataset_version": repository.current_version(),
         "filters": repository.search_capabilities().as_dict(),
         "max_results": 10000,
+    }
+
+
+@app.get("/api/search/options/cnaes")
+def search_cnae_options(_: None = Depends(require_auth)) -> dict:
+    return {
+        "dataset_version": repository.current_version(),
+        "options": repository.search_cnae_options(),
+    }
+
+
+@app.get("/api/search/options/municipalities")
+def search_municipality_options(
+    uf: str = Query(min_length=2, max_length=2),
+    _: None = Depends(require_auth),
+) -> dict:
+    normalized_uf = uf.upper()
+    if normalized_uf not in VALID_UFS:
+        raise HTTPException(status_code=422, detail="UF invalida")
+    return {
+        "dataset_version": repository.current_version(),
+        "uf": normalized_uf,
+        "options": repository.search_municipality_options(normalized_uf),
     }
 
 

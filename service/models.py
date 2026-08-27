@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from plataforma_receita.normalization import digits, valid_cnpj
+from plataforma_receita.normalization import digits, normalize, valid_cnpj
 
 
 class MatchInput(BaseModel):
@@ -92,12 +92,15 @@ class CompanySearchRequest(BaseModel):
     region: Literal["N", "NE", "CO", "SE", "S"] | None = None
     ufs: list[str] = Field(default_factory=list, max_length=27)
     municipality: str | None = Field(default=None, max_length=200)
+    municipalities: list[str] = Field(default_factory=list, max_length=1000)
     postal_code_prefix: str | None = Field(default=None, max_length=9)
     cnae: str | None = Field(default=None, max_length=10)
+    cnaes: list[str] = Field(default_factory=list, max_length=2000)
     cnae_scope: Literal["primary", "any"] = "primary"
     registration_statuses: list[str] = Field(default_factory=list, max_length=6)
     company_sizes: list[str] = Field(default_factory=list, max_length=4)
     company_name: str | None = Field(default=None, max_length=200)
+    excluded_company_names: list[str] = Field(default_factory=list, max_length=100)
     share_capital_min: Decimal | None = Field(default=None, ge=0)
     share_capital_max: Decimal | None = Field(default=None, ge=0)
     opened_from: date | None = None
@@ -129,6 +132,36 @@ class CompanySearchRequest(BaseModel):
         if invalid:
             raise ValueError(f"UF invalida: {', '.join(sorted(invalid))}")
         return normalized
+
+    @field_validator("municipalities")
+    @classmethod
+    def validate_municipalities(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(normalize(item) for item in value if normalize(item)))
+        return normalized
+
+    @field_validator("cnaes")
+    @classmethod
+    def validate_cnaes(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(digits(item) for item in value if digits(item)))
+        if any(len(item) != 7 for item in normalized):
+            raise ValueError("os CNAEs selecionados devem ter 7 digitos")
+        return normalized
+
+    @field_validator("excluded_company_names")
+    @classmethod
+    def validate_excluded_company_names(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            term = str(item).strip()
+            normalized = normalize(term)
+            if not normalized or normalized in seen:
+                continue
+            if len(normalized) < 2:
+                raise ValueError("cada nome ou marca excluida deve ter pelo menos 2 caracteres")
+            cleaned.append(term[:200])
+            seen.add(normalized)
+        return cleaned
 
     @field_validator("registration_statuses")
     @classmethod
