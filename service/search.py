@@ -20,6 +20,13 @@ REGION_STATES = {
     "S": ("PR", "RS", "SC"),
 }
 
+COMPANY_SIZE_CODES = {
+    "NAO INFORMADO": "00",
+    "MICRO EMPRESA": "01",
+    "EMPRESA DE PEQUENO PORTE": "03",
+    "DEMAIS": "05",
+}
+
 
 @dataclass(frozen=True)
 class SearchCapabilities:
@@ -46,8 +53,12 @@ class SearchCapabilityUnavailable(ValueError):
 
 
 def _selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
-    region = filters.get("region")
-    region_states = set(REGION_STATES[region]) if region else None
+    regions = set(filters.get("regions") or [])
+    if filters.get("region"):
+        regions.add(filters["region"])
+    region_states = {
+        state for region in regions for state in REGION_STATES[region]
+    } if regions else None
     requested = {str(value).upper() for value in (filters.get("ufs") or [])}
     if requested and region_states is not None:
         selected = requested & region_states
@@ -71,6 +82,7 @@ def build_search_query(
 
     needs_simples = filters.get("simples") is not None or filters.get("mei") is not None
     needs_company = bool(filters.get("legal_nature_code"))
+    needs_partners = bool(filters.get("partner_age_ranges"))
     needs_establishment = any(
         filters.get(field) is not None
         for field in ("branch_type", "has_email", "has_phone")
@@ -85,6 +97,8 @@ def build_search_query(
         raise SearchCapabilityUnavailable("natureza juridica aguarda a carga complementar da Receita")
     if needs_establishment and not capabilities.establishment_details:
         raise SearchCapabilityUnavailable("matriz/filial e contatos aguardam a carga complementar da Receita")
+    if needs_partners and not capabilities.partners:
+        raise SearchCapabilityUnavailable("socios e faixas etarias aguardam a carga complementar da Receita")
     if needs_branch_counts and not capabilities.branch_counts:
         raise SearchCapabilityUnavailable("o resumo de filiais ainda esta sendo preparado")
 
@@ -96,17 +110,27 @@ def build_search_query(
         simples_columns = "s.is_simples,s.is_mei"
     else:
         simples_columns = "NULL::boolean AS is_simples,NULL::boolean AS is_mei"
+    base_company_size_expression = (
+        "CASE e.company_size "
+        "WHEN '00' THEN 'NAO INFORMADO' "
+        "WHEN '01' THEN 'MICRO EMPRESA' "
+        "WHEN '03' THEN 'EMPRESA DE PEQUENO PORTE' "
+        "WHEN '05' THEN 'DEMAIS' "
+        "ELSE coalesce(nullif(e.company_size,''),'NAO INFORMADO') END"
+    )
     if capabilities.company_details:
         joins.append(
             "LEFT JOIN rfb_company_details c ON c.cnpj_root=e.cnpj_root "
             "AND c.dataset_version=e.dataset_version"
         )
         legal_nature_column = "c.legal_nature_code"
-        company_size_expression = "e.company_size" if active_only else "coalesce(e.company_size,c.company_size)"
+        company_size_expression = f"coalesce(c.company_size,{base_company_size_expression})"
+        company_size_filter_expression = "e.company_size" if active_only else "coalesce(c.company_size_code,e.company_size)"
         share_capital_expression = "e.share_capital" if active_only else "coalesce(e.share_capital,c.share_capital)"
     else:
         legal_nature_column = "NULL::text AS legal_nature_code"
-        company_size_expression = "e.company_size"
+        company_size_expression = base_company_size_expression
+        company_size_filter_expression = "e.company_size"
         share_capital_expression = "e.share_capital"
     if capabilities.establishment_details:
         joins.append(
@@ -168,23 +192,42 @@ def build_search_query(
         predicates.append("e.uf=ANY(%s)")
         parameters.append(list(states))
 
-    municipalities = [normalize(value) for value in (filters.get("municipalities") or [])]
+    municipality_pairs: dict[str, list[str]] = {}
+    municipalities: list[str] = []
+    for value in (filters.get("municipalities") or []):
+        raw = str(value)
+        if "|" in raw:
+            uf, municipality = raw.split("|", 1)
+            municipality_pairs.setdefault(uf, []).append(normalize(municipality))
+        else:
+            municipalities.append(normalize(raw))
     legacy_municipality = normalize(filters.get("municipality"))
     if legacy_municipality:
         municipalities.append(legacy_municipality)
     municipalities = list(dict.fromkeys(value for value in municipalities if value))
+    municipality_clauses: list[str] = []
     if municipalities:
-        if len(municipalities) == 1:
-            predicates.append("e.municipality=%s")
-            parameters.append(municipalities[0])
-        else:
-            predicates.append("e.municipality=ANY(%s)")
-            parameters.append(municipalities)
+        municipality_clauses.append("e.municipality=ANY(%s)")
+        parameters.append(municipalities)
+    for uf, names in municipality_pairs.items():
+        municipality_clauses.append("(e.uf=%s AND e.municipality=ANY(%s))")
+        parameters.extend([uf, list(dict.fromkeys(names))])
+    if municipality_clauses:
+        predicates.append(f"({' OR '.join(municipality_clauses)})")
 
-    postal_code = digits(filters.get("postal_code_prefix"))
-    if postal_code:
-        predicates.append("e.postal_code LIKE %s")
-        parameters.append(f"{postal_code}%")
+    postal_codes = [digits(value) for value in (filters.get("postal_code_prefixes") or [])]
+    legacy_postal_code = digits(filters.get("postal_code_prefix"))
+    if legacy_postal_code:
+        postal_codes.append(legacy_postal_code)
+    postal_codes = list(dict.fromkeys(value for value in postal_codes if value))
+    if postal_codes:
+        patterns = [f"{postal_code}%" for postal_code in postal_codes]
+        if len(patterns) == 1:
+            predicates.append("e.postal_code LIKE %s")
+            parameters.append(patterns[0])
+        else:
+            predicates.append("e.postal_code LIKE ANY(%s)")
+            parameters.append(patterns)
 
     cnaes = [digits(value) for value in (filters.get("cnaes") or [])]
     legacy_cnae = digits(filters.get("cnae"))
@@ -217,8 +260,8 @@ def build_search_query(
 
     sizes = filters.get("company_sizes") or []
     if sizes:
-        predicates.append(f"{company_size_expression}=ANY(%s)")
-        parameters.append(sizes)
+        predicates.append(f"{company_size_filter_expression}=ANY(%s)")
+        parameters.append([COMPANY_SIZE_CODES[size] for size in sizes])
 
     company_name = normalize(filters.get("company_name"))
     if company_name:
@@ -234,6 +277,17 @@ def build_search_query(
             "OR coalesce(e.normalized_trade_name,'') LIKE ANY(%s))"
         )
         parameters.extend([excluded_patterns, excluded_patterns])
+
+    if filters.get("partner_age_ranges"):
+        predicates.append("""
+            EXISTS (
+              SELECT 1 FROM rfb_partners partner_age
+              WHERE partner_age.dataset_version=e.dataset_version
+                AND partner_age.cnpj_root=e.cnpj_root
+                AND partner_age.age_range_code=ANY(%s)
+            )
+        """)
+        parameters.append(filters["partner_age_ranges"])
 
     for field, operator in (
         ("share_capital_min", ">="),

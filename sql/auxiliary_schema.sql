@@ -105,6 +105,11 @@ CREATE TABLE IF NOT EXISTS rfb_partners (
 CREATE INDEX IF NOT EXISTS rfb_partners_root_idx
   ON rfb_partners (dataset_version, cnpj_root);
 
+-- Inclui a faixa etaria na propria arvore para que o filtro societario possa
+-- ser resolvido pelo indice, sem abrir os registros de cada socio no heap.
+CREATE INDEX IF NOT EXISTS rfb_partners_root_age_idx
+  ON rfb_partners (dataset_version, cnpj_root, age_range_code);
+
 -- Resumo pequeno por raiz para devolver e filtrar quantidade de filiais sem
 -- reagrupar os 72 milhoes de estabelecimentos em cada consulta.
 CREATE TABLE IF NOT EXISTS rfb_company_branch_counts (

@@ -34,6 +34,19 @@ let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const allRegistrationStatuses = ["ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"];
+const regionStates = {
+  N: ["AC", "AP", "AM", "PA", "RO", "RR", "TO"],
+  NE: ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
+  CO: ["DF", "GO", "MT", "MS"],
+  SE: ["ES", "MG", "RJ", "SP"],
+  S: ["PR", "RS", "SC"],
+};
+const ufNames = {
+  AC: "Acre", AL: "Alagoas", AP: "Amapá", AM: "Amazonas", BA: "Bahia", CE: "Ceará", DF: "Distrito Federal",
+  ES: "Espírito Santo", GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
+  PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
+  RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+};
 
 function createMultiPicker(root, emptyLabel) {
   const trigger = root.querySelector(".multi-picker-trigger");
@@ -47,7 +60,13 @@ function createMultiPicker(root, emptyLabel) {
   let options = [];
   let optionByValue = new Map();
   const selected = new Map();
+  const changeListeners = [];
   let disabled = trigger.disabled;
+
+  function notifyChange() {
+    const values = [...selected.keys()];
+    changeListeners.forEach((listener) => listener(values));
+  }
 
   function renderSummary() {
     const count = selected.size;
@@ -71,7 +90,7 @@ function createMultiPicker(root, emptyLabel) {
       ? `${visible.map((option) => `
           <label class="multi-picker-option">
             <input type="checkbox" value="${escapeHtml(option.value)}" ${selected.has(option.value) ? "checked" : ""}>
-            <span><strong>${escapeHtml(option.value)}</strong>${option.label !== option.value ? `<small>${escapeHtml(option.label)}</small>` : ""}</span>
+            <span><strong>${escapeHtml(option.optionLabel)}</strong>${option.optionDescription ? `<small>${escapeHtml(option.optionDescription)}</small>` : ""}</span>
           </label>`).join("")}
           ${matches.length > visible.length ? `<p class="multi-picker-more">Mais ${matches.length - visible.length} opções. Digite parte do código ou nome para refinar.</p>` : ""}`
       : `<p class="multi-picker-empty">Nenhuma opção encontrada.</p>`;
@@ -97,6 +116,7 @@ function createMultiPicker(root, emptyLabel) {
     if (checkbox.checked && option) selected.set(option.value, option);
     else selected.delete(checkbox.value);
     renderSummary();
+    notifyChange();
   });
   tags.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove-value]");
@@ -104,11 +124,13 @@ function createMultiPicker(root, emptyLabel) {
     selected.delete(button.dataset.removeValue);
     renderSummary();
     renderOptions();
+    notifyChange();
   });
   clearButton.addEventListener("click", () => {
     selected.clear();
     renderSummary();
     renderOptions();
+    notifyChange();
   });
 
   return {
@@ -117,7 +139,11 @@ function createMultiPicker(root, emptyLabel) {
       options = newOptions.map((option) => ({
         value: String(option.value),
         label: String(option.label || option.value),
-        displayLabel: option.label && option.label !== option.value ? `${option.value} — ${option.label}` : String(option.value),
+        optionLabel: String(option.option_label || option.value),
+        optionDescription: option.option_description !== undefined
+          ? String(option.option_description)
+          : option.option_label ? String(option.label || "") : option.label && option.label !== option.value ? String(option.label) : "",
+        displayLabel: String(option.display_label || (option.label && option.label !== option.value ? `${option.value} — ${option.label}` : option.value)),
         searchText: `${option.value} ${option.label || ""}`.toLocaleUpperCase("pt-BR"),
       }));
       optionByValue = new Map(options.map((option) => [option.value, option]));
@@ -133,6 +159,18 @@ function createMultiPicker(root, emptyLabel) {
       selected.clear();
       renderSummary();
       renderOptions();
+    },
+    setSelected(values) {
+      selected.clear();
+      values.forEach((value) => {
+        const option = optionByValue.get(String(value));
+        if (option) selected.set(option.value, option);
+      });
+      renderSummary();
+      renderOptions();
+    },
+    onChange(listener) {
+      changeListeners.push(listener);
     },
     setDisabled(value, label = emptyLabel) {
       disabled = value;
@@ -155,6 +193,51 @@ function createMultiPicker(root, emptyLabel) {
 
 const cnaePicker = createMultiPicker(document.querySelector("#search-cnae-picker"), "Selecionar CNAEs");
 const municipalityPicker = createMultiPicker(document.querySelector("#search-municipality-picker"), "Selecionar municípios");
+const regionPicker = createMultiPicker(document.querySelector("#search-region-picker"), "Brasil inteiro");
+const ufPicker = createMultiPicker(document.querySelector("#search-uf-picker"), "Todos os estados");
+const statusPicker = createMultiPicker(document.querySelector("#search-status-picker"), "Ativa (padrão)");
+const sizePicker = createMultiPicker(document.querySelector("#search-size-picker"), "Todos os portes");
+const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
+
+regionPicker.setOptions([
+  { value: "N", label: "Norte" }, { value: "NE", label: "Nordeste" }, { value: "CO", label: "Centro-Oeste" },
+  { value: "SE", label: "Sudeste" }, { value: "S", label: "Sul" },
+]);
+statusPicker.setOptions([
+  { value: "ATIVA", label: "Ativa" }, { value: "BAIXADA", label: "Baixada" }, { value: "INAPTA", label: "Inapta" },
+  { value: "SUSPENSA", label: "Suspensa" }, { value: "NULA", label: "Nula" }, { value: "NAO INFORMADA", label: "Não informada" },
+]);
+statusPicker.setSelected(["ATIVA"]);
+sizePicker.setOptions([
+  { value: "MICRO EMPRESA", option_label: "Microempresa", display_label: "Microempresa" },
+  { value: "EMPRESA DE PEQUENO PORTE", option_label: "Empresa de Pequeno Porte", display_label: "Empresa de Pequeno Porte" },
+  { value: "DEMAIS", option_label: "Demais", display_label: "Demais" },
+  { value: "NAO INFORMADO", option_label: "Não informado", display_label: "Não informado" },
+]);
+partnerAgePicker.setOptions([
+  { value: "1", option_label: "0 a 12 anos", display_label: "0 a 12 anos" },
+  { value: "2", option_label: "13 a 20 anos", display_label: "13 a 20 anos" },
+  { value: "3", option_label: "21 a 30 anos", display_label: "21 a 30 anos" },
+  { value: "4", option_label: "31 a 40 anos", display_label: "31 a 40 anos" },
+  { value: "5", option_label: "41 a 50 anos", display_label: "41 a 50 anos" },
+  { value: "6", option_label: "51 a 60 anos", display_label: "51 a 60 anos" },
+  { value: "7", option_label: "61 a 70 anos", display_label: "61 a 70 anos" },
+  { value: "8", option_label: "71 a 80 anos", display_label: "71 a 80 anos" },
+  { value: "9", option_label: "Maior de 80 anos", display_label: "Maior de 80 anos" },
+]);
+
+function updateUfOptions() {
+  const regions = regionPicker.values();
+  const allowed = regions.length
+    ? [...new Set(regions.flatMap((region) => regionStates[region]))]
+    : allUfs;
+  ufPicker.setOptions(allowed.map((uf) => ({ value: uf, label: ufNames[uf] })));
+  loadMunicipalityOptions();
+}
+
+updateUfOptions();
+regionPicker.onChange(updateUfOptions);
+ufPicker.onChange(loadMunicipalityOptions);
 
 document.addEventListener("click", (event) => {
   if (event.target.closest(".multi-picker")) return;
@@ -441,7 +524,8 @@ async function loadSearchCapabilities() {
     document.querySelectorAll("[data-capability]").forEach((field) => {
       field.disabled = !data.filters[field.dataset.capability];
     });
-    const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details", "branch_counts"];
+    partnerAgePicker.setDisabled(!data.filters.partners, data.filters.partners ? "Todas as faixas etárias" : "Sócios ainda indisponíveis");
+    const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details", "branch_counts", "partners"];
     const available = filterCapabilities.every((key) => data.filters[key]);
     const availableCount = filterCapabilities.filter((key) => data.filters[key]).length;
     if (available) {
@@ -473,17 +557,19 @@ async function loadCnaeOptions() {
 }
 
 async function loadMunicipalityOptions() {
-  const uf = document.querySelector("#search-uf").value;
+  const ufs = ufPicker.values();
   const requestNumber = ++municipalityOptionsRequest;
   municipalityPicker.clear();
-  if (!uf) {
+  if (!ufs.length) {
     municipalityPicker.setOptions([], { clear: true });
-    municipalityPicker.setDisabled(true, "Escolha uma UF primeiro");
+    municipalityPicker.setDisabled(true, "Escolha ao menos uma UF");
     return;
   }
-  municipalityPicker.setLoading(`Carregando municípios de ${uf}…`);
+  municipalityPicker.setLoading(`Carregando municípios de ${ufs.length === 1 ? ufs[0] : `${ufs.length} UFs`}…`);
   try {
-    const response = await fetch(`/api/search/options/municipalities?uf=${encodeURIComponent(uf)}`);
+    const parameters = new URLSearchParams();
+    ufs.forEach((uf) => parameters.append("ufs", uf));
+    const response = await fetch(`/api/search/options/municipalities?${parameters}`);
     if (!response.ok) throw new Error("Não foi possível carregar os municípios");
     const data = await response.json();
     if (requestNumber !== municipalityOptionsRequest) return;
@@ -495,25 +581,24 @@ async function loadMunicipalityOptions() {
 }
 
 function companySearchPayload() {
-  const status = document.querySelector("#search-status").value;
-  const size = document.querySelector("#search-size").value;
-  const uf = document.querySelector("#search-uf").value;
   return {
     cnaes: cnaePicker.values(),
     cnae_scope: document.querySelector("#search-cnae-scope").value,
     company_name: document.querySelector("#search-name").value || null,
     excluded_company_names: document.querySelector("#search-excluded-names").value
       .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
-    registration_statuses: status === "TODAS" ? allRegistrationStatuses : [status],
-    company_sizes: size ? [size] : [],
+    registration_statuses: statusPicker.values(),
+    company_sizes: sizePicker.values(),
     share_capital_min: optionalNumber(document.querySelector("#search-capital-min").value),
     share_capital_max: optionalNumber(document.querySelector("#search-capital-max").value),
     opened_from: document.querySelector("#search-opened-from").value || null,
     opened_to: document.querySelector("#search-opened-to").value || null,
-    region: document.querySelector("#search-region").value || null,
-    ufs: uf ? [uf] : [],
+    regions: regionPicker.values(),
+    ufs: ufPicker.values(),
     municipalities: municipalityPicker.values(),
-    postal_code_prefix: document.querySelector("#search-postal-code").value || null,
+    postal_code_prefixes: document.querySelector("#search-postal-codes").value
+      .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
+    partner_age_ranges: partnerAgePicker.values(),
     simples: optionalBoolean(document.querySelector("#search-simples").value),
     mei: optionalBoolean(document.querySelector("#search-mei").value),
     legal_nature_code: document.querySelector("#search-legal-nature").value || null,
@@ -533,6 +618,15 @@ function displayValue(value) {
 function formatMoney(value) {
   if (value === null || value === undefined) return "—";
   return Number(value).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function companySizeLabel(value) {
+  const labels = {
+    "00": "Não informado", "01": "Microempresa", "03": "Empresa de Pequeno Porte", "05": "Demais",
+    "NAO INFORMADO": "Não informado", "MICRO EMPRESA": "Microempresa",
+    "EMPRESA DE PEQUENO PORTE": "Empresa de Pequeno Porte", "DEMAIS": "Demais",
+  };
+  return labels[String(value || "").toUpperCase()] || value || "—";
 }
 
 function formatBytes(value) {
@@ -907,11 +1001,12 @@ function renderCompanySearch(data) {
     <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
     <td>${escapeHtml(company.primary_cnae || "—")}</td>
     <td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td>
-    <td>${escapeHtml(company.company_size || "—")}</td>
+    <td>${escapeHtml(companySizeLabel(company.company_size))}</td>
     <td>${escapeHtml(formatMoney(company.share_capital))}</td>
     <td>${escapeHtml(company.opened_at || "—")}</td>
     <td>${escapeHtml(company.registration_status || "—")}</td>
     <td>${Number(company.active_branch_count || 0).toLocaleString("pt-BR")}</td>
+    <td>${Number(company.partner_count || 0).toLocaleString("pt-BR")}</td>
   </tr>`).join("");
   const limitNotice = data.has_more
     ? `A busca atingiu o limite de ${data.limit.toLocaleString("pt-BR")}. Refine os filtros para ver outro recorte.`
@@ -923,11 +1018,15 @@ function renderCompanySearch(data) {
     </div>
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Salvar selecionadas em CSV</button><button id="download-company-search" type="button">Salvar todas as ${data.returned.toLocaleString("pt-BR")} em CSV</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Empresas selecionadas</button><button id="download-selected-company-partners" class="secondary" type="button" disabled>Sócios das selecionadas</button><button id="download-company-search-partners" class="secondary" type="button">Sócios de todas</button><button id="download-company-search" type="button">Todas as ${data.returned.toLocaleString("pt-BR")} empresas</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
   document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
+  document.querySelector("#download-company-search-partners")?.addEventListener("click", () => downloadCompanySearchPartners(lastCompanySearch));
   document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas");
+  });
+  document.querySelector("#download-selected-company-partners")?.addEventListener("click", () => {
+    downloadCompanySearchPartners(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "socios-das-empresas-selecionadas");
   });
   document.querySelector("#select-preview")?.addEventListener("click", () => {
     preview.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
@@ -945,20 +1044,49 @@ function updateSearchSelection() {
   const count = selectedCompanyCnpjs.size;
   const label = document.querySelector("#selection-count");
   const button = document.querySelector("#download-selected-company-search");
+  const partnerButton = document.querySelector("#download-selected-company-partners");
   if (label) label.textContent = `${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}`;
   if (button) button.disabled = count === 0;
+  if (partnerButton) partnerButton.disabled = count === 0;
 }
 
 function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
-  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "E-mail", "Telefone", "Versão Receita"];
-  const rows = companies.map((company) => [
-    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
-    company.registration_status_date, company.opened_at, company.company_size, company.share_capital,
-    company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
-    company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
-    company.branch_type_code, company.active_branch_count, company.branch_count, company.email,
-    [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
-  ]);
+  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "Sócios e Administradores", "CPF/CNPJ Público dos Sócios", "Faixas Etárias dos Sócios", "Qualificações dos Sócios", "E-mail", "Telefone", "Versão Receita"];
+  const rows = companies.map((company) => {
+    const partners = company.partners || [];
+    return [
+      company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
+      company.registration_status_date, company.opened_at, companySizeLabel(company.company_size), company.share_capital,
+      company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
+      company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
+      company.branch_type_code, company.active_branch_count, company.branch_count, company.partner_count,
+      partners.map((partner) => partner.partner_name).filter(Boolean).join(" | "),
+      partners.map((partner) => partner.partner_document).filter(Boolean).join(" | "),
+      partners.map((partner) => partner.age_range).filter(Boolean).join(" | "),
+      partners.map((partner) => partner.qualification || partner.qualification_code).filter(Boolean).join(" | "),
+      company.email, [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
+    ];
+  });
+  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function downloadCompanySearchPartners(companies, filenamePrefix = "socios-das-empresas") {
+  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Nome do Sócio/Administrador", "Tipo", "CPF/CNPJ Público", "Qualificação", "Data de Entrada", "País", "Faixa Etária", "Representante Legal", "Documento Público do Representante", "Qualificação do Representante", "Versão Receita"];
+  const rows = [];
+  companies.forEach((company) => (company.partners || []).forEach((partner) => rows.push([
+    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, partner.partner_name,
+    partner.partner_type, partner.partner_document, partner.qualification || partner.qualification_code,
+    partner.joined_at, partner.country || partner.country_code, partner.age_range,
+    partner.legal_representative_name, partner.legal_representative_document,
+    partner.legal_representative_qualification || partner.legal_representative_qualification_code,
+    company.dataset_version,
+  ])));
   const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
   const link = document.createElement("a");
@@ -987,9 +1115,6 @@ companySearchForm.addEventListener("submit", async (event) => {
     companySearchResult.classList.remove("hidden");
   }
 });
-
-document.querySelector("#search-uf").insertAdjacentHTML("beforeend", allUfs.map((uf) => `<option value="${uf}">${uf}</option>`).join(""));
-document.querySelector("#search-uf").addEventListener("change", loadMunicipalityOptions);
 
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);

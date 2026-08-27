@@ -158,16 +158,19 @@ def search_cnae_options(_: None = Depends(require_auth)) -> dict:
 
 @app.get("/api/search/options/municipalities")
 def search_municipality_options(
-    uf: str = Query(min_length=2, max_length=2),
+    uf: str | None = Query(default=None, min_length=2, max_length=2),
+    ufs: list[str] = Query(default=[]),
     _: None = Depends(require_auth),
 ) -> dict:
-    normalized_uf = uf.upper()
-    if normalized_uf not in VALID_UFS:
+    normalized_ufs = list(dict.fromkeys(
+        value.strip().upper() for value in [*ufs, *([uf] if uf else [])] if value.strip()
+    ))
+    if not normalized_ufs or set(normalized_ufs) - VALID_UFS:
         raise HTTPException(status_code=422, detail="UF invalida")
     return {
         "dataset_version": repository.current_version(),
-        "uf": normalized_uf,
-        "options": repository.search_municipality_options(normalized_uf),
+        "ufs": normalized_ufs,
+        "options": repository.search_municipality_options(normalized_ufs),
     }
 
 

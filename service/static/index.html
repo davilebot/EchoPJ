@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Plataforma Receita</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260827-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260827-2">
 </head>
 <body>
   <main>
@@ -159,25 +159,18 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
             <textarea id="search-excluded-names" rows="3" placeholder="Digite um por linha. Ex.:&#10;MARCA A&#10;MARCA B"></textarea>
             <span class="input-help">A empresa será retirada se qualquer termo aparecer na razão social ou no nome fantasia. Aceita também vírgula ou ponto e vírgula.</span>
           </label>
-          <label>Situação cadastral
-            <select id="search-status">
-              <option value="ATIVA">Ativa</option>
-              <option value="TODAS">Todas as situações</option>
-              <option value="BAIXADA">Baixada</option>
-              <option value="INAPTA">Inapta</option>
-              <option value="SUSPENSA">Suspensa</option>
-              <option value="NULA">Nula</option>
-            </select>
-          </label>
-          <label>Porte
-            <select id="search-size">
-              <option value="">Todos os portes</option>
-              <option value="MICRO EMPRESA">Microempresa</option>
-              <option value="EMPRESA DE PEQUENO PORTE">Empresa de pequeno porte</option>
-              <option value="DEMAIS">Demais</option>
-              <option value="NAO INFORMADO">Não informado</option>
-            </select>
-          </label>
+          <div id="search-status-picker" class="multi-picker span-2">
+            <span class="field-label">Situações cadastrais</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar situações</span><small>Nenhum selecionado</small></button>
+            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar situação"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
+          <div id="search-size-picker" class="multi-picker span-2">
+            <span class="field-label">Portes</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar portes</span><small>Nenhum selecionado</small></button>
+            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar porte"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
           <label>Capital social mínimo<input id="search-capital-min" type="number" min="0" step="0.01" placeholder="0,00"></label>
           <label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
           <label>Abertura a partir de<input id="search-opened-from" type="date"></label>
@@ -191,23 +184,22 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
 
         <fieldset>
           <legend>Localização</legend>
-          <label>Região
-            <select id="search-region">
-              <option value="">Brasil inteiro</option>
-              <option value="N">Norte</option>
-              <option value="NE">Nordeste</option>
-              <option value="CO">Centro-Oeste</option>
-              <option value="SE">Sudeste</option>
-              <option value="S">Sul</option>
-            </select>
-          </label>
-          <label>UF
-            <select id="search-uf"><option value="">Todas as UFs</option></select>
-          </label>
+          <div id="search-region-picker" class="multi-picker span-2">
+            <span class="field-label">Regiões</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Brasil inteiro</span><small>Nenhum selecionado</small></button>
+            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar região"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
+          <div id="search-uf-picker" class="multi-picker span-2">
+            <span class="field-label">Estados (UFs)</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os estados</span><small>Nenhum selecionado</small></button>
+            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar UF ou estado"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
           <div id="search-municipality-picker" class="multi-picker span-2 disabled">
             <span class="field-label">Municípios</span>
             <button class="multi-picker-trigger" type="button" aria-expanded="false" disabled>
-              <span>Escolha uma UF primeiro</span><small>Nenhum selecionado</small>
+              <span>Escolha ao menos uma UF</span><small>Nenhum selecionado</small>
             </button>
             <div class="multi-picker-panel hidden">
               <input class="multi-picker-search" type="search" placeholder="Buscar município">
@@ -216,7 +208,10 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
             </div>
             <div class="multi-picker-tags" aria-live="polite"></div>
           </div>
-          <label>CEP ou início do CEP<input id="search-postal-code" placeholder="Ex.: 130 ou 13010-000"></label>
+          <label class="span-2">CEPs ou inícios de CEP
+            <textarea id="search-postal-codes" rows="3" placeholder="Um por linha. Ex.:&#10;13010-000&#10;045&#10;20040"></textarea>
+            <span class="input-help">Aceita também vírgula ou ponto e vírgula.</span>
+          </label>
         </fieldset>
 
         <fieldset id="complementary-filters" class="complementary-filters">
@@ -231,6 +226,12 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
               <option value="">Tanto faz</option><option value="true">É MEI</option><option value="false">Não é MEI</option>
             </select>
           </label>
+          <div id="search-partner-age-picker" class="multi-picker span-2 disabled">
+            <span class="field-label">Faixas etárias dos sócios</span>
+            <button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Carregando faixas etárias</span><small>Nenhum selecionado</small></button>
+            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar faixa etária"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
+            <div class="multi-picker-tags" aria-live="polite"></div>
+          </div>
           <label>Natureza jurídica (código)<input id="search-legal-nature" data-capability="legal_nature" disabled placeholder="Ex.: 2062"></label>
           <label>Matriz ou filial
             <select id="search-branch-type" data-capability="establishment_details" disabled>
@@ -275,6 +276,6 @@ Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre
       <section id="history-list" class="history-list hidden"></section>
     </section>
   </main>
-  <script src="/static/app.js?v=20260827-1"></script>
+  <script src="/static/app.js?v=20260827-2"></script>
 </body>
 </html>

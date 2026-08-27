@@ -10,6 +10,7 @@ from psycopg_pool import ConnectionPool
 
 from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
+from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 
 from .search import SearchCapabilities, build_search_query
 from .explorer import FIELD_GROUPS, RELATION_CATALOG, RELATION_CATALOG_BY_NAME, cnpj_root_bounds
@@ -107,6 +108,13 @@ class Repository:
             return value.isoformat()
         return value
 
+    @staticmethod
+    def _company_size_label(value: Any) -> Any:
+        if value is None or value == "":
+            return "NAO INFORMADO"
+        parsed = str(value).strip().upper()
+        return COMPANY_SIZE_LABELS.get(parsed, parsed)
+
     @classmethod
     def _candidate(cls, row: dict[str, Any]) -> dict[str, Any]:
         address = " ".join(filter(None, [
@@ -121,7 +129,7 @@ class Repository:
             "registration_status": row.get("registration_status"),
             "registration_status_date": row.get("registration_status_date"),
             "opened_at": row.get("opened_at"),
-            "company_size": row.get("company_size"),
+            "company_size": cls._company_size_label(row.get("company_size")),
             "share_capital": row.get("share_capital"),
             "primary_cnae": row.get("primary_cnae"),
             "secondary_cnaes": row.get("secondary_cnaes") or [],
@@ -147,7 +155,7 @@ class Repository:
             "registration_status": row.get("registration_status"),
             "registration_status_date": row.get("registration_status_date"),
             "opened_at": row.get("opened_at"),
-            "company_size": row.get("company_size"),
+            "company_size": cls._company_size_label(row.get("company_size")),
             "share_capital": row.get("share_capital"),
             "primary_cnae": row.get("primary_cnae"),
             "secondary_cnaes": row.get("secondary_cnaes") or [],
@@ -173,17 +181,68 @@ class Repository:
         started = monotonic()
         capabilities = self.search_capabilities()
         sql, parameters = build_search_query(filters, capabilities)
+        partners_by_root: dict[str, list[dict[str, Any]]] = {}
         with self.pool.connection() as connection:
             connection.execute(
                 "SELECT set_config('statement_timeout',%s,true)",
-                (str(max(15_000, self.statement_timeout_ms * 5)),),
+                (str(60_000 if filters.get("partner_age_ranges") else max(15_000, self.statement_timeout_ms * 5)),),
             )
             rows = connection.execute(sql, parameters).fetchall()
         limit = int(filters["limit"])
         has_more = len(rows) > limit
         rows = rows[:limit]
+        if rows and capabilities.partners:
+            with self.pool.connection() as connection:
+                connection.execute("SELECT set_config('statement_timeout','60000',true)")
+                partners_by_root = self._partners_by_roots(
+                    connection,
+                    rows[0]["dataset_version"],
+                    list(dict.fromkeys(row["cnpj_root"] for row in rows)),
+                )
         duration_ms = round((monotonic() - started) * 1000)
-        return [self._search_result(row) for row in rows], capabilities, duration_ms, has_more
+        results = []
+        for row in rows:
+            company = self._search_result(row)
+            company["partners"] = partners_by_root.get(row["cnpj_root"], [])
+            company["partner_count"] = len(company["partners"])
+            results.append(company)
+        return results, capabilities, duration_ms, has_more
+
+    def _partners_by_roots(
+        self,
+        connection,
+        dataset_version: str,
+        roots: list[str],
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not roots:
+            return {}
+        partner_rows = connection.execute("""
+            SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
+                   p.partner_document,p.qualification_code,p.joined_at,p.country_code,
+                   p.legal_representative_document,p.legal_representative_name,
+                   p.legal_representative_qualification_code,p.age_range_code,p.age_range,
+                   q.label AS qualification,co.label AS country,
+                   rq.label AS legal_representative_qualification
+            FROM rfb_partners p
+            LEFT JOIN rfb_aux_reference q
+              ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
+            LEFT JOIN rfb_aux_reference co
+              ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
+            LEFT JOIN rfb_aux_reference rq
+              ON rq.dataset_version=p.dataset_version AND rq.kind='qualification'
+             AND rq.code=p.legal_representative_qualification_code
+            WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
+            ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
+        """, (dataset_version, roots)).fetchall()
+        partners_by_root: dict[str, list[dict[str, Any]]] = {}
+        for partner in partner_rows:
+            serialized = {
+                key: self._serializable(value)
+                for key, value in dict(partner).items()
+                if key != "cnpj_root"
+            }
+            partners_by_root.setdefault(partner["cnpj_root"], []).append(serialized)
+        return partners_by_root
 
     def search_cnae_options(self) -> list[dict[str, str]]:
         with self.pool.connection() as connection:
@@ -195,23 +254,34 @@ class Repository:
             """).fetchall()
         return [{"value": row["code"], "label": row["label"]} for row in rows]
 
-    def search_municipality_options(self, uf: str) -> list[dict[str, str]]:
+    def search_municipality_options(self, ufs: list[str]) -> list[dict[str, str]]:
+        options: list[dict[str, str]] = []
         with self.pool.connection() as connection:
-            rows = connection.execute("""
-                SELECT DISTINCT reference.label
-                FROM rfb_current_aux_reference reference
-                WHERE reference.kind='municipality'
-                  AND EXISTS (
-                    SELECT 1
-                    FROM rfb_establishments establishment
-                    WHERE establishment.uf=%s
-                      AND establishment.is_active
-                      AND establishment.municipality=reference.label
-                    LIMIT 1
-                  )
-                ORDER BY reference.label
-            """, (uf,)).fetchall()
-        return [{"value": row["label"], "label": row["label"]} for row in rows]
+            for uf in ufs:
+                rows = connection.execute("""
+                    SELECT DISTINCT reference.label
+                    FROM rfb_current_aux_reference reference
+                    WHERE reference.kind='municipality'
+                      AND EXISTS (
+                        SELECT 1
+                        FROM rfb_establishments establishment
+                        WHERE establishment.uf=%s
+                          AND establishment.is_active
+                          AND establishment.municipality=reference.label
+                        LIMIT 1
+                      )
+                    ORDER BY reference.label
+                """, (uf,)).fetchall()
+                options.extend({
+                    "value": f"{uf}|{row['label']}",
+                    "label": f"{row['label']}/{uf}",
+                    "option_label": f"{row['label']}/{uf}",
+                    "option_description": "",
+                    "display_label": f"{row['label']}/{uf}",
+                    "uf": uf,
+                    "municipality": row["label"],
+                } for row in rows)
+        return options
 
     def explorer_overview(self) -> dict[str, Any]:
         with self.pool.connection() as connection:
@@ -387,6 +457,7 @@ class Repository:
     @classmethod
     def _company_detail_core(cls, row: dict[str, Any]) -> dict[str, Any]:
         fields = dict(row)
+        fields["company_size"] = cls._company_size_label(row.get("company_size"))
         fields["address"] = " ".join(filter(None, [
             row.get("street_type"), row.get("street"), row.get("street_number"),
             row.get("address_extra"), row.get("district"),
@@ -618,33 +689,9 @@ class Repository:
             connection.execute("SELECT set_config('statement_timeout','60000',true)")
             rows = connection.execute(sql, (cnpjs,)).fetchall()
             roots = list({row["cnpj_root"] for row in rows})
-            partners_by_root: dict[str, list[dict[str, Any]]] = {}
-            if capabilities.partners and roots:
-                partner_rows = connection.execute("""
-                    SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
-                           p.partner_document,p.qualification_code,p.joined_at,p.country_code,
-                           p.legal_representative_document,p.legal_representative_name,
-                           p.legal_representative_qualification_code,p.age_range_code,p.age_range,
-                           q.label AS qualification,co.label AS country,
-                           rq.label AS legal_representative_qualification
-                    FROM rfb_partners p
-                    LEFT JOIN rfb_aux_reference q
-                      ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
-                    LEFT JOIN rfb_aux_reference co
-                      ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
-                    LEFT JOIN rfb_aux_reference rq
-                      ON rq.dataset_version=p.dataset_version AND rq.kind='qualification'
-                     AND rq.code=p.legal_representative_qualification_code
-                    WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
-                    ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
-                """, (rows[0]["dataset_version"], roots)).fetchall()
-                for partner in partner_rows:
-                    serialized = {
-                        key: self._serializable(value)
-                        for key, value in dict(partner).items()
-                        if key != "cnpj_root"
-                    }
-                    partners_by_root.setdefault(partner["cnpj_root"], []).append(serialized)
+            partners_by_root = self._partners_by_roots(
+                connection, rows[0]["dataset_version"], roots
+            ) if capabilities.partners and roots else {}
         result: dict[str, dict[str, Any]] = {}
         for row in rows:
             enriched = dict(row)

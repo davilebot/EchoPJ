@@ -90,10 +90,12 @@ VALID_UFS = {
 
 class CompanySearchRequest(BaseModel):
     region: Literal["N", "NE", "CO", "SE", "S"] | None = None
+    regions: list[Literal["N", "NE", "CO", "SE", "S"]] = Field(default_factory=list, max_length=5)
     ufs: list[str] = Field(default_factory=list, max_length=27)
     municipality: str | None = Field(default=None, max_length=200)
     municipalities: list[str] = Field(default_factory=list, max_length=1000)
     postal_code_prefix: str | None = Field(default=None, max_length=9)
+    postal_code_prefixes: list[str] = Field(default_factory=list, max_length=1000)
     cnae: str | None = Field(default=None, max_length=10)
     cnaes: list[str] = Field(default_factory=list, max_length=2000)
     cnae_scope: Literal["primary", "any"] = "primary"
@@ -101,6 +103,7 @@ class CompanySearchRequest(BaseModel):
     company_sizes: list[str] = Field(default_factory=list, max_length=4)
     company_name: str | None = Field(default=None, max_length=200)
     excluded_company_names: list[str] = Field(default_factory=list, max_length=100)
+    partner_age_ranges: list[str] = Field(default_factory=list, max_length=9)
     share_capital_min: Decimal | None = Field(default=None, ge=0)
     share_capital_max: Decimal | None = Field(default=None, ge=0)
     opened_from: date | None = None
@@ -133,11 +136,31 @@ class CompanySearchRequest(BaseModel):
             raise ValueError(f"UF invalida: {', '.join(sorted(invalid))}")
         return normalized
 
+    @field_validator("regions")
+    @classmethod
+    def validate_regions(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(item.strip().upper() for item in value if item.strip()))
+
     @field_validator("municipalities")
     @classmethod
     def validate_municipalities(cls, value: list[str]) -> list[str]:
-        normalized = list(dict.fromkeys(normalize(item) for item in value if normalize(item)))
-        return normalized
+        normalized: list[str] = []
+        for item in value:
+            raw = str(item).strip()
+            if not raw:
+                continue
+            if "|" in raw:
+                uf, municipality = raw.split("|", 1)
+                uf = uf.strip().upper()
+                municipality = normalize(municipality)
+                if uf not in VALID_UFS or not municipality:
+                    raise ValueError("municipio selecionado invalido")
+                normalized.append(f"{uf}|{municipality}")
+            else:
+                municipality = normalize(raw)
+                if municipality:
+                    normalized.append(municipality)
+        return list(dict.fromkeys(normalized))
 
     @field_validator("cnaes")
     @classmethod
@@ -162,6 +185,14 @@ class CompanySearchRequest(BaseModel):
             cleaned.append(term[:200])
             seen.add(normalized)
         return cleaned
+
+    @field_validator("partner_age_ranges")
+    @classmethod
+    def validate_partner_age_ranges(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+        if set(normalized) - set("123456789"):
+            raise ValueError("faixa etaria de socio invalida")
+        return normalized
 
     @field_validator("registration_statuses")
     @classmethod
@@ -199,6 +230,14 @@ class CompanySearchRequest(BaseModel):
         normalized = digits(value)
         if len(normalized) < 2 or len(normalized) > 8:
             raise ValueError("CEP deve ter de 2 a 8 digitos")
+        return normalized
+
+    @field_validator("postal_code_prefixes")
+    @classmethod
+    def validate_postal_codes(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(digits(item) for item in value if digits(item)))
+        if any(len(item) < 2 or len(item) > 8 for item in normalized):
+            raise ValueError("cada CEP deve ter de 2 a 8 digitos")
         return normalized
 
     @model_validator(mode="after")

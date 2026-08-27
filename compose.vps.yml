@@ -1,6 +1,6 @@
 services:
   app:
-    image: plataforma-receita-matcher:2026-08-27-multi-filters
+    image: plataforma-receita-matcher:2026-08-27-partners-multi-dimensions
     pull_policy: never
     restart: unless-stopped
     env_file:

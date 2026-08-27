@@ -20,6 +20,8 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
   capital social e data de abertura, com até 10.000 resultados por consulta;
 - seletores pesquisáveis com múltiplos CNAEs e múltiplos municípios da UF
   escolhida, alimentados pela própria versão corrente da Receita;
+- seleção múltipla de regiões, UFs, situações, portes, CEPs e faixas etárias
+  dos sócios, com UFs limitadas às regiões marcadas e municípios às UFs;
 - exclusão de até 100 nomes ou marcas, aplicada à razão social e ao nome
   fantasia sem interpolar texto do usuário no SQL;
 - explorador da base com números de cobertura, andamento da carga complementar
@@ -36,6 +38,10 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - consulta exata em lote com até 10.000 CNPJs, preservação da ordem, prévia e CSV;
 - quantidade de filiais ativas e totais na ficha, nas listas e nas exportações;
 - filtros mínimo e máximo de filiais ativas usando resumo pré-calculado por matriz;
+- porte traduzido pelo dicionário oficial e quadro societário completo na busca
+  e nos CSVs, incluindo documento público mascarado e faixa etária;
+- CSV principal com sócios agregados por empresa e CSV societário separado,
+  com uma linha por sócio ou administrador;
 - busca genérica de possíveis unidades de redes pelo nome/marca, sempre
   distinguindo candidatos de uma relação oficial de franquia;
 - somente empresas ativas por padrão.
