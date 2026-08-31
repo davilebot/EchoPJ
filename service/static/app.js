@@ -390,6 +390,65 @@ function csvCell(value) {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+const companyExportHeaders = [
+  "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação",
+  "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários",
+  "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica",
+  "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail",
+  "Telefone", "Versão Receita",
+];
+
+const partnerExportFields = [
+  ["Sócio", (partner) => partner.partner_name],
+  ["Faixa Etária", (partner) => partner.age_range],
+  ["CPF/CNPJ Público", (partner) => partner.partner_document],
+  ["Tipo de Sócio", (partner) => partner.partner_type],
+  ["Qualificação do Sócio", (partner) => partner.qualification || partner.qualification_code],
+  ["Data de Entrada do Sócio", (partner) => partner.joined_at],
+  ["País do Sócio", (partner) => partner.country || partner.country_code],
+  ["Representante Legal do Sócio", (partner) => partner.legal_representative_name],
+  ["Documento Público do Representante", (partner) => partner.legal_representative_document],
+  ["Qualificação do Representante", (partner) => partner.legal_representative_qualification || partner.legal_representative_qualification_code],
+];
+
+function companyExportValues(company, maxPartners) {
+  if (!company?.cnpj) return Array(companyExportHeaders.length + (maxPartners * partnerExportFields.length)).fill("");
+  const partners = company.partners || [];
+  const values = [
+    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
+    company.registration_status_date, company.opened_at, companySizeLabel(company.company_size), company.share_capital,
+    company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
+    company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
+    company.branch_type_code, company.active_branch_count, company.branch_count,
+    company.partner_count ?? partners.length, company.email,
+    [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
+  ];
+  for (let index = 0; index < maxPartners; index += 1) {
+    const partner = partners[index] || {};
+    partnerExportFields.forEach(([, getter]) => values.push(getter(partner) ?? ""));
+  }
+  return values;
+}
+
+function downloadCompleteCompanyCsv(companies, filenamePrefix, leadingHeaders = [], leadingValues = () => []) {
+  const maxPartners = companies.reduce((maximum, company) => Math.max(maximum, company?.partners?.length || 0), 0);
+  const partnerHeaders = Array.from({ length: maxPartners }, (_, index) => (
+    partnerExportFields.map(([label]) => `${label} ${index + 1}`)
+  )).flat();
+  const headers = [...leadingHeaders, ...companyExportHeaders, ...partnerHeaders];
+  const rows = companies.map((company, index) => [
+    ...leadingValues(company, index),
+    ...companyExportValues(company, maxPartners),
+  ]);
+  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 function downloadTemplate() {
   const lines = [
     ["Company Name", "Company Street", "Company City", "Company State", "Company Postal Code", "Website"],
@@ -893,50 +952,12 @@ function parseCnpjList(value) {
 }
 
 function downloadBulkCnpjLookup() {
-  const headers = ["CNPJ informado", "Resultado", "CNPJ Receita", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Natureza Jurídica", "Endereço", "Município", "UF", "CEP", "Simples", "MEI", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail", "Telefone", "Versão Receita"];
-  const rows = lastBulkCnpjLookup.map((item) => {
-    const company = item.company || {};
-    return [
-      item.input, item.status, company.cnpj, company.cnpj_root, company.legal_name,
-      company.trade_name, company.registration_status, company.opened_at, company.company_size,
-      company.share_capital, company.primary_cnae, (company.secondary_cnaes || []).join(";"),
-      company.legal_nature_code, company.address, company.municipality, company.uf,
-      company.postal_code, company.is_simples, company.is_mei, company.branch_type_code,
-      company.active_branch_count, company.branch_count, company.partner_count, company.email,
-      [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
-    ];
-  });
-  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `consulta-cnpjs-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function downloadBulkCnpjPartners() {
-  const headers = ["CNPJ consultado", "CNPJ-base", "Razão Social", "Nome do Sócio/Administrador", "Tipo", "Documento Público", "Qualificação", "Data de Entrada", "País", "Faixa Etária", "Representante Legal", "Documento do Representante", "Qualificação do Representante", "Versão Receita"];
-  const rows = [];
-  lastBulkCnpjLookup.forEach((item) => {
-    const company = item.company;
-    if (!company) return;
-    (company.partners || []).forEach((partner) => rows.push([
-      company.cnpj, company.cnpj_root, company.legal_name, partner.partner_name,
-      partner.partner_type, partner.partner_document, partner.qualification || partner.qualification_code,
-      partner.joined_at, partner.country || partner.country_code, partner.age_range,
-      partner.legal_representative_name, partner.legal_representative_document,
-      partner.legal_representative_qualification || partner.legal_representative_qualification_code,
-      company.dataset_version,
-    ]));
-  });
-  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `socios-dos-cnpjs-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  downloadCompleteCompanyCsv(
+    lastBulkCnpjLookup.map((item) => item.company),
+    "consulta-cnpjs-completa",
+    ["CNPJ informado", "Resultado"],
+    (_, index) => [lastBulkCnpjLookup[index].input, lastBulkCnpjLookup[index].status],
+  );
 }
 
 function renderBulkCnpjLookup(data) {
@@ -964,10 +985,9 @@ function renderBulkCnpjLookup(data) {
     </div>
     <p class="search-notice">Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s. A prévia mostra os primeiros ${Math.min(100, data.total)}; o CSV preserva toda a lista e sua ordem.</p>
     <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-bulk-partners" class="secondary" type="button">Baixar sócios em CSV</button><button id="download-bulk-cnpj" type="button">Baixar empresas em CSV</button></div>
+    <div class="save-actions"><button id="download-bulk-cnpj" type="button">Baixar resultado completo com sócios</button></div>
   </article>`;
   document.querySelector("#download-bulk-cnpj").addEventListener("click", downloadBulkCnpjLookup);
-  document.querySelector("#download-bulk-partners").addEventListener("click", downloadBulkCnpjPartners);
 }
 
 bulkCnpjForm.addEventListener("submit", async (event) => {
@@ -1019,14 +1039,10 @@ function renderCompanySearch(data) {
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
     <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Empresas selecionadas</button><button id="download-selected-company-partners" class="secondary" type="button" disabled>Sócios das selecionadas</button><button id="download-company-search-partners" class="secondary" type="button">Sócios de todas</button><button id="download-company-search" type="button">Todas as ${data.returned.toLocaleString("pt-BR")} empresas</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Baixar selecionadas com sócios</button><button id="download-company-search" type="button">Baixar todas com sócios (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
   document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
-  document.querySelector("#download-company-search-partners")?.addEventListener("click", () => downloadCompanySearchPartners(lastCompanySearch));
   document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas");
-  });
-  document.querySelector("#download-selected-company-partners")?.addEventListener("click", () => {
-    downloadCompanySearchPartners(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "socios-das-empresas-selecionadas");
   });
   document.querySelector("#select-preview")?.addEventListener("click", () => {
     preview.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
@@ -1044,56 +1060,12 @@ function updateSearchSelection() {
   const count = selectedCompanyCnpjs.size;
   const label = document.querySelector("#selection-count");
   const button = document.querySelector("#download-selected-company-search");
-  const partnerButton = document.querySelector("#download-selected-company-partners");
   if (label) label.textContent = `${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}`;
   if (button) button.disabled = count === 0;
-  if (partnerButton) partnerButton.disabled = count === 0;
 }
 
 function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
-  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação", "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "Sócios e Administradores", "CPF/CNPJ Público dos Sócios", "Faixas Etárias dos Sócios", "Qualificações dos Sócios", "E-mail", "Telefone", "Versão Receita"];
-  const rows = companies.map((company) => {
-    const partners = company.partners || [];
-    return [
-      company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
-      company.registration_status_date, company.opened_at, companySizeLabel(company.company_size), company.share_capital,
-      company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
-      company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
-      company.branch_type_code, company.active_branch_count, company.branch_count, company.partner_count,
-      partners.map((partner) => partner.partner_name).filter(Boolean).join(" | "),
-      partners.map((partner) => partner.partner_document).filter(Boolean).join(" | "),
-      partners.map((partner) => partner.age_range).filter(Boolean).join(" | "),
-      partners.map((partner) => partner.qualification || partner.qualification_code).filter(Boolean).join(" | "),
-      company.email, [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
-    ];
-  });
-  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function downloadCompanySearchPartners(companies, filenamePrefix = "socios-das-empresas") {
-  const headers = ["CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Nome do Sócio/Administrador", "Tipo", "CPF/CNPJ Público", "Qualificação", "Data de Entrada", "País", "Faixa Etária", "Representante Legal", "Documento Público do Representante", "Qualificação do Representante", "Versão Receita"];
-  const rows = [];
-  companies.forEach((company) => (company.partners || []).forEach((partner) => rows.push([
-    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, partner.partner_name,
-    partner.partner_type, partner.partner_document, partner.qualification || partner.qualification_code,
-    partner.joined_at, partner.country || partner.country_code, partner.age_range,
-    partner.legal_representative_name, partner.legal_representative_document,
-    partner.legal_representative_qualification || partner.legal_representative_qualification_code,
-    company.dataset_version,
-  ])));
-  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  downloadCompleteCompanyCsv(companies, filenamePrefix);
 }
 
 companySearchForm.addEventListener("submit", async (event) => {

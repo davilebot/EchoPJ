@@ -1,3 +1,5 @@
+import csv
+import io
 import tempfile
 import time
 import unittest
@@ -58,10 +60,50 @@ class JobTests(unittest.TestCase):
             self.assertEqual(current["processed"], 2)
             self.assertEqual(current["confirmed"], 1)
             self.assertEqual(current["not_found"], 1)
-            exported = store.export_csv(job["id"]).decode("utf-8")
+            def company_lookup(cnpjs):
+                self.assertEqual(cnpjs, ["11222333000181"])
+                return {"11222333000181": {
+                    "cnpj": "11222333000181",
+                    "cnpj_root": "11222333",
+                    "legal_name": "EMPRESA TESTE LTDA",
+                    "trade_name": "EMPRESA TESTE",
+                    "registration_status": "ATIVA",
+                    "company_size": "MICRO EMPRESA",
+                    "is_simples": True,
+                    "is_mei": False,
+                    "partner_count": 2,
+                    "dataset_version": "2026-08",
+                    "partners": [
+                        {
+                            "partner_name": "SOCIO UM",
+                            "age_range": "31 a 40 anos",
+                            "partner_document": "***123456**",
+                            "qualification": "Sócio-Administrador",
+                        },
+                        {
+                            "partner_name": "SOCIO DOIS",
+                            "age_range": "41 a 50 anos",
+                            "partner_document": "***987654**",
+                            "qualification": "Sócio",
+                        },
+                    ],
+                }}
+
+            exported = store.export_csv(job["id"], company_lookup).decode("utf-8")
             self.assertIn("Company Name", exported)
             self.assertIn("Empresa 1", exported)
             self.assertIn("11222333000181", exported)
+            csv_rows = list(csv.reader(io.StringIO(exported.lstrip("\ufeff"))))
+            headers, first_result = csv_rows[0], csv_rows[1]
+            self.assertIn("Capital Social", headers)
+            self.assertIn("Simples", headers)
+            self.assertIn("Sócio 1", headers)
+            self.assertIn("Faixa Etária 1", headers)
+            self.assertIn("Sócio 2", headers)
+            self.assertEqual(first_result[headers.index("Porte")], "MICRO EMPRESA")
+            self.assertEqual(first_result[headers.index("Sócio 1")], "SOCIO UM")
+            self.assertEqual(first_result[headers.index("Faixa Etária 2")], "41 a 50 anos")
+            self.assertEqual(first_result[headers.index("CPF/CNPJ Público 2")], "***987654**")
             store.close()
 
     def test_running_job_is_resumed_after_restart(self):

@@ -9,6 +9,81 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+COMPANY_EXPORT_HEADERS = [
+    "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação",
+    "Data Situação", "Data Abertura", "Porte", "Capital Social",
+    "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP",
+    "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial",
+    "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail",
+    "Telefone", "Versão Receita",
+]
+
+
+def partner_export_headers(max_partners: int) -> list[str]:
+    headers: list[str] = []
+    for position in range(1, max_partners + 1):
+        headers.extend([
+            f"Sócio {position}",
+            f"Faixa Etária {position}",
+            f"CPF/CNPJ Público {position}",
+            f"Tipo de Sócio {position}",
+            f"Qualificação do Sócio {position}",
+            f"Data de Entrada do Sócio {position}",
+            f"País do Sócio {position}",
+            f"Representante Legal do Sócio {position}",
+            f"Documento Público do Representante {position}",
+            f"Qualificação do Representante {position}",
+        ])
+    return headers
+
+
+def company_export_values(company: dict[str, Any], max_partners: int) -> list[Any]:
+    partners = company.get("partners") or []
+    values: list[Any] = [
+        company.get("cnpj", ""),
+        company.get("cnpj_root", ""),
+        company.get("legal_name", ""),
+        company.get("trade_name", ""),
+        company.get("registration_status", ""),
+        company.get("registration_status_date", ""),
+        company.get("opened_at", ""),
+        company.get("company_size", ""),
+        company.get("share_capital", ""),
+        company.get("primary_cnae", ""),
+        ";".join(company.get("secondary_cnaes") or []),
+        company.get("municipality", ""),
+        company.get("uf", ""),
+        company.get("postal_code", ""),
+        company.get("address", ""),
+        company.get("is_simples", ""),
+        company.get("is_mei", ""),
+        company.get("legal_nature_code", ""),
+        company.get("branch_type_code", ""),
+        company.get("active_branch_count", ""),
+        company.get("branch_count", ""),
+        company.get("partner_count", len(partners)),
+        company.get("email", ""),
+        " ".join(filter(None, [company.get("phone_area_code"), company.get("phone")])),
+        company.get("dataset_version", ""),
+    ]
+    for index in range(max_partners):
+        partner = partners[index] if index < len(partners) else {}
+        values.extend([
+            partner.get("partner_name", ""),
+            partner.get("age_range", ""),
+            partner.get("partner_document", ""),
+            partner.get("partner_type", ""),
+            partner.get("qualification") or partner.get("qualification_code", ""),
+            partner.get("joined_at", ""),
+            partner.get("country") or partner.get("country_code", ""),
+            partner.get("legal_representative_name", ""),
+            partner.get("legal_representative_document", ""),
+            partner.get("legal_representative_qualification")
+            or partner.get("legal_representative_qualification_code", ""),
+        ])
+    return values
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -179,7 +254,11 @@ class JobStore:
             )
             return True
 
-    def export_csv(self, job_id: str) -> bytes | None:
+    def export_csv(
+        self,
+        job_id: str,
+        company_lookup: Callable[[list[str]], dict[str, dict[str, Any]]] | None = None,
+    ) -> bytes | None:
         job = self.get_job(job_id)
         if not job:
             return None
@@ -200,26 +279,37 @@ class JobStore:
             response = json.loads(row["result_json"]) if row["result_json"] else None
             parsed.append((item, source, response, row["status"], row["error"]))
 
-        extra_headers = [
-            "Matcher Status", "CNPJ Receita", "Razão Social Receita", "Nome Fantasia Receita",
-            "Score", "Confiança", "Versão Receita", "Erro",
-        ]
+        selected_cnpjs = list(dict.fromkeys(
+            selected["cnpj"]
+            for _, _, response, _, _ in parsed
+            for selected in [(response["results"][0].get("selected") or {}) if response else {}]
+            if selected.get("cnpj")
+        ))
+        companies = company_lookup(selected_cnpjs) if company_lookup and selected_cnpjs else {}
+        max_partners = max(
+            (len(company.get("partners") or []) for company in companies.values()),
+            default=0,
+        )
+        audit_headers = ["Matcher Status", "Score", "Confiança", "Erro"]
         output = io.StringIO(newline="")
         writer = csv.writer(output)
-        writer.writerow([*source_headers, *extra_headers])
+        writer.writerow([
+            *source_headers,
+            *audit_headers,
+            *COMPANY_EXPORT_HEADERS,
+            *partner_export_headers(max_partners),
+        ])
         for item, source, response, item_status, error in parsed:
             result = response["results"][0] if response else {}
             selected = result.get("selected") or {}
+            company = companies.get(selected.get("cnpj")) or selected
             writer.writerow([
                 *[source.get(header, "") for header in source_headers],
                 result.get("status", item_status),
-                selected.get("cnpj", ""),
-                selected.get("legal_name", ""),
-                selected.get("trade_name", ""),
                 selected.get("score", ""),
                 result.get("confidence", ""),
-                response.get("dataset_version", "") if response else "",
                 error or "",
+                *company_export_values(company, max_partners),
             ])
         return ("\ufeff" + output.getvalue()).encode("utf-8")
 

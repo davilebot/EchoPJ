@@ -129,7 +129,7 @@ def get_job(job_id: str, _: None = Depends(require_auth)) -> dict:
 
 @app.get("/api/jobs/{job_id}/export.csv")
 def export_job(job_id: str, _: None = Depends(require_auth)) -> Response:
-    content = job_store.export_csv(job_id)
+    content = job_store.export_csv(job_id, repository.companies_by_cnpjs)
     if content is None:
         raise HTTPException(status_code=404, detail="consulta nao encontrada")
     return Response(

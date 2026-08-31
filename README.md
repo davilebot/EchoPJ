@@ -12,7 +12,8 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - retomada automática após reinício e histórico das últimas consultas;
 - download parcial durante o processamento ou final após a conclusão;
 - resultado classificado como confirmado, revisão necessária ou não encontrado;
-- download do CSV original acrescido do CNPJ e dos dados do match;
+- download do CSV original acrescido do match, do cadastro completo da Receita
+  e de todos os sócios na mesma linha;
 - busca opcional e automática de CNPJ no HTML público do website;
 - API direta `POST /api/matches/batch`, com até 200 entradas;
 - fila persistente em `POST /api/jobs`, com até 10.000 entradas;
@@ -40,8 +41,9 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - filtros mínimo e máximo de filiais ativas usando resumo pré-calculado por matriz;
 - porte traduzido pelo dicionário oficial e quadro societário completo na busca
   e nos CSVs, incluindo documento público mascarado e faixa etária;
-- CSV principal com sócios agregados por empresa e CSV societário separado,
-  com uma linha por sócio ou administrador;
+- exportação única e uniforme no matcher, na consulta exata e na busca por filtros,
+  com colunas dinâmicas para Sócio 1, Faixa Etária 1, Sócio 2, Faixa Etária 2
+  e os demais dados públicos de cada sócio;
 - busca genérica de possíveis unidades de redes pelo nome/marca, sempre
   distinguindo candidatos de uma relação oficial de franquia;
 - somente empresas ativas por padrão.
