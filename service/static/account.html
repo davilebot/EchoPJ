@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111114">
+  <title>Minha conta — EchoPJs</title>
+  <link rel="stylesheet" href="/static/auth.css?v=20260902-1">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card account-card" aria-labelledby="account-title">
+      <div class="auth-brand-row">
+        <div class="auth-brand">
+          <img src="/static/assets/echo-wordmark-light.png" alt="Echo">
+          <span>PJs</span>
+        </div>
+        <a href="/">Voltar à plataforma</a>
+      </div>
+      <div class="auth-heading">
+        <span class="eyebrow">MINHA CONTA</span>
+        <h1 id="account-title">Configure seu acesso</h1>
+        <p>Altere o e-mail de entrada e, quando quiser, escolha uma senha nova.</p>
+      </div>
+      <form id="account-form">
+        <label>E-mail de acesso
+          <input id="account-identifier" name="identifier" type="email" autocomplete="username" required>
+        </label>
+        <label>Senha atual
+          <input id="current-password" name="current-password" type="password" autocomplete="current-password" required>
+        </label>
+        <div class="password-grid">
+          <label>Nova senha <small>Deixe em branco para manter a atual.</small>
+            <input id="new-password" name="new-password" type="password" minlength="8" autocomplete="new-password">
+          </label>
+          <label>Confirmar nova senha
+            <input id="confirm-password" name="confirm-password" type="password" minlength="8" autocomplete="new-password">
+          </label>
+        </div>
+        <p id="account-message" class="auth-message hidden" role="status"></p>
+        <button id="account-submit" type="submit">Salvar novo acesso</button>
+      </form>
+      <div class="account-footer">
+        <div><strong>Encerrar acesso</strong><p>Use esta opção em computadores compartilhados.</p></div>
+        <button id="logout-button" class="secondary-button" type="button">Sair da conta</button>
+      </div>
+    </section>
+  </main>
+  <script src="/static/account.js?v=20260902-1"></script>
+</body>
+</html>

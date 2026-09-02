@@ -7,6 +7,25 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from plataforma_receita.normalization import digits, normalize, valid_cnpj
 
 
+class LoginRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class AccountUpdateRequest(BaseModel):
+    identifier: str = Field(min_length=3, max_length=254)
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str | None = Field(default=None, min_length=8, max_length=1024)
+
+    @field_validator("identifier")
+    @classmethod
+    def validate_identifier(cls, value: str) -> str:
+        normalized = value.strip().casefold()
+        if "@" not in normalized or normalized.startswith("@") or normalized.endswith("@"):
+            raise ValueError("informe um e-mail valido")
+        return normalized
+
+
 class MatchInput(BaseModel):
     local_id: str = Field(min_length=1, max_length=200)
     name: str = Field(min_length=1, max_length=300)

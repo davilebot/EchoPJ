@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     postgres_dsn: str
     app_username: str = ""
     app_password: str = ""
+    auth_database_path: str = "/data/auth.sqlite"
+    auth_session_days: int = 30
     website_cache_path: str = "/data/website-cache.sqlite"
     website_timeout_seconds: float = 3.0
     website_workers: int = 10

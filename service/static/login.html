@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111114">
+  <title>Entrar — EchoPJs</title>
+  <link rel="stylesheet" href="/static/auth.css?v=20260902-1">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card" aria-labelledby="login-title">
+      <div class="auth-brand">
+        <img src="/static/assets/echo-wordmark-light.png" alt="Echo">
+        <span>PJs</span>
+      </div>
+      <div class="auth-heading">
+        <span class="eyebrow">ACESSO SEGURO</span>
+        <h1 id="login-title">Entre no seu workspace</h1>
+        <p>Use o acesso atual uma última vez. Depois você poderá configurar seu e-mail e sua própria senha em “Minha conta”.</p>
+      </div>
+      <form id="login-form">
+        <label>E-mail ou usuário
+          <input id="login-identifier" name="identifier" type="text" autocomplete="username" required autofocus>
+        </label>
+        <label>Senha
+          <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <p id="login-message" class="auth-message hidden" role="alert"></p>
+        <button id="login-submit" type="submit">Entrar no EchoPJs</button>
+      </form>
+      <p class="auth-footnote">Seus dados e consultas continuam no mesmo ambiente. Esta tela substitui apenas o antigo pop-up do navegador.</p>
+    </section>
+  </main>
+  <script src="/static/login.js?v=20260902-1"></script>
+</body>
+</html>

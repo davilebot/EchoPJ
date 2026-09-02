@@ -1,18 +1,27 @@
 import base64
-import hmac
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from psycopg.errors import QueryCanceled
 
+from .auth import AuthStore, LoginRateLimiter, normalize_identifier
 from .config import get_settings
 from .jobs import JobRunner, JobStore
 from .matching import MatchingService
-from .models import BatchRequest, CompanyLookupRequest, CompanySearchRequest, JobRequest, VALID_UFS
+from .models import (
+    AccountUpdateRequest,
+    BatchRequest,
+    CompanyLookupRequest,
+    CompanySearchRequest,
+    JobRequest,
+    LoginRequest,
+    VALID_UFS,
+)
 from .repository import Repository
 from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
@@ -33,6 +42,10 @@ website_checker = WebsiteChecker(
 matching_service = MatchingService(repository, website_checker)
 job_store = JobStore(settings.job_database_path)
 job_runner = JobRunner(job_store, matching_service.match_items)
+auth_store = AuthStore(settings.auth_database_path, session_days=settings.auth_session_days)
+auth_store.bootstrap(settings.app_username, settings.app_password)
+login_rate_limiter = LoginRateLimiter()
+SESSION_COOKIE = "echopjs_session"
 
 
 @asynccontextmanager
@@ -44,6 +57,7 @@ async def lifespan(_: FastAPI):
     repository.close()
     website_checker.close()
     job_store.close()
+    auth_store.close()
 
 
 app = FastAPI(title="Plataforma Receita - Matcher CNPJ", version="0.1.0", lifespan=lifespan)
@@ -54,24 +68,64 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.middleware("http")
 async def prevent_stale_application_state(request, call_next):
     response = await call_next(request)
-    if request.url.path == "/" or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/account"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
     return response
 
 
-def require_auth(authorization: str | None = Header(default=None)) -> None:
-    if not settings.app_username or not settings.app_password:
-        raise HTTPException(status_code=503, detail="autenticacao nao configurada")
+def set_session_cookie(response: Response, token: str, expires_at: datetime) -> None:
+    max_age = max(0, int((expires_at - datetime.now(timezone.utc)).total_seconds()))
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        expires=expires_at,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def authenticate_request(request: Request) -> tuple[dict | None, str | None]:
+    user = auth_store.user_for_session(request.cookies.get(SESSION_COOKIE))
+    if user:
+        return user, "session"
+    authorization = request.headers.get("authorization")
     if not authorization or not authorization.startswith("Basic "):
-        raise HTTPException(status_code=401, detail="autenticacao necessaria", headers={"WWW-Authenticate": "Basic"})
+        return None, None
     try:
         decoded = base64.b64decode(authorization.removeprefix("Basic ")).decode("utf-8")
-        username, password = decoded.split(":", 1)
+        identifier, password = decoded.split(":", 1)
     except Exception:
-        raise HTTPException(status_code=401, detail="credenciais invalidas", headers={"WWW-Authenticate": "Basic"})
-    if not (hmac.compare_digest(username, settings.app_username) and hmac.compare_digest(password, settings.app_password)):
-        raise HTTPException(status_code=401, detail="credenciais invalidas", headers={"WWW-Authenticate": "Basic"})
+        return None, None
+    user = auth_store.authenticate(identifier, password)
+    return (user, "basic") if user else (None, None)
+
+
+def require_auth(request: Request) -> dict:
+    user, _ = authenticate_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="sessao expirada ou acesso nao autorizado")
+    return user
+
+
+def page_response(request: Request, filename: str, *, next_path: str) -> Response:
+    user, source = authenticate_request(request)
+    if not user:
+        return RedirectResponse(f"/login?next={next_path}", status_code=303)
+    response = FileResponse(
+        static_dir / filename,
+        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+    )
+    if source == "basic":
+        token, expires_at = auth_store.create_session(user["id"])
+        set_session_cookie(response, token, expires_at)
+    return response
 
 
 @app.get("/health")
@@ -80,11 +134,77 @@ def health() -> dict:
 
 
 @app.get("/")
-def index(_: None = Depends(require_auth)):
-    return FileResponse(
-        static_dir / "index.html",
-        headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
+def index(request: Request) -> Response:
+    return page_response(request, "index.html", next_path="/")
+
+
+@app.get("/login")
+def login_page(request: Request) -> Response:
+    user, _ = authenticate_request(request)
+    if user:
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(static_dir / "login.html")
+
+
+@app.get("/account")
+def account_page(request: Request) -> Response:
+    return page_response(request, "account.html", next_path="/account")
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request) -> dict:
+    user, _ = authenticate_request(request)
+    return {
+        "authenticated": bool(user),
+        "identifier": user["identifier"] if user else None,
+    }
+
+
+@app.post("/api/auth/login")
+def login(payload: LoginRequest, request: Request) -> Response:
+    client = request.client.host if request.client else "unknown"
+    rate_key = f"{client}:{normalize_identifier(payload.identifier)}"
+    now = monotonic()
+    if not login_rate_limiter.allowed(rate_key, now):
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Aguarde alguns minutos e tente novamente.")
+    user = auth_store.authenticate(payload.identifier, payload.password)
+    if not user:
+        login_rate_limiter.failed(rate_key, now)
+        raise HTTPException(status_code=401, detail="E-mail/usuario ou senha incorretos.")
+    login_rate_limiter.succeeded(rate_key)
+    token, expires_at = auth_store.create_session(user["id"])
+    response = JSONResponse({"authenticated": True, "identifier": user["identifier"]})
+    set_session_cookie(response, token, expires_at)
+    return response
+
+
+@app.post("/api/auth/logout")
+def logout(request: Request) -> Response:
+    auth_store.delete_session(request.cookies.get(SESSION_COOKIE))
+    response = JSONResponse({"authenticated": False})
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=True, httponly=True, samesite="lax")
+    return response
+
+
+@app.get("/api/auth/me")
+def auth_me(user: dict = Depends(require_auth)) -> dict:
+    return {"identifier": user["identifier"], "created_at": user["created_at"]}
+
+
+@app.put("/api/auth/account")
+def update_account(payload: AccountUpdateRequest, request: Request, user: dict = Depends(require_auth)) -> Response:
+    updated = auth_store.update_account(
+        user["id"],
+        current_password=payload.current_password,
+        identifier=payload.identifier,
+        new_password=payload.new_password,
     )
+    if not updated:
+        raise HTTPException(status_code=401, detail="A senha atual esta incorreta.")
+    token, expires_at = auth_store.create_session(updated["id"])
+    response = JSONResponse({"updated": True, "identifier": updated["identifier"]})
+    set_session_cookie(response, token, expires_at)
+    return response
 
 
 @app.post("/api/matches/batch")

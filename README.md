@@ -10,6 +10,8 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - envio de CSV com até 10.000 empresas, preservando a ordem original;
 - processamento assíncrono e sequencial, uma empresa por vez;
 - retomada automática após reinício e histórico das últimas consultas;
+- login próprio com sessão protegida, logout e área “Minha conta” para alterar
+  o e-mail e a senha sem editar o VPS;
 - download parcial durante o processamento ou final após a conclusão;
 - resultado classificado como confirmado, revisão necessária ou não encontrado;
 - download do CSV original acrescido do match, do cadastro completo da Receita
@@ -70,7 +72,7 @@ A consulta ao website é opcional, tem timeout, respeita `robots.txt` e usa cach
 
 ## Execução
 
-O serviço está no projeto EasyPanel `plataforma-receita`, Compose `matcher`. O contêiner exige `POSTGRES_DSN`, `APP_USERNAME` e `APP_PASSWORD` no ambiente. O arquivo `compose.vps.yml` reproduz a configuração publicada: conecta o serviço à rede privada da base compartilhada e a uma rede separada com saída para consultar websites.
+O serviço está no projeto EasyPanel `plataforma-receita`, Compose `matcher`. O contêiner exige `POSTGRES_DSN`, `APP_USERNAME` e `APP_PASSWORD` no ambiente. No primeiro início, o login legado é importado para `/data/auth.sqlite`; depois disso, alterações feitas em “Minha conta” usam senha com hash e sessões persistentes. O arquivo `compose.vps.yml` reproduz a configuração publicada: conecta o serviço à rede privada da base compartilhada e a uma rede separada com saída para consultar websites.
 
 O usuário PostgreSQL `plataforma_receita_ro` tem somente leitura. O contêiner roda com sistema de arquivos somente leitura, sem capabilities Linux e com limite de 1 GB de memória. Nenhum segredo deve ser salvo no repositório.
 
