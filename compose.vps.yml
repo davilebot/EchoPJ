@@ -1,6 +1,6 @@
 services:
   app:
-    image: plataforma-receita-matcher:2026-08-31-unified-exports
+    image: plataforma-receita-matcher:2026-09-03-organizations
     pull_policy: never
     restart: unless-stopped
     env_file:

@@ -34,7 +34,7 @@ app_password=$(openssl rand -hex 20)
 
 {
   printf "POSTGRES_DSN=postgresql://plataforma_receita_ro:%s@postgres:5432/cnpj\n" "$db_password"
-  printf "APP_USERNAME=davi\n"
+  printf "APP_USERNAME=admin\n"
   printf "APP_PASSWORD=%s\n" "$app_password"
   printf "WEBSITE_CACHE_PATH=/data/website-cache.sqlite\n"
   printf "WEBSITE_TIMEOUT_SECONDS=3\n"
@@ -44,13 +44,15 @@ app_password=$(openssl rand -hex 20)
   printf "MAX_BATCH_SIZE=200\n"
   printf "MAX_JOB_SIZE=10000\n"
   printf "JOB_DATABASE_PATH=/data/jobs.sqlite\n"
+  printf "AUTH_DATABASE_PATH=/data/auth.sqlite\n"
+  printf "AUTH_SESSION_DAYS=30\n"
 } > "$env_file"
 install -m 600 "$env_file" "$easypanel_env_file"
 
 {
   printf "Plataforma Receita\n"
   printf "URL: https://plataforma-receita-matcher.ztnbow.easypanel.host/\n"
-  printf "Usuario: davi\n"
+  printf "Usuario: admin\n"
   printf "Senha: %s\n" "$app_password"
   printf "Mantenha este arquivo privado.\n"
 } > "$access_file"

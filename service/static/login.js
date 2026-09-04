@@ -4,7 +4,8 @@ const submitButton = document.querySelector("#login-submit");
 
 function safeNextPath() {
   const requested = new URLSearchParams(window.location.search).get("next") || "/";
-  return requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
+  const target = new URL(requested, window.location.origin);
+  return requested.startsWith("/") && target.origin === window.location.origin ? target.pathname + target.search : "/";
 }
 
 form.addEventListener("submit", async (event) => {

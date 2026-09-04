@@ -4,3 +4,22 @@ outputs/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Ambiente local, credenciais e dados persistentes
+.env
+.env.*
+!.env.example
+*.env
+access.txt
+.venv/
+venv/
+data/
+backups/
+certs/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.pem
+*.key
+.pytest_cache/

@@ -1,3 +1,36 @@
+const nativeFetch = window.fetch.bind(window);
+let activeOrganizationId = null;
+window.fetch = async (input, init = {}) => {
+  const workspace = await window.echoWorkspace;
+  if (!workspace) throw new Error("Entre em uma organização para continuar.");
+  activeOrganizationId = workspace.organization.id;
+  const headers = new Headers(init.headers);
+  headers.set("X-Organization-Id", String(activeOrganizationId));
+  const response = await nativeFetch(input, { ...init, headers });
+  if (response.status === 401) {
+    const next = `${window.location.pathname}${window.location.search}`;
+    window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+  }
+  return response;
+};
+
+const themeToggle = document.querySelector("#theme-toggle");
+const themeColor = document.querySelector('meta[name="theme-color"]');
+
+function applyTheme(theme) {
+  const resolvedTheme = theme === "dark" ? "dark" : "light";
+  document.documentElement.dataset.theme = resolvedTheme;
+  themeToggle.setAttribute("aria-pressed", String(resolvedTheme === "dark"));
+  themeToggle.setAttribute("aria-label", resolvedTheme === "dark" ? "Ativar tema claro" : "Ativar tema escuro");
+  themeColor?.setAttribute("content", resolvedTheme === "dark" ? "#111114" : "#f8f9fa");
+  try {
+    localStorage.setItem("echopjs-theme", resolvedTheme);
+  } catch (_) {}
+}
+
+applyTheme(document.documentElement.dataset.theme);
+themeToggle.addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+
 const form = document.querySelector("#match-form");
 const loading = document.querySelector("#loading");
 const result = document.querySelector("#result");
@@ -63,6 +96,12 @@ function createMultiPicker(root, emptyLabel) {
   const changeListeners = [];
   let disabled = trigger.disabled;
 
+  function closePanel({ restoreFocus = false } = {}) {
+    panel.classList.add("hidden");
+    trigger.setAttribute("aria-expanded", "false");
+    if (restoreFocus) trigger.focus();
+  }
+
   function notifyChange() {
     const values = [...selected.keys()];
     changeListeners.forEach((listener) => listener(values));
@@ -108,6 +147,14 @@ function createMultiPicker(root, emptyLabel) {
       search.focus();
     }
   });
+  root.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || panel.classList.contains("hidden")) return;
+    event.preventDefault();
+    closePanel({ restoreFocus: true });
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!root.contains(event.target)) closePanel();
+  });
   search.addEventListener("input", renderOptions);
   optionsContainer.addEventListener("change", (event) => {
     const checkbox = event.target.closest("input[type='checkbox']");
@@ -144,7 +191,7 @@ function createMultiPicker(root, emptyLabel) {
           ? String(option.option_description)
           : option.option_label ? String(option.label || "") : option.label && option.label !== option.value ? String(option.label) : "",
         displayLabel: String(option.display_label || (option.label && option.label !== option.value ? `${option.value} — ${option.label}` : option.value)),
-        searchText: `${option.value} ${option.label || ""}`.toLocaleUpperCase("pt-BR"),
+        searchText: `${option.value} ${option.label || ""} ${option.option_label || ""} ${option.display_label || ""}`.toLocaleUpperCase("pt-BR"),
       }));
       optionByValue = new Map(options.map((option) => [option.value, option]));
       if (clear) selected.clear();
@@ -200,12 +247,12 @@ const sizePicker = createMultiPicker(document.querySelector("#search-size-picker
 const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
 
 regionPicker.setOptions([
-  { value: "N", label: "Norte" }, { value: "NE", label: "Nordeste" }, { value: "CO", label: "Centro-Oeste" },
-  { value: "SE", label: "Sudeste" }, { value: "S", label: "Sul" },
+  { value: "N", option_label: "Norte", display_label: "Norte" }, { value: "NE", option_label: "Nordeste", display_label: "Nordeste" }, { value: "CO", option_label: "Centro-Oeste", display_label: "Centro-Oeste" },
+  { value: "SE", option_label: "Sudeste", display_label: "Sudeste" }, { value: "S", option_label: "Sul", display_label: "Sul" },
 ]);
 statusPicker.setOptions([
-  { value: "ATIVA", label: "Ativa" }, { value: "BAIXADA", label: "Baixada" }, { value: "INAPTA", label: "Inapta" },
-  { value: "SUSPENSA", label: "Suspensa" }, { value: "NULA", label: "Nula" }, { value: "NAO INFORMADA", label: "Não informada" },
+  { value: "ATIVA", option_label: "Ativa", display_label: "Ativa" }, { value: "BAIXADA", option_label: "Baixada", display_label: "Baixada" }, { value: "INAPTA", option_label: "Inapta", display_label: "Inapta" },
+  { value: "SUSPENSA", option_label: "Suspensa", display_label: "Suspensa" }, { value: "NULA", option_label: "Nula", display_label: "Nula" }, { value: "NAO INFORMADA", option_label: "Não informada", display_label: "Não informada" },
 ]);
 statusPicker.setSelected(["ATIVA"]);
 sizePicker.setOptions([
@@ -470,15 +517,23 @@ const jobStatusLabel = {
 };
 
 function switchTab(tabName) {
-  document.querySelectorAll(".tab-button").forEach((button) => button.classList.toggle("active", button.dataset.tab === tabName));
+  document.querySelectorAll(".tab-button").forEach((button) => {
+    const active = button.dataset.tab === tabName;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
   document.querySelectorAll(".tab-panel").forEach((panel) => panel.classList.toggle("hidden", panel.id !== `${tabName}-tab`));
+  const activeButton = document.querySelector(`.tab-button[data-tab="${tabName}"]`);
+  document.querySelector("#current-view").textContent = activeButton?.dataset.viewTitle || "EchoPJs";
   if (tabName === "history") loadHistory();
+  if (tabName === "overview") loadExplorerOverview();
   if (tabName === "search") {
     loadSearchCapabilities();
     loadCnaeOptions();
-    loadExplorerOverview();
-    loadDatabaseSchema();
   }
+  if (tabName === "data") loadDatabaseSchema();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function formatDate(value) {
@@ -494,7 +549,7 @@ function renderHistory(jobs) {
   historyList.innerHTML = jobs.map((job) => {
     const active = job.status === "queued" || job.status === "running";
     const download = job.processed > 0
-      ? `<a class="download-link" href="/api/jobs/${job.id}/export.csv">${active ? "Baixar parcial" : "Baixar CSV"}</a>`
+      ? `<a class="download-link" href="/api/jobs/${job.id}/export.csv?organization_id=${activeOrganizationId}">${active ? "Baixar parcial" : "Baixar CSV"}</a>`
       : `<span class="download-disabled">Download após a primeira linha</span>`;
     return `<article class="job-card">
       <div class="job-topline">
@@ -588,10 +643,10 @@ async function loadSearchCapabilities() {
     const available = filterCapabilities.every((key) => data.filters[key]);
     const availableCount = filterCapabilities.filter((key) => data.filters[key]).length;
     if (available) {
-      document.querySelector("#complementary-filters legend span").textContent = "Disponível";
+      document.querySelector("#complementary-filters .availability-badge").textContent = "Disponível";
       document.querySelector("#complementary-note").textContent = `Dados complementares disponíveis na versão ${data.dataset_version}.`;
     } else if (availableCount) {
-      document.querySelector("#complementary-filters legend span").textContent = "Parcialmente disponível";
+      document.querySelector("#complementary-filters .availability-badge").textContent = "Parcialmente disponível";
       document.querySelector("#complementary-note").textContent = "Os grupos já concluídos estão liberados. Os demais serão habilitados automaticamente quando terminarem.";
     }
     searchCapabilitiesLoaded = true;
@@ -1089,6 +1144,7 @@ companySearchForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
+document.querySelectorAll("[data-switch-tab]").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.switchTab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);
 document.querySelector("#refresh-explorer").addEventListener("click", loadExplorerOverview);
 document.querySelector("#refresh-schema").addEventListener("click", () => loadDatabaseSchema(true));
@@ -1105,6 +1161,7 @@ relationPreview.addEventListener("click", (event) => {
 companySearchResult.addEventListener("click", (event) => {
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;
+  switchTab("batch");
   document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;
   explorerCnpjForm.requestSubmit();
   explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1126,7 +1183,10 @@ explorerEstablishmentsResult.addEventListener("click", (event) => {
 bulkCnpjResult.addEventListener("click", (event) => {
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;
+  switchTab("batch");
   document.querySelector("#explorer-cnpj").value = button.dataset.companyCnpj;
   explorerCnpjForm.requestSubmit();
   explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
 });
+
+switchTab("overview");

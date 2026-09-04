@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from .organizations import OrganizationStoreMixin
+
 
 PASSWORD_ITERATIONS = 600_000
 
@@ -31,7 +33,7 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-class AuthStore:
+class AuthStore(OrganizationStoreMixin):
     def __init__(self, database_path: str, *, session_days: int = 30):
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -63,6 +65,16 @@ class AuthStore:
             CREATE INDEX IF NOT EXISTS idx_sessions_expiration ON sessions(expires_at);
         """)
         self._connection.commit()
+        self._initialize_organizations()
+
+    def _insert_invited_user(self, identifier: str, password: str) -> dict:
+        salt = secrets.token_bytes(16)
+        created = isoformat(utc_now())
+        user_id = self._connection.execute(
+            "INSERT INTO users(identifier,password_hash,password_salt,password_iterations,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (identifier, password_digest(password, salt), salt, PASSWORD_ITERATIONS, created, created),
+        ).lastrowid
+        return self._public_user(self._connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone())
 
     def close(self) -> None:
         with self._lock:

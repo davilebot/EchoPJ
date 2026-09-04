@@ -4,6 +4,10 @@ Aplicação independente para encontrar e validar CNPJs na base aberta da Receit
 
 Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host/`
 
+Para editar o código e configurar um ambiente local, comece pelo
+[guia do desenvolvedor](docs/desenvolvimento.md). As configurações de exemplo
+estão em [`.env.example`](.env.example).
+
 ## Primeira versão
 
 - consulta individual por nome, endereço, município, UF e CEP;
@@ -49,6 +53,40 @@ Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host
 - busca genérica de possíveis unidades de redes pelo nome/marca, sempre
   distinguindo candidatos de uma relação oficial de franquia;
 - somente empresas ativas por padrão.
+
+## Contas, organizações e convites
+
+- “Organizações e equipe” permite criar/renomear organizações, gerar convites,
+  cancelar convites pendentes, alterar permissões e remover acessos.
+- Administradores podem gerenciar apenas as organizações das quais são administradores.
+  Também podem criar novas organizações, nas quais entram como administradores.
+- Membros podem consultar e exportar na organização, mas não gerenciar pessoas.
+- A conta existente é migrada uma única vez como administradora de “Minha organização”.
+  Os jobs antigos são associados a ela sem alterar resultados, credenciais ou a Receita.
+- O histórico, os arquivos e os downloads de jobs são isolados por organização.
+  A base pública da Receita e a fila de execução continuam compartilhadas.
+- A organização é explícita por aba: `X-Organization-Id` nas chamadas e
+  `organization_id` nos downloads. A API revalida a participação em cada acesso.
+  Clientes antigos sem contexto usam a primeira organização da conta.
+- Convites são vinculados ao e-mail, expiram em 7 dias, usam token aleatório de uso único
+  e só armazenam seu hash. O link usa fragmento para não expor o token em access logs.
+- Uma conta existente precisa usar sua senha atual ao aceitar outro convite.
+  Remover alguém não apaga a conta ou suas outras participações. O último administrador
+  não pode ser removido/rebaixado. Alterações têm trilha de auditoria.
+- Sem serviço de e-mail, use “Copiar convite” ou “Abrir no meu e-mail”. Envio automático
+  exige `SMTP_HOST`, `SMTP_FROM` e, quando aplicável, `SMTP_USERNAME`/`SMTP_PASSWORD`
+  no arquivo de segredos do servidor. Padrão: `SMTP_PORT=465`, `SMTP_SSL=true`;
+  para STARTTLS use porta 587 e `SMTP_SSL=false`. Conexões sem TLS não são aceitas.
+- `APP_PUBLIC_URL` define o endereço confiável dos links (padrão: endereço publicado).
+  Credenciais SMTP nunca devem entrar no repositório. Não há recuperação automática
+  de senha por e-mail nesta versão.
+
+### Validação
+
+Com as dependências de `requirements.txt` instaladas:
+`PYTHONPATH=src python -m unittest discover -s tests`.
+Os testes de API exercitam o ASGI completo com repositório da Receita simulado,
+incluindo bloqueio de acesso entre organizações e exportações por URL adulterada.
 
 ## Regras de segurança do match
 

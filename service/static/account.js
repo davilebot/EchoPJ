@@ -1,6 +1,11 @@
 const form = document.querySelector("#account-form");
 const message = document.querySelector("#account-message");
 const submitButton = document.querySelector("#account-submit");
+const organizationId = new URLSearchParams(location.search).get("organization");
+if (organizationId && /^\d+$/.test(organizationId)) {
+  document.querySelector("#back-platform").href = `/?organization=${organizationId}`;
+  document.querySelector("#manage-organizations").href = `/organizations?organization=${organizationId}`;
+}
 
 function showMessage(text, type = "error") {
   message.textContent = text;

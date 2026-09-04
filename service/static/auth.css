@@ -14,7 +14,7 @@
 
 * { box-sizing: border-box; }
 body { min-width: 320px; min-height: 100vh; margin: 0; color: var(--text); background: radial-gradient(circle at 50% -20%, #253b39 0, var(--bg) 42%); }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 .hidden { display: none !important; }
 .auth-shell { display: grid; min-height: 100vh; place-items: center; padding: 32px 18px; }
 .auth-card { width: min(100%, 470px); padding: 32px; border: 1px solid var(--border); border-radius: 18px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 28px 80px rgba(0, 0, 0, .38); backdrop-filter: blur(18px); }
@@ -49,4 +49,29 @@ button:disabled { cursor: wait; opacity: .55; }
   .auth-card { padding: 24px; }
   .password-grid { grid-template-columns: 1fr; }
   .account-footer { align-items: stretch; flex-direction: column; }
+}
+
+.org-shell { align-items: start; }
+.org-card { width: min(100%, 960px); }
+.org-card .auth-message { margin-bottom: 18px; }
+select { width: 100%; min-height: 47px; padding: 12px; color: var(--text); background: #111115; border: 1px solid var(--border); border-radius: 10px; }
+select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.muted { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.org-section { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--border); }
+.org-section h2 { font-size: 19px; margin: 0 0 12px; }
+.inline-form { grid-template-columns: 1fr auto; align-items: end; }
+.checkbox-label { display: flex; align-items: center; gap: 10px; }
+.checkbox-label input { width: 18px; min-height: 18px; accent-color: var(--accent); }
+.invite-result { display: grid; gap: 14px; margin-top: 18px; padding: 18px; border: 1px solid var(--accent); border-radius: 12px; }
+.org-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.text-link { color: var(--accent); font-size: 12px; text-underline-offset: 3px; }
+.team-row { display: flex; justify-content: space-between; gap: 18px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.team-info { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.team-info strong { font-size: 13px; }
+.team-info small { color: var(--muted); font-size: 11px; }
+.team-row button { font-size: 11px; min-height: 36px; }
+summary { cursor: pointer; font-size: 14px; }
+@media (max-width: 650px) {
+  .inline-form { grid-template-columns: 1fr; }
+  .team-row { align-items: stretch; flex-direction: column; }
 }

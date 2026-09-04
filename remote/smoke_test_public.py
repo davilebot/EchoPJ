@@ -1,7 +1,6 @@
 import base64
 import json
 from pathlib import Path
-from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -24,16 +23,40 @@ def authorization() -> str:
 
 
 def main() -> None:
-    try:
-        urlopen(BASE_URL, timeout=10)
-        unauthenticated_status = 200
-    except HTTPError as error:
-        unauthenticated_status = error.code
+    with urlopen(BASE_URL, timeout=10) as response:
+        unauthenticated_status = response.status
+        unauthenticated_url = response.geturl()
+        login_html = response.read().decode("utf-8")
 
     index_request = Request(BASE_URL, headers={"Authorization": authorization()})
     with urlopen(index_request, timeout=10) as response:
         html = response.read().decode("utf-8")
         index_status = response.status
+
+    static_assets = {}
+    for path in (
+        "/static/styles.css?v=20260902-auth-1",
+        "/static/app.js?v=20260902-auth-1",
+        "/static/auth.css?v=20260902-1",
+        "/static/login.js?v=20260902-1",
+        "/static/account.js?v=20260902-1",
+        "/static/assets/echo-wordmark-dark.png",
+        "/static/assets/echo-wordmark-light.png",
+    ):
+        asset_request = Request(f"{BASE_URL}{path}", headers={"Authorization": authorization()})
+        with urlopen(asset_request, timeout=10) as response:
+            content = response.read()
+            assert response.status == 200
+            assert len(content) > 100
+            static_assets[path] = len(content)
+
+    company_request = Request(
+        f"{BASE_URL}/api/explorer/companies/12484145000194",
+        headers={"Authorization": authorization()},
+    )
+    with urlopen(company_request, timeout=10) as response:
+        company_payload = json.loads(response.read())
+    assert company_payload["core"]["cnpj"] == "12484145000194"
 
     body = json.dumps({
         "active_only": True,
@@ -62,17 +85,24 @@ def main() -> None:
     with urlopen(jobs_request, timeout=10) as response:
         jobs_payload = json.loads(response.read())
 
-    assert unauthenticated_status == 401
+    assert unauthenticated_status == 200
+    assert unauthenticated_url.endswith("/login?next=/")
+    assert "Entre no seu workspace" in login_html
     assert index_status == 200
-    assert "Encontrar o CNPJ correto" in html
-    assert "Últimas consultas" in html
-    assert "Baixar modelo de CSV" in html
+    assert "EchoPJs" in html
+    assert "Enriquecimento de CNPJ" in html
+    assert "Consultar CNPJ" in html
+    assert "Processamentos" in html
+    assert "Baixar modelo" in html
     assert result["status"] == "confirmado"
     assert result["selected"]["cnpj"] == "12484145000194"
     assert isinstance(jobs_payload["jobs"], list)
     print(json.dumps({
         "public_authentication": "ok",
+        "login_page": "ok",
         "interface": "ok",
+        "static_assets": static_assets,
+        "cnpj_lookup": "ok",
         "history_api": "ok",
         "status": result["status"],
         "cnpj": result["selected"]["cnpj"],

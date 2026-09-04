@@ -1,12 +1,15 @@
 import base64
+import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from psycopg.errors import QueryCanceled
 
 from .auth import AuthStore, LoginRateLimiter, normalize_identifier
@@ -20,12 +23,19 @@ from .models import (
     CompanySearchRequest,
     JobRequest,
     LoginRequest,
+    OrganizationRequest,
+    MemberRoleRequest,
+    InvitationRequest,
+    InvitationTokenRequest,
+    InvitationAcceptRequest,
     VALID_UFS,
 )
 from .repository import Repository
 from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
+from .organizations import OrganizationError, invitation_hash
+from .mail import mail_available, send_invitation
 
 
 settings = get_settings()
@@ -44,7 +54,11 @@ job_store = JobStore(settings.job_database_path)
 job_runner = JobRunner(job_store, matching_service.match_items)
 auth_store = AuthStore(settings.auth_database_path, session_days=settings.auth_session_days)
 auth_store.bootstrap(settings.app_username, settings.app_password)
+legacy_organization_id = auth_store.ensure_initial_organization()
+if legacy_organization_id:
+    job_store.assign_legacy_organization(legacy_organization_id)
 login_rate_limiter = LoginRateLimiter()
+invitation_rate_limiter = LoginRateLimiter(attempts=20, window_seconds=3600)
 SESSION_COOKIE = "echopjs_session"
 
 
@@ -65,15 +79,31 @@ static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+@app.exception_handler(OrganizationError)
+async def organization_error_handler(request: Request, error: OrganizationError):
+    return JSONResponse({"detail": str(error)}, status_code=error.status)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, error: RequestValidationError):
+    # Do not echo submitted passwords, invitation tokens or arbitrary input in errors.
+    return JSONResponse({"detail": [{"loc": item["loc"], "msg": item["msg"], "type": item["type"]} for item in error.errors()]}, status_code=422)
+
+
 @app.middleware("http")
 async def prevent_stale_application_state(request, call_next):
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        allowed_origins = {settings.app_public_url.rstrip("/"), str(request.base_url).rstrip("/")}
+        if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
+            return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/account"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Referrer-Policy"] = "no-referrer"
     return response
 
 
@@ -114,10 +144,23 @@ def require_auth(request: Request) -> dict:
     return user
 
 
+def require_organization(request: Request, user: dict = Depends(require_auth)) -> dict:
+    raw = request.headers.get("X-Organization-Id") or request.query_params.get("organization_id")
+    try:
+        org_id = int(raw) if raw is not None else None
+        if org_id is not None and org_id <= 0:
+            raise ValueError
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Organização inválida.")
+    org = auth_store.organization_for_user(user["id"], org_id)
+    return {**user, "organization_id": org["id"], "organization_role": org["role"]}
+
+
 def page_response(request: Request, filename: str, *, next_path: str) -> Response:
     user, source = authenticate_request(request)
     if not user:
-        return RedirectResponse(f"/login?next={next_path}", status_code=303)
+        target = next_path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(f"/login?next={quote(target, safe='/')}", status_code=303)
     response = FileResponse(
         static_dir / filename,
         headers={"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"},
@@ -149,6 +192,16 @@ def login_page(request: Request) -> Response:
 @app.get("/account")
 def account_page(request: Request) -> Response:
     return page_response(request, "account.html", next_path="/account")
+
+
+@app.get("/organizations")
+def organizations_page(request: Request) -> Response:
+    return page_response(request, "organizations.html", next_path="/organizations")
+
+
+@app.get("/invite")
+def invite_page() -> Response:
+    return FileResponse(static_dir / "invite.html")
 
 
 @app.get("/api/auth/status")
@@ -188,17 +241,20 @@ def logout(request: Request) -> Response:
 
 @app.get("/api/auth/me")
 def auth_me(user: dict = Depends(require_auth)) -> dict:
-    return {"identifier": user["identifier"], "created_at": user["created_at"]}
+    return {"id": user["id"], "identifier": user["identifier"], "created_at": user["created_at"]}
 
 
 @app.put("/api/auth/account")
 def update_account(payload: AccountUpdateRequest, request: Request, user: dict = Depends(require_auth)) -> Response:
-    updated = auth_store.update_account(
-        user["id"],
-        current_password=payload.current_password,
-        identifier=payload.identifier,
-        new_password=payload.new_password,
-    )
+    try:
+        updated = auth_store.update_account(
+            user["id"],
+            current_password=payload.current_password,
+            identifier=payload.identifier,
+            new_password=payload.new_password,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="Este e-mail não está disponível. Escolha outro.")
     if not updated:
         raise HTTPException(status_code=401, detail="A senha atual esta incorreta.")
     token, expires_at = auth_store.create_session(updated["id"])
@@ -207,8 +263,98 @@ def update_account(payload: AccountUpdateRequest, request: Request, user: dict =
     return response
 
 
+@app.get("/api/organizations")
+def list_organizations(user: dict = Depends(require_auth)) -> dict:
+    organizations = auth_store.organizations_for_user(user["id"])
+    return {"user": user, "organizations": organizations, "can_create": any(o["role"] == "admin" for o in organizations), "email_delivery_available": mail_available(settings)}
+
+
+@app.post("/api/organizations", status_code=201)
+def create_organization(payload: OrganizationRequest, user: dict = Depends(require_auth)) -> dict:
+    key = f"org-create:{user['id']}"
+    if not invitation_rate_limiter.allowed(key, monotonic()):
+        raise HTTPException(status_code=429, detail="Limite temporário de criação atingido. Tente mais tarde.")
+    org = auth_store.create_organization(user["id"], payload.name)
+    invitation_rate_limiter.failed(key, monotonic())
+    return org
+
+
+@app.get("/api/organizations/{org_id}")
+def organization_team(org_id: int, user: dict = Depends(require_auth)) -> dict:
+    return auth_store.organization_team(user["id"], org_id)
+
+
+@app.put("/api/organizations/{org_id}")
+def rename_organization(org_id: int, payload: OrganizationRequest, user: dict = Depends(require_auth)) -> dict:
+    return auth_store.rename_organization(user["id"], org_id, payload.name)
+
+
+@app.put("/api/organizations/{org_id}/members/{member_id}")
+def change_member_role(org_id: int, member_id: int, payload: MemberRoleRequest, user: dict = Depends(require_auth)) -> dict:
+    auth_store.change_member(user["id"], org_id, member_id, payload.role)
+    return {"updated": True}
+
+
+@app.delete("/api/organizations/{org_id}/members/{member_id}")
+def remove_member(org_id: int, member_id: int, user: dict = Depends(require_auth)) -> dict:
+    auth_store.change_member(user["id"], org_id, member_id)
+    return {"removed": True}
+
+
+@app.post("/api/organizations/{org_id}/invitations", status_code=201)
+def create_invitation(org_id: int, payload: InvitationRequest, user: dict = Depends(require_auth)) -> dict:
+    key = f"invite-create:{user['id']}"
+    if not invitation_rate_limiter.allowed(key, monotonic()):
+        raise HTTPException(status_code=429, detail="Limite temporário de convites atingido. Tente mais tarde.")
+    invite = auth_store.create_invitation(user["id"], org_id, payload.email, payload.role)
+    invitation_rate_limiter.failed(key, monotonic())
+    link = f"{settings.app_public_url.rstrip('/')}/invite#token={invite.pop('token')}"
+    delivery = send_invitation(settings, email=invite["email"], organization_name=invite["organization_name"], link=link) if payload.send_email else "manual"
+    return {**invite, "link": link, "delivery": delivery}
+
+
+@app.delete("/api/organizations/{org_id}/invitations/{invitation_id}")
+def revoke_invitation(org_id: int, invitation_id: int, user: dict = Depends(require_auth)) -> dict:
+    auth_store.revoke_invitation(user["id"], org_id, invitation_id)
+    return {"revoked": True}
+
+
+def invitation_attempt(request: Request, token: str):
+    client = request.client.host if request.client else "unknown"
+    key = f"invite-accept:{client}:{invitation_hash(token)}"
+    if not login_rate_limiter.allowed(key, monotonic()):
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Aguarde alguns minutos.")
+    return key
+
+
+@app.post("/api/invitations/preview")
+def invitation_preview(payload: InvitationTokenRequest, request: Request) -> dict:
+    key = invitation_attempt(request, payload.token)
+    try:
+        return auth_store.invitation_preview(payload.token)
+    except OrganizationError:
+        login_rate_limiter.failed(key, monotonic())
+        raise
+
+
+@app.post("/api/invitations/accept")
+def accept_invitation(payload: InvitationAcceptRequest, request: Request) -> Response:
+    key = invitation_attempt(request, payload.token)
+    try:
+        user, org_id = auth_store.accept_invitation(payload.token, payload.password)
+    except OrganizationError:
+        login_rate_limiter.failed(key, monotonic())
+        raise
+    login_rate_limiter.succeeded(key)
+    auth_store.delete_session(request.cookies.get(SESSION_COOKIE))
+    token, expires = auth_store.create_session(user["id"])
+    response = JSONResponse({"accepted": True, "organization_id": org_id})
+    set_session_cookie(response, token, expires)
+    return response
+
+
 @app.post("/api/matches/batch")
-def matches(payload: BatchRequest, _: None = Depends(require_auth)) -> dict:
+def matches(payload: BatchRequest, _: dict = Depends(require_organization)) -> dict:
     if len(payload.items) > settings.max_batch_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_batch_size} itens")
     items = [item.model_dump() for item in payload.items]
@@ -220,7 +366,7 @@ def matches(payload: BatchRequest, _: None = Depends(require_auth)) -> dict:
 
 
 @app.post("/api/jobs")
-def create_job(payload: JobRequest, _: None = Depends(require_auth)) -> dict:
+def create_job(payload: JobRequest, user: dict = Depends(require_organization)) -> dict:
     if len(payload.items) > settings.max_job_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_job_size} itens")
     items = [item.model_dump() for item in payload.items]
@@ -229,27 +375,29 @@ def create_job(payload: JobRequest, _: None = Depends(require_auth)) -> dict:
         items,
         active_only=payload.active_only,
         check_website=payload.check_website,
+        organization_id=user["organization_id"],
+        created_by=user["id"],
     )
     job_runner.notify()
     return job
 
 
 @app.get("/api/jobs")
-def list_jobs(_: None = Depends(require_auth)) -> dict:
-    return {"jobs": job_store.list_jobs()}
+def list_jobs(user: dict = Depends(require_organization)) -> dict:
+    return {"jobs": job_store.list_jobs(organization_id=user["organization_id"])}
 
 
 @app.get("/api/jobs/{job_id}")
-def get_job(job_id: str, _: None = Depends(require_auth)) -> dict:
-    job = job_store.get_job(job_id)
+def get_job(job_id: str, user: dict = Depends(require_organization)) -> dict:
+    job = job_store.get_job(job_id, organization_id=user["organization_id"])
     if not job:
         raise HTTPException(status_code=404, detail="consulta nao encontrada")
     return job
 
 
 @app.get("/api/jobs/{job_id}/export.csv")
-def export_job(job_id: str, _: None = Depends(require_auth)) -> Response:
-    content = job_store.export_csv(job_id, repository.companies_by_cnpjs)
+def export_job(job_id: str, user: dict = Depends(require_organization)) -> Response:
+    content = job_store.export_csv(job_id, repository.companies_by_cnpjs, organization_id=user["organization_id"])
     if content is None:
         raise HTTPException(status_code=404, detail="consulta nao encontrada")
     return Response(
@@ -260,7 +408,7 @@ def export_job(job_id: str, _: None = Depends(require_auth)) -> Response:
 
 
 @app.get("/api/search/capabilities")
-def search_capabilities(_: None = Depends(require_auth)) -> dict:
+def search_capabilities(_: dict = Depends(require_organization)) -> dict:
     return {
         "dataset_version": repository.current_version(),
         "filters": repository.search_capabilities().as_dict(),
@@ -269,7 +417,7 @@ def search_capabilities(_: None = Depends(require_auth)) -> dict:
 
 
 @app.get("/api/search/options/cnaes")
-def search_cnae_options(_: None = Depends(require_auth)) -> dict:
+def search_cnae_options(_: dict = Depends(require_organization)) -> dict:
     return {
         "dataset_version": repository.current_version(),
         "options": repository.search_cnae_options(),
@@ -280,7 +428,7 @@ def search_cnae_options(_: None = Depends(require_auth)) -> dict:
 def search_municipality_options(
     uf: str | None = Query(default=None, min_length=2, max_length=2),
     ufs: list[str] = Query(default=[]),
-    _: None = Depends(require_auth),
+    _: dict = Depends(require_organization),
 ) -> dict:
     normalized_ufs = list(dict.fromkeys(
         value.strip().upper() for value in [*ufs, *([uf] if uf else [])] if value.strip()
@@ -295,7 +443,7 @@ def search_municipality_options(
 
 
 @app.post("/api/search")
-def search_companies(payload: CompanySearchRequest, _: None = Depends(require_auth)) -> dict:
+def search_companies(payload: CompanySearchRequest, _: dict = Depends(require_organization)) -> dict:
     try:
         results, capabilities, duration_ms, has_more = repository.search_companies(payload.model_dump())
     except SearchCapabilityUnavailable as error:
@@ -317,12 +465,12 @@ def search_companies(payload: CompanySearchRequest, _: None = Depends(require_au
 
 
 @app.get("/api/explorer/overview")
-def explorer_overview(_: None = Depends(require_auth)) -> dict:
+def explorer_overview(_: dict = Depends(require_organization)) -> dict:
     return repository.explorer_overview()
 
 
 @app.get("/api/explorer/schema")
-def explorer_schema(_: None = Depends(require_auth)) -> dict:
+def explorer_schema(_: dict = Depends(require_organization)) -> dict:
     return repository.database_schema()
 
 
@@ -330,7 +478,7 @@ def explorer_schema(_: None = Depends(require_auth)) -> dict:
 def explorer_relation_preview(
     relation_name: str,
     limit: int = Query(default=10, ge=1, le=20),
-    _: None = Depends(require_auth),
+    _: dict = Depends(require_organization),
 ) -> dict:
     try:
         return repository.preview_relation(relation_name, limit=limit)
@@ -341,7 +489,7 @@ def explorer_relation_preview(
 
 
 @app.post("/api/explorer/company-lookup")
-def explorer_company_lookup(payload: CompanyLookupRequest, _: None = Depends(require_auth)) -> dict:
+def explorer_company_lookup(payload: CompanyLookupRequest, _: dict = Depends(require_organization)) -> dict:
     started = monotonic()
     entries: list[tuple[str, str | None]] = []
     normalized_cnpjs: list[str] = []
@@ -376,7 +524,7 @@ def explorer_company_lookup(payload: CompanyLookupRequest, _: None = Depends(req
 
 
 @app.get("/api/explorer/companies/{cnpj}")
-def explorer_company(cnpj: str, _: None = Depends(require_auth)) -> dict:
+def explorer_company(cnpj: str, _: dict = Depends(require_organization)) -> dict:
     try:
         normalized = normalize_cnpj_identifier(cnpj)
     except ValueError as error:
@@ -388,7 +536,7 @@ def explorer_company(cnpj: str, _: None = Depends(require_auth)) -> dict:
 
 
 @app.get("/api/explorer/companies/{cnpj}/establishments")
-def explorer_company_establishments(cnpj: str, _: None = Depends(require_auth)) -> dict:
+def explorer_company_establishments(cnpj: str, _: dict = Depends(require_organization)) -> dict:
     try:
         normalized = normalize_cnpj_identifier(cnpj)
     except ValueError as error:

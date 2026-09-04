@@ -1,281 +1,181 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Plataforma Receita</title>
-  <link rel="stylesheet" href="/static/styles.css?v=20260827-2">
+  <meta name="theme-color" content="#f8f9fa">
+  <meta name="description" content="EchoPJs — inteligência comercial com dados empresariais da Receita Federal.">
+  <title>EchoPJs</title>
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("echopjs-theme");
+      document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
+    } catch (_) {}
+  </script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260903-org-1">
 </head>
 <body>
-  <main>
-    <header>
-      <span class="eyebrow">PLATAFORMA RECEITA</span>
-      <h1>Dados empresariais da Receita</h1>
-      <p>Encontre o CNPJ correto ou crie listas de empresas usando filtros.</p>
-    </header>
-    <nav class="tabs" aria-label="Navegação principal">
-      <button class="tab-button active" data-tab="consulta" type="button">Encontrar CNPJ</button>
-      <button class="tab-button" data-tab="search" type="button">Explorar base</button>
-      <button class="tab-button" data-tab="history" type="button">Últimas consultas</button>
-    </nav>
-
-    <section id="consulta-tab" class="tab-panel">
-      <form id="match-form">
-        <h2 class="form-title wide">Consulta individual</h2>
-        <label class="wide">Nome da empresa<input id="name" required placeholder="Ex.: BrasilcomZ - Zootecnia Tropical"></label>
-        <label class="wide">Endereço<input id="address" placeholder="Rua, número e complemento"></label>
-        <label>Município<input id="municipality" placeholder="Ex.: Jaboticabal"></label>
-        <label>UF<input id="uf" value="SP" maxlength="2" required></label>
-        <label>CEP<input id="postal-code" placeholder="00000-000"></label>
-        <label class="wide">Website<input id="website" placeholder="https://empresa.com.br"></label>
-        <label class="check wide"><input id="check-website" type="checkbox" checked> Se necessário, procurar CNPJ automaticamente no site</label>
-        <button type="submit">Consultar CNPJ</button>
-      </form>
-      <section id="loading" class="hidden">Consultando a Receita…</section>
-      <section id="result" class="hidden"></section>
-
-      <section class="batch-section">
-        <div>
-          <span class="eyebrow">CONSULTA EM LOTE</span>
-          <h2>Enviar CSV</h2>
-          <p>Use até 10.000 linhas. A consulta roda uma empresa por vez, salva o progresso e preserva a ordem original.</p>
-        </div>
-
-        <aside class="csv-guide">
-          <div>
-            <span class="guide-number">1</span>
-            <strong>Uma linha por empresa</strong>
-            <p>A primeira linha deve conter os nomes das colunas.</p>
-          </div>
-          <div>
-            <span class="guide-number">2</span>
-            <strong>Nome e UF são obrigatórios</strong>
-            <p>Endereço, cidade, CEP e website aumentam muito a qualidade.</p>
-          </div>
-          <div>
-            <span class="guide-number">3</span>
-            <strong>Colunas reconhecidas</strong>
-            <p>Company Name, Company Street, Company City, Company State, Company Postal Code e Website.</p>
-          </div>
-          <pre>Company Name,Company Street,Company City,Company State,Company Postal Code,Website
-Empresa Exemplo,Rua Brasil 100,Campinas,SP,13010-000,https://empresa.com.br</pre>
-          <button id="download-template" class="secondary" type="button">Baixar modelo de CSV</button>
-        </aside>
-
-        <form id="batch-form" class="batch-form">
-          <label class="wide">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required></label>
-          <p class="hint wide">Também aceitamos os equivalentes em português: Nome da empresa, Endereço, Município, UF, CEP e Site.</p>
-          <label class="check wide"><input id="batch-check-website" type="checkbox"> Procurar CNPJ nos sites quando o banco não for suficiente — mais lento</label>
-          <button type="submit">Enviar e iniciar consulta</button>
-        </form>
-        <section id="batch-loading" class="hidden">Validando e colocando o arquivo na fila…</section>
-        <section id="batch-result" class="hidden"></section>
-      </section>
-    </section>
-
-    <section id="search-tab" class="tab-panel hidden">
-      <div class="explorer-heading">
-        <div>
-          <span class="eyebrow">EXPLORADOR DA BASE</span>
-          <h2>Entenda e consulte os dados</h2>
-          <p>Veja a cobertura da Receita e abra uma empresa completa sem acessar tabelas técnicas.</p>
-        </div>
-        <button id="refresh-explorer" class="secondary compact" type="button">Atualizar visão</button>
+  <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Navegação do EchoPJs">
+      <div class="brand-lockup">
+        <img class="brand-logo brand-logo-light" src="/static/assets/echo-wordmark-dark.png" alt="Echo">
+        <img class="brand-logo brand-logo-dark" src="/static/assets/echo-wordmark-light.png" alt="Echo">
+        <span class="product-name">PJs</span>
       </div>
-      <section id="explorer-overview-loading" class="explorer-card">Carregando visão da base…</section>
-      <section id="explorer-overview" class="hidden"></section>
-
-      <section class="schema-explorer explorer-card">
-        <div class="schema-heading">
-          <div>
-            <span class="eyebrow">POR DENTRO DO POSTGRESQL</span>
-            <h3>Tabelas, visões e colunas</h3>
-            <p>Abra uma relação para entender sua estrutura e ver até 20 registros reais, sempre em modo somente leitura.</p>
-          </div>
-          <button id="refresh-schema" class="secondary compact" type="button">Atualizar estrutura</button>
-        </div>
-        <section id="schema-loading">Mapeando tabelas e visões…</section>
-        <section id="schema-catalog" class="hidden"></section>
-        <section id="relation-preview" class="hidden"></section>
-      </section>
-
-      <form id="explorer-cnpj-form" class="explorer-cnpj-form">
-        <div>
-          <h3>Abrir empresa ou ver matriz e filiais</h3>
-          <p>Os estabelecimentos da mesma empresa são identificados com precisão pelos oito primeiros caracteres do CNPJ.</p>
-        </div>
-        <label>CNPJ<input id="explorer-cnpj" required maxlength="18" placeholder="00.000.000/0001-00"></label>
-        <button type="submit">Ver empresa completa</button>
-        <button id="explorer-establishments" class="secondary relation-button" type="button">Ver matriz e filiais</button>
-      </form>
-      <section id="explorer-company-loading" class="explorer-card hidden">Abrindo empresa…</section>
-      <section id="explorer-company-result" class="hidden"></section>
-      <section id="explorer-establishments-loading" class="explorer-card hidden">Localizando os CNPJs da mesma empresa…</section>
-      <section id="explorer-establishments-result" class="hidden"></section>
-
-      <form id="bulk-cnpj-form" class="bulk-cnpj-form">
-        <div class="wide">
-          <span class="eyebrow">CONSULTA EXATA EM LOTE</span>
-          <h3>Consultar uma lista de CNPJs</h3>
-          <p>Cole até 10.000 CNPJs, um por linha. A ordem da lista será preservada e você poderá baixar o resultado completo.</p>
-        </div>
-        <label class="wide">Lista de CNPJs
-          <textarea id="bulk-cnpj-list" rows="7" required placeholder="00.000.000/0001-91&#10;11.222.333/0001-81&#10;44.555.666/0001-00"></textarea>
-        </label>
-        <button type="submit">Consultar lista de CNPJs</button>
-      </form>
-      <section id="bulk-cnpj-loading" class="explorer-card hidden">Consultando os CNPJs exatos na Receita…</section>
-      <section id="bulk-cnpj-result" class="hidden"></section>
-
-      <div class="search-heading">
-        <span class="eyebrow">BUSCA AVANÇADA</span>
-        <h2>Criar uma lista por características</h2>
-        <p>Combine os filtros e receba uma lista de CNPJs. Empresas ativas são o padrão.</p>
+      <div class="workspace-card workspace-selector" aria-label="Organização atual">
+        <label for="workspace-organization">Organização</label>
+        <select id="workspace-organization" disabled><option>Carregando…</option></select>
+        <a id="organizations-link" href="/organizations">Organizações e equipe</a>
       </div>
+      <nav class="tabs sidebar-nav" aria-label="Navegação principal">
+        <span class="nav-section-label">Workspace</span>
+        <button class="tab-button active" data-tab="overview" data-view-title="Visão geral" type="button" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Visão geral</span></button>
+        <button class="tab-button" data-tab="search" data-view-title="Encontrar empresas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span>Encontrar empresas</span></button>
+        <button class="tab-button" data-tab="consulta" data-view-title="Enriquecimento de CNPJ" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7V3Z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg><span>Enriquecimento de CNPJ</span></button>
+        <button class="tab-button" data-tab="batch" data-view-title="Consultar CNPJ" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg><span>Consultar CNPJ</span></button>
+        <span class="nav-section-label nav-section-secondary">Operação</span>
+        <button class="tab-button" data-tab="history" data-view-title="Processamentos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Processamentos</span></button>
+        <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="dataset-status"><span aria-hidden="true"></span><strong>Base da Receita</strong></div>
+        <small>Inteligência comercial por Echo</small>
+      </div>
+    </aside>
 
-      <form id="company-search-form" class="search-form">
-        <fieldset>
-          <legend>Atividade e perfil</legend>
-          <div id="search-cnae-picker" class="multi-picker span-2">
-            <span class="field-label">CNAEs</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false">
-              <span>Selecionar CNAEs</span><small>Nenhum selecionado</small>
-            </button>
-            <div class="multi-picker-panel hidden">
-              <input class="multi-picker-search" type="search" placeholder="Buscar por código ou atividade">
-              <div class="multi-picker-toolbar"><span>Marque quantos CNAEs quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div>
-              <div class="multi-picker-options"></div>
+    <div class="app-frame">
+      <header class="topbar">
+        <div class="breadcrumbs" aria-label="Localização atual"><span>EchoPJs</span><i aria-hidden="true">/</i><strong id="current-view">Visão geral</strong></div>
+        <div class="topbar-actions">
+          <a id="mobile-organizations-link" class="mobile-organizations" href="/organizations">Organizações e equipe</a>
+          <span class="secure-label"><span aria-hidden="true"></span>Base oficial</span>
+          <a id="account-link" class="secure-label" href="/account"><span aria-hidden="true"></span>Minha conta</a>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Ativar tema escuro" aria-pressed="false">
+            <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.4A8 8 0 0 1 8.6 4 8 8 0 1 0 20 15.4Z"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main id="app-content" class="content" tabindex="-1">
+        <section id="overview-tab" class="tab-panel">
+          <div class="page-heading page-heading-row">
+            <div><span class="eyebrow">VISÃO GERAL</span><h1>Transforme dados em oportunidades.</h1><p>Encontre empresas, valide CNPJs e acompanhe suas listas em um único workspace.</p></div>
+            <button class="primary-action compact-action" data-switch-tab="search" type="button">Encontrar empresas<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <div class="quick-actions" aria-label="Ações rápidas">
+            <button class="quick-action" data-switch-tab="search" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><span><strong>Criar uma lista</strong><small>Combine perfil, atividade e localização.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="quick-action" data-switch-tab="consulta" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7V3Z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg></span><span><strong>Enriquecer empresas</strong><small>Descubra CNPJs individualmente ou por CSV.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="quick-action" data-switch-tab="batch" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg></span><span><strong>Consultar CNPJ</strong><small>Receba os dados de um ou vários CNPJs.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <section class="section-card overview-card">
+            <div class="section-card-heading"><div><span class="eyebrow">COBERTURA DOS DADOS</span><h2>Base empresarial</h2><p>Acompanhe a disponibilidade dos dados que alimentam suas buscas.</p></div><button id="refresh-explorer" class="secondary compact" type="button">Atualizar dados</button></div>
+            <section id="explorer-overview-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando visão da base…</section>
+            <section id="explorer-overview" class="hidden"></section>
+          </section>
+        </section>
+
+        <section id="search-tab" class="tab-panel hidden">
+          <div class="page-heading"><span class="eyebrow">PROSPECÇÃO</span><h1>Encontrar empresas</h1><p>Construa uma lista sob medida combinando atividade, perfil e localização.</p></div>
+          <form id="company-search-form" class="search-form">
+            <div class="filter-form-header">
+              <div><span class="eyebrow">CONSTRUTOR DE LISTAS</span><h2>Defina o perfil das empresas</h2><p>Comece pelo essencial e refine somente o que fizer sentido para sua prospecção.</p></div>
+              <div class="filter-guidance"><span aria-hidden="true"></span>Você não precisa preencher todos os campos</div>
             </div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <label>Onde procurar o CNAE
-            <select id="search-cnae-scope">
-              <option value="primary">Somente CNAE principal</option>
-              <option value="any">Principal ou secundário</option>
-            </select>
-          </label>
-          <label>Nome ou marca contém<input id="search-name" placeholder="Razão social, fantasia ou marca"></label>
-          <label class="wide">Excluir nomes ou marcas que contenham
-            <textarea id="search-excluded-names" rows="3" placeholder="Digite um por linha. Ex.:&#10;MARCA A&#10;MARCA B"></textarea>
-            <span class="input-help">A empresa será retirada se qualquer termo aparecer na razão social ou no nome fantasia. Aceita também vírgula ou ponto e vírgula.</span>
-          </label>
-          <div id="search-status-picker" class="multi-picker span-2">
-            <span class="field-label">Situações cadastrais</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar situações</span><small>Nenhum selecionado</small></button>
-            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar situação"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <div id="search-size-picker" class="multi-picker span-2">
-            <span class="field-label">Portes</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar portes</span><small>Nenhum selecionado</small></button>
-            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar porte"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <label>Capital social mínimo<input id="search-capital-min" type="number" min="0" step="0.01" placeholder="0,00"></label>
-          <label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
-          <label>Abertura a partir de<input id="search-opened-from" type="date"></label>
-          <label>Abertura até<input id="search-opened-to" type="date"></label>
-          <p class="fieldset-note">Pesquise pelo código ou pela descrição, marque vários CNAEs e remova qualquer seleção pelos cartões abaixo do campo.</p>
-          <aside class="network-note">
-            <strong>Buscando franquias ou unidades de uma rede?</strong>
-            <p>Digite a marca em “Nome ou marca contém” e combine com CNAE e localização. A Receita não possui um campo “franquia”; por isso esses resultados são possíveis unidades cujo nome oficial contém a marca. Franqueados com outra razão social podem não aparecer.</p>
-          </aside>
-        </fieldset>
+            <fieldset class="filter-section">
+              <legend><span class="step-number">1</span><span class="legend-copy"><strong>Atividade e perfil</strong><small>O que a empresa faz e qual perfil deve ter</small></span></legend>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Atividade econômica</strong><small>Use o CNAE para definir o mercado da sua lista.</small></div>
+                <div id="search-cnae-picker" class="multi-picker span-2"><span class="field-label">CNAEs</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar CNAEs</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar por código ou atividade"><div class="multi-picker-toolbar"><span>Marque quantos CNAEs quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label class="span-2">Onde procurar o CNAE<select id="search-cnae-scope"><option value="primary">Somente CNAE principal</option><option value="any">Principal ou secundário</option></select></label>
+              </section>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Identidade e porte</strong><small>Inclua marcas desejadas e exclua empresas fora do alvo.</small></div>
+                <label class="span-2">Nome ou marca contém<input id="search-name" placeholder="Razão social, fantasia ou marca"></label>
+                <label class="span-2">Excluir nomes ou marcas que contenham<textarea id="search-excluded-names" rows="3" placeholder="Digite um por linha. Ex.:&#10;MARCA A&#10;MARCA B"></textarea><span class="input-help">A empresa será retirada se qualquer termo aparecer na razão social ou no nome fantasia.</span></label>
+                <div id="search-status-picker" class="multi-picker span-2"><span class="field-label">Situações cadastrais</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar situações</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar situação"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="search-size-picker" class="multi-picker span-2"><span class="field-label">Portes</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar portes</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar porte"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+              </section>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Capital e maturidade</strong><small>Refine por investimento declarado e data de abertura.</small></div>
+                <label>Capital social mínimo<input id="search-capital-min" type="number" min="0" step="0.01" placeholder="R$ 0,00"></label><label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
+                <label>Abertura a partir de<input id="search-opened-from" type="date"></label><label>Abertura até<input id="search-opened-to" type="date"></label>
+              </section>
+              <aside class="network-note"><strong>Buscando franquias ou unidades de uma rede?</strong><p>Digite a marca no campo de nome e combine com CNAE e localização. Franqueados com outra razão social podem não aparecer.</p></aside>
+            </fieldset>
+            <fieldset class="filter-section">
+              <legend><span class="step-number">2</span><span class="legend-copy"><strong>Localização</strong><small>Onde as empresas precisam estar</small></span></legend>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Cobertura geográfica</strong><small>Vá do país inteiro até regiões específicas por CEP.</small></div>
+                <div id="search-region-picker" class="multi-picker span-2"><span class="field-label">Regiões</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Brasil inteiro</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar região"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="search-uf-picker" class="multi-picker span-2"><span class="field-label">Estados (UFs)</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os estados</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar UF ou estado"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="search-municipality-picker" class="multi-picker span-2 disabled"><span class="field-label">Municípios</span><button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Escolha ao menos uma UF</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar município"><div class="multi-picker-toolbar"><span>Marque quantos municípios quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label class="span-2">CEPs ou inícios de CEP<textarea id="search-postal-codes" rows="3" placeholder="Um por linha. Ex.:&#10;13010-000&#10;045&#10;20040"></textarea><span class="input-help">Aceita também vírgula ou ponto e vírgula.</span></label>
+              </section>
+            </fieldset>
+            <fieldset id="complementary-filters" class="filter-section complementary-filters">
+              <legend><span class="step-number">3</span><span class="legend-copy"><strong>Dados complementares</strong><small>Filtros avançados para listas mais precisas</small></span><span class="availability-badge">Aguardando carga</span></legend>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Regime e estrutura</strong><small>Características fiscais e cadastrais da empresa.</small></div>
+                <label>Simples Nacional<select id="search-simples" data-capability="simples_mei" disabled><option value="">Tanto faz</option><option value="true">Optante</option><option value="false">Não optante</option></select></label><label>MEI<select id="search-mei" data-capability="simples_mei" disabled><option value="">Tanto faz</option><option value="true">É MEI</option><option value="false">Não é MEI</option></select></label>
+                <label>Natureza jurídica (código)<input id="search-legal-nature" data-capability="legal_nature" disabled placeholder="Ex.: 2062"></label><label>Matriz ou filial<select id="search-branch-type" data-capability="establishment_details" disabled><option value="">Tanto faz</option><option value="1">Matriz</option><option value="2">Filial</option></select></label>
+              </section>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Contato e composição</strong><small>Disponibilidade comercial, sócios e rede de filiais.</small></div>
+                <div id="search-partner-age-picker" class="multi-picker span-2 disabled"><span class="field-label">Faixas etárias dos sócios</span><button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Carregando faixas etárias</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar faixa etária"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label>Possui e-mail<select id="search-has-email" data-capability="establishment_details" disabled><option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option></select></label><label>Possui telefone<select id="search-has-phone" data-capability="establishment_details" disabled><option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option></select></label>
+                <label>Mínimo de filiais ativas<input id="search-branches-min" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Ex.: 2"></label><label>Máximo de filiais ativas<input id="search-branches-max" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Sem limite"></label>
+              </section>
+              <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
+            </fieldset>
+            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e exportar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><button type="submit">Encontrar e mostrar prévia</button></div>
+          </form>
+          <section id="search-loading" class="hidden">Consultando a base da Receita…</section><section id="search-result" class="hidden"></section>
+        </section>
 
-        <fieldset>
-          <legend>Localização</legend>
-          <div id="search-region-picker" class="multi-picker span-2">
-            <span class="field-label">Regiões</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Brasil inteiro</span><small>Nenhum selecionado</small></button>
-            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar região"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
+        <section id="consulta-tab" class="tab-panel hidden">
+          <div class="page-heading"><span class="eyebrow">IDENTIFICAÇÃO E ENRIQUECIMENTO</span><h1>Enriquecimento de CNPJ</h1><p>Descubra o CNPJ correto a partir dos dados da empresa, individualmente ou em massa.</p></div>
+          <div class="two-column-layout consulta-layout">
+            <form id="match-form" class="section-card">
+              <div class="form-intro wide"><span class="form-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><div><h2>Enriquecimento individual</h2><p>O nome e a UF são obrigatórios.</p></div></div>
+              <label class="wide">Nome da empresa<input id="name" required placeholder="Ex.: BrasilcomZ — Zootecnia Tropical"></label><label class="wide">Endereço<input id="address" placeholder="Rua, número e complemento"></label><label>Município<input id="municipality" placeholder="Ex.: Jaboticabal"></label><label>UF<input id="uf" value="SP" maxlength="2" required></label><label>CEP<input id="postal-code" placeholder="00000-000"></label><label class="wide">Website<input id="website" placeholder="https://empresa.com.br"></label>
+              <label class="check wide"><input id="check-website" type="checkbox" checked><span><strong>Complementar a busca pelo website</strong><small>Usaremos o site apenas se a base não for suficiente.</small></span></label><button type="submit">Encontrar CNPJ</button>
+            </form>
+            <aside class="context-panel"><span class="eyebrow">COMO FUNCIONA</span><h2>Confiança em cada resultado</h2><ol class="process-list"><li><span>1</span><div><strong>Cruzamento de dados</strong><p>Comparamos nome, endereço, cidade e domínio.</p></div></li><li><span>2</span><div><strong>Validação cadastral</strong><p>Confirmamos a situação diretamente na base da Receita.</p></div></li><li><span>3</span><div><strong>Resultado explicável</strong><p>Você recebe o CNPJ e os sinais usados na decisão.</p></div></li></ol></aside>
           </div>
-          <div id="search-uf-picker" class="multi-picker span-2">
-            <span class="field-label">Estados (UFs)</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os estados</span><small>Nenhum selecionado</small></button>
-            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar UF ou estado"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <div id="search-municipality-picker" class="multi-picker span-2 disabled">
-            <span class="field-label">Municípios</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false" disabled>
-              <span>Escolha ao menos uma UF</span><small>Nenhum selecionado</small>
-            </button>
-            <div class="multi-picker-panel hidden">
-              <input class="multi-picker-search" type="search" placeholder="Buscar município">
-              <div class="multi-picker-toolbar"><span>Marque quantos municípios quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div>
-              <div class="multi-picker-options"></div>
-            </div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <label class="span-2">CEPs ou inícios de CEP
-            <textarea id="search-postal-codes" rows="3" placeholder="Um por linha. Ex.:&#10;13010-000&#10;045&#10;20040"></textarea>
-            <span class="input-help">Aceita também vírgula ou ponto e vírgula.</span>
-          </label>
-        </fieldset>
+          <section id="loading" class="hidden">Consultando a Receita…</section><section id="result" class="hidden"></section>
 
-        <fieldset id="complementary-filters" class="complementary-filters">
-          <legend>Dados complementares <span>Aguardando carga</span></legend>
-          <label>Simples Nacional
-            <select id="search-simples" data-capability="simples_mei" disabled>
-              <option value="">Tanto faz</option><option value="true">Optante</option><option value="false">Não optante</option>
-            </select>
-          </label>
-          <label>MEI
-            <select id="search-mei" data-capability="simples_mei" disabled>
-              <option value="">Tanto faz</option><option value="true">É MEI</option><option value="false">Não é MEI</option>
-            </select>
-          </label>
-          <div id="search-partner-age-picker" class="multi-picker span-2 disabled">
-            <span class="field-label">Faixas etárias dos sócios</span>
-            <button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Carregando faixas etárias</span><small>Nenhum selecionado</small></button>
-            <div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar faixa etária"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div>
-            <div class="multi-picker-tags" aria-live="polite"></div>
-          </div>
-          <label>Natureza jurídica (código)<input id="search-legal-nature" data-capability="legal_nature" disabled placeholder="Ex.: 2062"></label>
-          <label>Matriz ou filial
-            <select id="search-branch-type" data-capability="establishment_details" disabled>
-              <option value="">Tanto faz</option><option value="1">Matriz</option><option value="2">Filial</option>
-            </select>
-          </label>
-          <label>Possui e-mail
-            <select id="search-has-email" data-capability="establishment_details" disabled>
-              <option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option>
-            </select>
-          </label>
-          <label>Possui telefone
-            <select id="search-has-phone" data-capability="establishment_details" disabled>
-              <option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option>
-            </select>
-          </label>
-          <label>Mínimo de filiais ativas<input id="search-branches-min" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Ex.: 2"></label>
-          <label>Máximo de filiais ativas<input id="search-branches-max" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Sem limite"></label>
-          <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga de Simples, MEI e dados complementares.</p>
-        </fieldset>
+          <div class="section-divider"><span>ou enriqueça em massa</span></div>
 
-        <label class="result-limit">Quantas empresas você quer
-          <input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric">
-          <span class="input-help">Digite qualquer quantidade entre 1 e 10.000.</span>
-        </label>
-        <button type="submit">Encontrar e mostrar prévia</button>
-      </form>
-      <section id="search-loading" class="hidden">Consultando a base da Receita…</section>
-      <section id="search-result" class="hidden"></section>
-    </section>
+          <section class="batch-section enrichment-batch">
+            <div class="section-card-heading"><div><span class="eyebrow">ENRIQUECIMENTO EM MASSA</span><h2>Enviar empresas por CSV</h2><p>Processe até 10.000 empresas, com progresso salvo e ordem preservada.</p></div><button id="download-template" class="secondary compact" type="button">Baixar modelo</button></div>
+            <div class="batch-grid"><form id="batch-form" class="batch-form section-card"><label class="wide upload-field">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required><span class="input-help">Nome e UF são obrigatórios. Endereço, cidade, CEP e website aumentam a precisão.</span></label><label class="check wide"><input id="batch-check-website" type="checkbox"><span><strong>Complementar pelo website</strong><small>Mais preciso, porém mais lento.</small></span></label><button type="submit">Enviar e iniciar enriquecimento</button></form><aside class="csv-guide section-card"><div><span class="guide-number">1</span><span><strong>Uma linha por empresa</strong><p>A primeira linha deve conter os nomes das colunas.</p></span></div><div><span class="guide-number">2</span><span><strong>Campos reconhecidos</strong><p>Nome, endereço, município, UF, CEP e website.</p></span></div><div><span class="guide-number">3</span><span><strong>Progresso automático</strong><p>Você pode acompanhar depois em Processamentos.</p></span></div><pre>Company Name, Company City, Company State, Website</pre></aside></div>
+            <section id="batch-loading" class="hidden">Validando e colocando o arquivo na fila…</section><section id="batch-result" class="hidden"></section>
+          </section>
+        </section>
 
-    <section id="history-tab" class="tab-panel hidden">
-      <div class="history-heading">
-        <div>
-          <span class="eyebrow">HISTÓRICO</span>
-          <h2>Últimas consultas</h2>
-          <p>O progresso fica salvo. Você pode sair e voltar depois para baixar.</p>
-        </div>
-        <button id="refresh-history" class="secondary compact" type="button">Atualizar</button>
-      </div>
-      <section id="history-loading">Carregando consultas…</section>
-      <section id="history-list" class="history-list hidden"></section>
-    </section>
-  </main>
-  <script src="/static/app.js?v=20260831-1"></script>
+        <section id="batch-tab" class="tab-panel hidden">
+          <div class="page-heading"><span class="eyebrow">DADOS CADASTRAIS</span><h1>Consultar CNPJ</h1><p>Informe um CNPJ ou cole uma lista para receber os dados completos das empresas.</p></div>
+          <form id="explorer-cnpj-form" class="explorer-cnpj-form section-card"><div><span class="eyebrow">CONSULTA INDIVIDUAL</span><h2>Consultar um CNPJ</h2><p>Abra a ficha cadastral ou localize matriz e filiais.</p></div><label>CNPJ<input id="explorer-cnpj" required maxlength="18" placeholder="00.000.000/0001-00"></label><button type="submit">Ver dados da empresa</button><button id="explorer-establishments" class="secondary relation-button" type="button">Matriz e filiais</button></form>
+          <section id="explorer-company-loading" class="section-card hidden">Abrindo empresa…</section><section id="explorer-company-result" class="hidden"></section><section id="explorer-establishments-loading" class="section-card hidden">Localizando os CNPJs da mesma empresa…</section><section id="explorer-establishments-result" class="hidden"></section>
+
+          <div class="section-divider"><span>ou consulte vários CNPJs</span></div>
+
+          <form id="bulk-cnpj-form" class="bulk-cnpj-form section-card"><div class="wide form-intro"><span class="form-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg></span><div><span class="eyebrow">CONSULTA EM MASSA</span><h2>Consultar uma lista de CNPJs</h2><p>Cole até 10.000 CNPJs, um por linha. A ordem será preservada.</p></div></div><label class="wide">Lista de CNPJs<textarea id="bulk-cnpj-list" rows="7" required placeholder="00.000.000/0001-91&#10;11.222.333/0001-81&#10;44.555.666/0001-00"></textarea></label><button type="submit">Consultar dados dos CNPJs</button></form>
+          <section id="bulk-cnpj-loading" class="section-card hidden">Consultando os CNPJs exatos na Receita…</section><section id="bulk-cnpj-result" class="hidden"></section>
+        </section>
+
+        <section id="history-tab" class="tab-panel hidden"><div class="page-heading page-heading-row history-heading"><div><span class="eyebrow">OPERAÇÃO</span><h1>Processamentos</h1><p>Acompanhe consultas em lote e baixe resultados completos ou parciais.</p></div><button id="refresh-history" class="secondary compact" type="button">Atualizar</button></div><section id="history-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando consultas…</section><section id="history-list" class="history-list hidden"></section></section>
+
+        <section id="data-tab" class="tab-panel hidden">
+          <div class="page-heading"><span class="eyebrow">ÁREA AVANÇADA</span><h1>Dados técnicos</h1><p>Consulte a estrutura da base da Receita em modo somente leitura.</p></div>
+          <section class="schema-explorer section-card"><div class="schema-heading"><div><span class="eyebrow">CATÁLOGO TÉCNICO</span><h2>Tabelas, visões e colunas</h2><p>Entenda a estrutura e veja até 20 registros reais, sempre em modo somente leitura.</p></div><button id="refresh-schema" class="secondary compact" type="button">Atualizar estrutura</button></div><section id="schema-loading" class="loading-inline">Mapeando tabelas e visões…</section><section id="schema-catalog" class="hidden"></section><section id="relation-preview" class="hidden"></section></section>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="/static/workspace.js?v=20260903-org-1"></script>
+  <script src="/static/app.js?v=20260903-org-1"></script>
 </body>
 </html>

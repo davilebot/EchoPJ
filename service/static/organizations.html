@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Organizações e equipe — EchoPJs</title>
+  <link rel="stylesheet" href="/static/auth.css?v=20260903-org-1">
+</head>
+<body>
+  <main class="auth-shell org-shell">
+    <section class="auth-card org-card" aria-labelledby="org-title">
+      <div class="auth-brand-row"><div class="auth-brand"><img src="/static/assets/echo-wordmark-light.png" alt="Echo"><span>PJs</span></div><a id="back-platform" href="/">Voltar à plataforma</a></div>
+      <div class="auth-heading"><span class="eyebrow">ORGANIZAÇÕES E EQUIPE</span><h1 id="org-title">Um espaço para cada equipe.</h1><p>As consultas e os arquivos pertencem à organização. O acesso à base oficial é compartilhado, sem misturar seus resultados.</p></div>
+      <p id="org-message" class="auth-message hidden" role="status"></p>
+      <label>Organização atual<select id="org-select" disabled><option>Carregando…</option></select></label>
+      <p id="org-role" class="muted"></p>
+      <section id="team-panel" class="hidden">
+        <form id="rename-form" class="inline-form"><label>Nome da organização<input id="org-name" maxlength="120" required></label><button type="submit" class="secondary-button">Renomear</button></form>
+        <section class="org-section"><h2>Convidar pessoa</h2><p class="muted">Cada pessoa terá sua própria senha. Membros consultam e baixam resultados; administradores também gerenciam a equipe e criam organizações.</p>
+          <form id="invite-form"><div class="password-grid"><label>E-mail da pessoa<input id="invite-email" type="email" autocomplete="off" maxlength="254" required></label><label>Permissão<select id="invite-role"><option value="member">Membro</option><option value="admin">Administrador</option></select></label></div>
+            <label class="checkbox-label"><input id="send-email" type="checkbox">Enviar automaticamente por e-mail</label>
+            <p id="email-status" class="muted"></p><button type="submit">Gerar convite</button>
+          </form>
+          <div id="invite-result" class="invite-result hidden" role="status"><strong id="invite-result-title"></strong><label>Link individual · válido por 7 dias<input id="invite-link" readonly></label><div class="org-actions"><button id="copy-invite" type="button">Copiar convite</button><a id="email-invite" class="text-link" href="#">Abrir no meu e-mail</a></div><p class="muted">Compartilhe somente com o destinatário. O link completo só aparece ao gerar o convite; gere outro se precisar substituí-lo.</p></div>
+        </section>
+        <section class="org-section"><h2>Pessoas da organização</h2><div id="members-list" class="team-list"></div></section>
+        <section class="org-section"><h2>Convites recentes</h2><div id="invitations-list" class="team-list"></div></section>
+        <details class="org-section"><summary>Histórico de alterações</summary><div id="audit-list" class="team-list"></div></details>
+      </section>
+      <section id="create-panel" class="org-section hidden"><h2>Criar outra organização</h2><p class="muted">Ela começa sem consultas e sem outros membros. Você será administrador e poderá convidar sua nova equipe.</p><form id="create-org-form" class="inline-form"><label>Nome da nova organização<input id="new-org-name" maxlength="120" required placeholder="Ex.: Equipe comercial"></label><button type="submit">Criar organização</button></form></section>
+      <div class="account-footer"><p>Seu e-mail e sua senha são os mesmos em todas as organizações.</p><a class="text-link" href="/account">Minha conta</a></div>
+    </section>
+  </main>
+  <script src="/static/organizations.js?v=20260903-org-1"></script>
+</body></html>

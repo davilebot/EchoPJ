@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -9,6 +10,44 @@ from plataforma_receita.normalization import digits, normalize, valid_cnpj
 
 class LoginRequest(BaseModel):
     identifier: str = Field(min_length=1, max_length=254)
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class OrganizationRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Informe o nome da organização.")
+        return value
+
+
+class MemberRoleRequest(BaseModel):
+    role: Literal["admin", "member"]
+
+
+class InvitationRequest(MemberRoleRequest):
+    role: Literal["admin", "member"] = "member"
+    email: str = Field(min_length=3, max_length=254)
+    send_email: bool = True
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", value):
+            raise ValueError("Informe um e-mail válido.")
+        return value
+
+
+class InvitationTokenRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+
+
+class InvitationAcceptRequest(InvitationTokenRequest):
     password: str = Field(min_length=1, max_length=1024)
 
 

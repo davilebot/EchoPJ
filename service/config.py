@@ -9,6 +9,13 @@ class Settings(BaseSettings):
     app_password: str = ""
     auth_database_path: str = "/data/auth.sqlite"
     auth_session_days: int = 30
+    app_public_url: str = "https://plataforma-receita-matcher.ztnbow.easypanel.host"
+    smtp_host: str = ""
+    smtp_port: int = 465
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_ssl: bool = True
     website_cache_path: str = "/data/website-cache.sqlite"
     website_timeout_seconds: float = 3.0
     website_workers: int = 10

@@ -127,6 +127,12 @@ class JobStore:
             CREATE INDEX IF NOT EXISTS idx_jobs_status_created ON jobs(status, created_at);
             CREATE INDEX IF NOT EXISTS idx_job_items_pending ON job_items(job_id, status, position);
         """)
+        columns = {r[1] for r in self._connection.execute("PRAGMA table_info(jobs)")}
+        if "organization_id" not in columns:
+            self._connection.execute("ALTER TABLE jobs ADD COLUMN organization_id INTEGER")
+        if "created_by" not in columns:
+            self._connection.execute("ALTER TABLE jobs ADD COLUMN created_by INTEGER")
+        self._connection.execute("CREATE INDEX IF NOT EXISTS idx_jobs_org_created ON jobs(organization_id,created_at)")
         # A restart resumes from the first item that has no stored result.
         self._connection.execute("UPDATE jobs SET status='queued' WHERE status='running'")
         self._connection.commit()
@@ -134,6 +140,10 @@ class JobStore:
     def close(self) -> None:
         with self._lock:
             self._connection.close()
+
+    def assign_legacy_organization(self, organization_id: int) -> None:
+        with self._lock, self._connection:
+            self._connection.execute("UPDATE jobs SET organization_id=? WHERE organization_id IS NULL", (organization_id,))
 
     @staticmethod
     def _job(row: sqlite3.Row) -> dict[str, Any]:
@@ -150,15 +160,17 @@ class JobStore:
         *,
         active_only: bool,
         check_website: bool,
+        organization_id: int | None = None,
+        created_by: int | None = None,
     ) -> dict[str, Any]:
         job_id = str(uuid.uuid4())
         created_at = utc_now()
         with self._lock, self._connection:
             self._connection.execute(
                 """INSERT INTO jobs(
-                     id,filename,status,total,active_only,check_website,created_at
-                   ) VALUES(?,?,?,?,?,?,?)""",
-                (job_id, filename, "queued", len(items), int(active_only), int(check_website), created_at),
+                     id,filename,status,total,active_only,check_website,created_at,organization_id,created_by
+                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                (job_id, filename, "queued", len(items), int(active_only), int(check_website), created_at, organization_id, created_by),
             )
             self._connection.executemany(
                 "INSERT INTO job_items(job_id,position,input_json) VALUES(?,?,?)",
@@ -169,16 +181,18 @@ class JobStore:
             )
         return self.get_job(job_id)
 
-    def list_jobs(self, limit: int = 30) -> list[dict[str, Any]]:
+    def list_jobs(self, limit: int = 30, *, organization_id: int | None = None) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._connection.execute(
-                "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT * FROM jobs WHERE organization_id IS ? ORDER BY created_at DESC LIMIT ?", (organization_id, limit)
             ).fetchall()
         return [self._job(row) for row in rows]
 
-    def get_job(self, job_id: str) -> dict[str, Any] | None:
+    def get_job(self, job_id: str, *, organization_id: int | None = None) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+        if row and organization_id is not None and row["organization_id"] != organization_id:
+            return None
         return self._job(row) if row else None
 
     def claim_next_job(self) -> dict[str, Any] | None:
@@ -258,8 +272,10 @@ class JobStore:
         self,
         job_id: str,
         company_lookup: Callable[[list[str]], dict[str, dict[str, Any]]] | None = None,
+        *,
+        organization_id: int | None = None,
     ) -> bytes | None:
-        job = self.get_job(job_id)
+        job = self.get_job(job_id, organization_id=organization_id)
         if not job:
             return None
         with self._lock:
