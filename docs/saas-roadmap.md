@@ -56,7 +56,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 ## Entrega 4 — produto comercial maduro
 
-- permissões granulares além de administrador e membro;
+- [x] perfis de administrador, membro e consulta, com bloqueio de escrita, lotes, exportação e créditos no frontend e na API;
 - [x] limites seguros de requisições pesadas, tamanho de payload e processamentos ativos por organização;
 - termos de uso, política de privacidade, retenção e exclusão de dados;
 - observabilidade, alertas, backups testados e plano de recuperação;

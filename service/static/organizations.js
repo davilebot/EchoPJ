@@ -1,7 +1,12 @@
 const $ = (selector) => document.querySelector(selector);
 let currentOrg = null;
 let currentUser = null;
-const roleNames = { admin: "Administrador", member: "Membro" };
+const roleNames = { admin: "Administrador", member: "Membro", viewer: "Consulta" };
+const roleDescriptions = {
+  admin: "Uso completo e gestão da equipe",
+  member: "Pesquisa, listas, lotes e exportações",
+  viewer: "Pesquisa e leitura, sem alterar ou exportar",
+};
 const statusNames = { pending: "Pendente", accepted: "Aceito", revoked: "Cancelado", expired: "Expirado" };
 function notify(text, success = false) {
   $("#org-message").textContent = text;
@@ -27,19 +32,31 @@ function row(title, subtitle) {
   const item = textElement("div", "", "team-row"); const info = textElement("div", "", "team-info");
   info.append(textElement("strong", title), textElement("small", subtitle)); item.append(info); return item;
 }
+function roleControl(member) {
+  const control = textElement("div", "", "role-control");
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", `Perfil de ${member.identifier}`);
+  for (const role of ["admin", "member", "viewer"]) {
+    const option = textElement("option", roleNames[role]); option.value = role; select.append(option);
+  }
+  select.value = member.role;
+  const save = actionButton("Salvar acesso", async () => {
+    if (select.value === member.role) return;
+    if (!confirm(`Alterar o perfil de ${member.identifier} para ${roleNames[select.value]}?`)) { select.value = member.role; return; }
+    await api(`/api/organizations/${currentOrg.id}/members/${member.id}`, "PUT", { role: select.value });
+    if (member.id === currentUser.id) location.reload(); else { await loadTeam(); notify("Perfil de acesso atualizado.", true); }
+  });
+  control.append(select, save);
+  return control;
+}
 async function loadTeam() {
   if (!currentOrg || currentOrg.role !== "admin") return;
   const data = await api(`/api/organizations/${currentOrg.id}`);
   $("#members-list").replaceChildren();
   for (const member of data.members) {
-    const item = row(member.identifier + (member.id === currentUser.id ? " (você)" : ""), roleNames[member.role]);
+    const item = row(member.identifier + (member.id === currentUser.id ? " (você)" : ""), `${roleNames[member.role]} · ${roleDescriptions[member.role]}`);
     const actions = textElement("div", "", "org-actions");
-    const role = member.role === "admin" ? "member" : "admin";
-    actions.append(actionButton(role === "admin" ? "Tornar administrador" : "Tornar membro", async () => {
-      if (!confirm(`Alterar a permissão de ${member.identifier} para ${roleNames[role]}?`)) return;
-      await api(`/api/organizations/${currentOrg.id}/members/${member.id}`, "PUT", { role });
-      if (member.id === currentUser.id) location.reload(); else { await loadTeam(); notify("Permissão atualizada.", true); }
-    }), actionButton("Remover", async () => {
+    actions.append(roleControl(member), actionButton("Remover", async () => {
       if (!confirm(`Remover ${member.identifier} desta organização? As consultas da organização serão preservadas.`)) return;
       await api(`/api/organizations/${currentOrg.id}/members/${member.id}`, "DELETE");
       if (member.id === currentUser.id) location.href = "/organizations"; else { await loadTeam(); notify("Acesso removido desta organização.", true); }
@@ -71,7 +88,7 @@ async function loadOrganizations() {
     notify(data.organizations.length ? "Você não tem acesso à organização solicitada. Selecione uma das suas organizações." : "Sua conta ainda não está em uma organização. Peça um convite a um administrador."); return;
   }
   $("#org-select").value = currentOrg.id;
-  $("#org-role").textContent = `Seu acesso: ${roleNames[currentOrg.role]}. ${currentOrg.role === "member" ? "Peça ao administrador alterações na equipe." : ""}`;
+  $("#org-role").textContent = `Seu acesso: ${roleNames[currentOrg.role]}. ${roleDescriptions[currentOrg.role]}.`;
   $("#org-name").value = currentOrg.name;
   $("#back-platform").href = `/?organization=${currentOrg.id}`;
   $("#team-panel").classList.toggle("hidden", currentOrg.role !== "admin");

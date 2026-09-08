@@ -1,6 +1,7 @@
 const workspaceFetch = window.fetch.bind(window);
 const requestedWorkspaceOrganization = new URLSearchParams(location.search).get("organization");
 let activeWorkspaceOrganization = /^\d+$/.test(requestedWorkspaceOrganization || "") ? requestedWorkspaceOrganization : null;
+window.echoCan = () => true;
 
 window.fetch = function workspaceScopedFetch(input, options = {}) {
   const target = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.origin);
@@ -21,6 +22,11 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   const org = requested ? data.organizations.find((item) => String(item.id) === requested) : data.organizations[0];
   if (!org) { location.replace("/organizations"); return null; }
   activeWorkspaceOrganization = String(org.id);
+  window.echoCan = (capability) => Boolean(org.permissions?.[capability]);
+  const capabilityDatasetNames = { search: "capabilitySearch", export: "capabilityExport", manage_library: "capabilityManageLibrary", run_jobs: "capabilityRunJobs", manage_team: "capabilityManageTeam" };
+  Object.entries(capabilityDatasetNames).forEach(([capability, datasetName]) => {
+    document.documentElement.dataset[datasetName] = String(window.echoCan(capability));
+  });
   const select = document.querySelector("#workspace-organization");
   select.replaceChildren(...data.organizations.map((item) => { const option = document.createElement("option"); option.value = item.id; option.textContent = item.name; return option; }));
   select.value = org.id; select.disabled = false;
@@ -31,6 +37,8 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   document.querySelector("#account-link").href = `/account?organization=${org.id}`;
   document.querySelector("#help-link").href = `/help?organization=${org.id}`;
   document.querySelector("#topbar-help-link").href = `/help?organization=${org.id}`;
+  document.querySelector("#workspace-access-team-link").href = `/organizations?organization=${org.id}`;
+  document.querySelector("#workspace-access-notice").classList.toggle("hidden", org.role !== "viewer");
   const creditIndicator = document.querySelector("#credit-indicator strong");
   if (creditIndicator) creditIndicator.textContent = org.billing?.unlimited_credits
     ? "Ilimitados"

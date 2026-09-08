@@ -53,11 +53,11 @@ class SignupVerificationRequest(BaseModel):
 
 
 class MemberRoleRequest(BaseModel):
-    role: Literal["admin", "member"]
+    role: Literal["admin", "member", "viewer"]
 
 
 class InvitationRequest(MemberRoleRequest):
-    role: Literal["admin", "member"] = "member"
+    role: Literal["admin", "member", "viewer"] = "member"
     email: str = Field(min_length=3, max_length=254)
     send_email: bool = True
 

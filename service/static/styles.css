@@ -78,6 +78,18 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 svg { display: block; }
 .hidden { display: none !important; }
+html[data-capability-export="false"] [data-capability="export"],
+html[data-capability-manage-library="false"] [data-capability="manage-library"],
+html[data-capability-run-jobs="false"] [data-capability="run-jobs"] { display: none !important; }
+[data-viewer-library-note] { display: none; }
+html[data-capability-manage-library="false"] [data-viewer-library-note] { display: block; }
+
+.workspace-access-notice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 13px; align-items: center; margin-bottom: 24px; padding: 13px 15px; border: 1px solid color-mix(in srgb, var(--accent-strong) 30%, var(--border)); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.workspace-access-notice svg { width: 21px; fill: none; stroke: var(--accent-strong); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.workspace-access-notice strong, .workspace-access-notice span { display: block; }
+.workspace-access-notice strong { font-size: 11px; }
+.workspace-access-notice span { margin-top: 3px; color: var(--text-secondary); font-size: 9px; line-height: 1.45; }
+.workspace-access-notice a { color: var(--accent-strong); font-size: 10px; font-weight: 750; text-decoration: none; }
 
 .skip-link { position: fixed; z-index: 1000; top: 8px; left: 8px; padding: 10px 14px; border-radius: var(--radius-sm); color: var(--inverse-text); background: var(--inverse); font-size: 13px; font-weight: 700; transform: translateY(-160%); transition: transform .16s ease; }
 .skip-link:focus { transform: translateY(0); }
@@ -577,6 +589,8 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .secure-label { display: none; }
   .credit-indicator > span { display: none; }
   .content { width: min(100% - 28px, 1180px); padding-top: 30px; }
+  .workspace-access-notice { grid-template-columns: auto 1fr; }
+  .workspace-access-notice a { grid-column: 2; }
   .page-heading-row, .section-card-heading, .schema-heading { align-items: start; flex-direction: column; }
   h1 { font-size: 34px; }
   .filter-form-header { padding: 18px; }

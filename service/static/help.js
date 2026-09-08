@@ -48,7 +48,7 @@ async function loadContext() {
   $("#workspace-pill strong").textContent = activeOrganization.name;
   const [dashboard, health] = await Promise.all([api("/api/dashboard"), api("/health")]);
   const profile = dashboard.profile || activeOrganization.billing || {};
-  const role = activeOrganization.role === "admin" ? "Administrador" : "Membro";
+  const role = { admin: "Administrador", member: "Membro", viewer: "Consulta" }[activeOrganization.role] || "Consulta";
   const plan = profile.plan_code === "internal" ? "Interno EchoHub" : profile.plan_code || "Não informado";
   const credits = profile.unlimited_credits ? "Ilimitados" : Number(profile.credit_balance || 0).toLocaleString("pt-BR");
   const dataset = health.dataset_version || "Não informado";

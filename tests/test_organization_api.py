@@ -269,6 +269,34 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(job["created_by"], self.owner["id"])
         self.assertEqual(self.request("/api/jobs", "POST", payload, self.member_token, {"x-organization-id": str(self.other)})[0], 403)
 
+    def test_viewer_can_research_but_cannot_mutate_export_or_spend_credits(self):
+        invite = self.auth.create_invitation(self.owner["id"], self.other, "viewer@example.com", "viewer")
+        viewer = self.auth.accept_invitation(invite["token"], "viewer-password")[0]
+        viewer_token = self.auth.create_session(viewer["id"])[0]
+        headers = {"x-organization-id": str(self.other)}
+        status, organizations, _ = self.request("/api/organizations", token=viewer_token)
+        self.assertEqual(status, 200)
+        self.assertEqual(organizations["organizations"][0]["role"], "viewer")
+        self.assertFalse(organizations["organizations"][0]["permissions"]["export"])
+        self.assertEqual(self.request("/api/dashboard", token=viewer_token, headers=headers)[0], 200)
+        self.main.repository.companies_by_cnpjs.return_value = {}
+        self.assertEqual(self.request(
+            "/api/explorer/company-lookup", "POST", {"cnpjs": ["11222333000181"]}, viewer_token, headers,
+        )[0], 200)
+        self.assertEqual(self.request("/api/company-lists", token=viewer_token, headers=headers)[0], 200)
+
+        blocked = [
+            ("/api/company-lists", {"name": "Bloqueada"}),
+            ("/api/saved-searches", {"name": "Bloqueada", "filters": {"limit": 1}}),
+            ("/api/exports/companies", {"cnpjs": ["11222333000181"]}),
+            ("/api/jobs", {"filename": "blocked.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}]}),
+        ]
+        for path, payload in blocked:
+            status, response, _ = self.request(path, "POST", payload, viewer_token, headers)
+            self.assertEqual(status, 403, path)
+            self.assertIn("perfil permite consultar", response["detail"])
+        self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 2)
+
     def test_csrf_blocked_and_sensitive_input_not_echoed(self):
         self.assertEqual(self.request("/api/organizations", "POST", {"name": "Bad"}, self.owner_token, {"origin": "https://attacker.example"})[0], 403)
         secret = "do-not-echo-this-secret"

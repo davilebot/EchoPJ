@@ -11,6 +11,35 @@ class OrganizationError(ValueError):
         self.status = status
 
 
+ROLE_PERMISSIONS = {
+    "admin": {
+        "search": True,
+        "export": True,
+        "manage_library": True,
+        "run_jobs": True,
+        "manage_team": True,
+    },
+    "member": {
+        "search": True,
+        "export": True,
+        "manage_library": True,
+        "run_jobs": True,
+        "manage_team": False,
+    },
+    "viewer": {
+        "search": True,
+        "export": False,
+        "manage_library": False,
+        "run_jobs": False,
+        "manage_team": False,
+    },
+}
+
+
+def role_permissions(role):
+    return dict(ROLE_PERMISSIONS.get(role, ROLE_PERMISSIONS["viewer"]))
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
@@ -31,7 +60,7 @@ class OrganizationStoreMixin:
             CREATE TABLE IF NOT EXISTS memberships (
                 organization_id INTEGER NOT NULL REFERENCES organizations(id),
                 user_id INTEGER NOT NULL REFERENCES users(id),
-                role TEXT NOT NULL CHECK(role IN ('admin','member')),
+                role TEXT NOT NULL CHECK(role IN ('admin','member','viewer')),
                 joined_at TEXT NOT NULL,
                 PRIMARY KEY(organization_id,user_id)
             );
@@ -40,7 +69,7 @@ class OrganizationStoreMixin:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 organization_id INTEGER NOT NULL REFERENCES organizations(id),
                 email TEXT NOT NULL COLLATE NOCASE,
-                role TEXT NOT NULL CHECK(role IN ('admin','member')),
+                role TEXT NOT NULL CHECK(role IN ('admin','member','viewer')),
                 token_hash TEXT NOT NULL UNIQUE,
                 created_by INTEGER NOT NULL REFERENCES users(id),
                 created_at TEXT NOT NULL,
@@ -59,6 +88,52 @@ class OrganizationStoreMixin:
             );
             CREATE TABLE IF NOT EXISTS auth_metadata (key TEXT PRIMARY KEY,value TEXT NOT NULL);
         """)
+        self._upgrade_role_constraints()
+
+    def _upgrade_role_constraints(self):
+        """Expand the two role checks without changing any existing membership."""
+        definitions = {
+            row["name"]: row["sql"] or ""
+            for row in self._connection.execute(
+                "SELECT name,sql FROM sqlite_master WHERE type='table' AND name IN ('memberships','invitations')"
+            )
+        }
+        if all("'viewer'" in definitions.get(table, "") for table in ("memberships", "invitations")):
+            return
+        with self._org_transaction():
+            self._connection.execute("ALTER TABLE memberships RENAME TO memberships_before_viewer")
+            self._connection.execute("""CREATE TABLE memberships (
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                role TEXT NOT NULL CHECK(role IN ('admin','member','viewer')),
+                joined_at TEXT NOT NULL,
+                PRIMARY KEY(organization_id,user_id)
+            )""")
+            self._connection.execute(
+                "INSERT INTO memberships SELECT organization_id,user_id,role,joined_at FROM memberships_before_viewer"
+            )
+            self._connection.execute("DROP TABLE memberships_before_viewer")
+            self._connection.execute("CREATE INDEX idx_memberships_user ON memberships(user_id)")
+
+            self._connection.execute("ALTER TABLE invitations RENAME TO invitations_before_viewer")
+            self._connection.execute("""CREATE TABLE invitations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                organization_id INTEGER NOT NULL REFERENCES organizations(id),
+                email TEXT NOT NULL COLLATE NOCASE,
+                role TEXT NOT NULL CHECK(role IN ('admin','member','viewer')),
+                token_hash TEXT NOT NULL UNIQUE,
+                created_by INTEGER NOT NULL REFERENCES users(id),
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                accepted_at TEXT,
+                revoked_at TEXT
+            )""")
+            self._connection.execute("""INSERT INTO invitations(
+                id,organization_id,email,role,token_hash,created_by,created_at,expires_at,accepted_at,revoked_at
+            ) SELECT id,organization_id,email,role,token_hash,created_by,created_at,expires_at,accepted_at,revoked_at
+              FROM invitations_before_viewer""")
+            self._connection.execute("DROP TABLE invitations_before_viewer")
+            self._connection.execute("CREATE INDEX idx_invites_org ON invitations(organization_id)")
 
     @contextmanager
     def _org_transaction(self):
@@ -120,10 +195,13 @@ class OrganizationStoreMixin:
 
     def organizations_for_user(self, user_id):
         with self._lock:
-            return [dict(r) for r in self._connection.execute(
+            organizations = [dict(r) for r in self._connection.execute(
                 "SELECT o.*,m.role FROM organizations o JOIN memberships m ON m.organization_id=o.id WHERE m.user_id=? ORDER BY o.id",
                 (user_id,),
             ).fetchall()]
+        for organization in organizations:
+            organization["permissions"] = role_permissions(organization["role"])
+        return organizations
 
     def organization_activation_summary(self, organization_id):
         with self._lock:
@@ -225,7 +303,9 @@ class OrganizationStoreMixin:
         ).fetchone()
         if not row or (admin and row["role"] != "admin"):
             raise OrganizationError("Você não tem permissão para acessar esta organização.", 403)
-        return dict(row)
+        membership = dict(row)
+        membership["permissions"] = role_permissions(membership["role"])
+        return membership
 
     def organization_for_user(self, user_id, org_id=None, *, admin=False):
         with self._lock:
@@ -258,6 +338,8 @@ class OrganizationStoreMixin:
             members = [dict(r) for r in self._connection.execute(
                 "SELECT u.id,u.identifier,m.role,m.joined_at FROM memberships m JOIN users u ON u.id=m.user_id WHERE organization_id=? ORDER BY u.id", (org_id,),
             )]
+            for member in members:
+                member["permissions"] = role_permissions(member["role"])
             invites = [dict(r) for r in self._connection.execute(
                 """SELECT id,email,role,created_at,expires_at,accepted_at,revoked_at,
                 CASE WHEN accepted_at IS NOT NULL THEN 'accepted' WHEN revoked_at IS NOT NULL THEN 'revoked'
@@ -270,7 +352,7 @@ class OrganizationStoreMixin:
             return {"organization": org, "members": members, "invitations": invites, "audit": audit}
 
     def change_member(self, actor_id, org_id, user_id, role=None):
-        if role not in (None, "admin", "member"):
+        if role not in (None, "admin", "member", "viewer"):
             raise OrganizationError("Perfil inválido.")
         with self._org_transaction():
             self._membership(actor_id, org_id, admin=True)
@@ -291,7 +373,7 @@ class OrganizationStoreMixin:
             self._audit(org_id, actor_id, "member.removed" if role is None else "member.role_changed", f"{user_id}:{role or 'removed'}")
 
     def create_invitation(self, actor_id, org_id, email, role):
-        if role not in ("admin", "member"):
+        if role not in ("admin", "member", "viewer"):
             raise OrganizationError("Perfil inválido.")
         email = email.strip().casefold()
         token = secrets.token_urlsafe(32)

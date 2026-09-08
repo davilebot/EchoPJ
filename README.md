@@ -68,6 +68,8 @@ estão em [`.env.example`](.env.example).
 - Administradores podem gerenciar apenas as organizações das quais são administradores.
   Também podem criar novas organizações, nas quais entram como administradores.
 - Membros podem consultar e exportar na organização, mas não gerenciar pessoas.
+  O perfil “Consulta” pesquisa e revisa dados sem alterar listas, iniciar lotes,
+  exportar arquivos ou consumir créditos.
 - A conta existente é migrada uma única vez como administradora de “Minha organização”.
   Os jobs antigos são associados a ela sem alterar resultados, credenciais ou a Receita.
 - O histórico, os arquivos e os downloads de jobs são isolados por organização.

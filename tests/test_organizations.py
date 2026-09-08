@@ -52,6 +52,60 @@ class OrganizationTests(unittest.TestCase):
         with self.assertRaises(OrganizationError): self.store.organization_team(member["id"], self.org)
         with self.assertRaises(OrganizationError): self.store.create_invitation(member["id"], self.org, "other@example.com", "admin")
 
+    def test_viewer_role_is_invitable_and_has_read_only_product_permissions(self):
+        viewer = self.invite_user("viewer@example.com", role="viewer")
+        organization = self.store.organization_for_user(viewer["id"], self.org)
+        self.assertEqual(organization["role"], "viewer")
+        self.assertTrue(organization["permissions"]["search"])
+        self.assertFalse(organization["permissions"]["export"])
+        self.assertFalse(organization["permissions"]["manage_library"])
+        self.assertFalse(organization["permissions"]["run_jobs"])
+        team_viewer = next(item for item in self.store.organization_team(self.owner, self.org)["members"] if item["id"] == viewer["id"])
+        self.assertEqual(team_viewer["permissions"], organization["permissions"])
+        self.store.change_member(self.owner, self.org, viewer["id"], "member")
+        self.assertTrue(self.store.organization_for_user(viewer["id"], self.org)["permissions"]["export"])
+
+    def test_existing_two_role_database_is_upgraded_without_losing_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "old-auth.sqlite")
+            with sqlite3.connect(path) as connection:
+                connection.executescript("""
+                    CREATE TABLE memberships (
+                        organization_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        role TEXT NOT NULL CHECK(role IN ('admin','member')),
+                        joined_at TEXT NOT NULL,
+                        PRIMARY KEY(organization_id,user_id)
+                    );
+                    CREATE INDEX idx_memberships_user ON memberships(user_id);
+                    CREATE TABLE invitations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organization_id INTEGER NOT NULL,
+                        email TEXT NOT NULL COLLATE NOCASE,
+                        role TEXT NOT NULL CHECK(role IN ('admin','member')),
+                        token_hash TEXT NOT NULL UNIQUE,
+                        created_by INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        expires_at TEXT NOT NULL,
+                        accepted_at TEXT,
+                        revoked_at TEXT
+                    );
+                    CREATE INDEX idx_invites_org ON invitations(organization_id);
+                """)
+            upgraded = AuthStore(path)
+            upgraded.bootstrap("owner@example.com", "test-password-long")
+            owner = upgraded.authenticate("owner@example.com", "test-password-long")["id"]
+            organization_id = upgraded.ensure_initial_organization()
+            invite = upgraded.create_invitation(owner, organization_id, "viewer@example.com", "viewer")
+            viewer, _ = upgraded.accept_invitation(invite["token"], "test-password-long")
+            self.assertEqual(upgraded.organization_for_user(viewer["id"], organization_id)["role"], "viewer")
+            with sqlite3.connect(path) as connection:
+                definitions = " ".join(row[0] for row in connection.execute(
+                    "SELECT sql FROM sqlite_master WHERE name IN ('memberships','invitations')"
+                ))
+            self.assertIn("'viewer'", definitions)
+            upgraded.close()
+
     def test_activation_summary_counts_members_and_pending_invitations(self):
         self.assertEqual(
             self.store.organization_activation_summary(self.org),

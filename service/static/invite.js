@@ -12,7 +12,8 @@ async function invitationApi(action, extra = {}) {
 async function preview() {
   if (!inviteToken) throw new Error("Abra o link completo enviado pelo administrador. Se já atualizou esta página, abra o convite novamente.");
   const data = await invitationApi("preview");
-  document.querySelector("#invite-description").textContent = `Participe de ${data.organization_name} como ${data.role === "admin" ? "administrador" : "membro"}.`;
+  const roleName = { admin: "administrador", member: "membro", viewer: "acesso de consulta" }[data.role] || "membro";
+  document.querySelector("#invite-description").textContent = `Participe de ${data.organization_name} com ${roleName}.`;
   document.querySelector("#invited-email").value = data.email;
   document.querySelector("#accept-form").classList.remove("hidden");
 }

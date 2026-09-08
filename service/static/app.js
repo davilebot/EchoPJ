@@ -550,7 +550,7 @@ function renderHistory(jobs) {
   historyList.innerHTML = jobs.map((job) => {
     const active = job.status === "queued" || job.status === "running";
     const download = job.processed > 0
-      ? `<button class="download-link" type="button" data-download-job="${job.id}">${active ? "Baixar parcial" : "Baixar CSV"}</button>`
+      ? `<button class="download-link" type="button" data-download-job="${job.id}" data-capability="export">${active ? "Baixar parcial" : "Baixar CSV"}</button>`
       : `<span class="download-disabled">Download após a primeira linha</span>`;
     return `<article class="job-card">
       <div class="job-topline">
@@ -1047,7 +1047,7 @@ function renderBulkCnpjLookup(data) {
     </div>
     <p class="search-notice">Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s. A prévia mostra os primeiros ${Math.min(100, data.total)}; o CSV preserva toda a lista e sua ordem.</p>
     <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-bulk-cnpj" type="button">Baixar resultado completo com sócios</button></div>
+    <div class="save-actions"><button id="download-bulk-cnpj" data-capability="export" type="button">Baixar resultado completo com sócios</button></div>
   </article>`;
   const downloadButton = document.querySelector("#download-bulk-cnpj");
   downloadButton.addEventListener("click", () => runButtonAction(downloadButton, "Preparando CSV…", downloadBulkCnpjLookup));
@@ -1102,7 +1102,7 @@ function renderCompanySearch(data) {
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
     <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="save-selected-company-search" type="button" disabled>Salvar selecionadas em uma lista</button><button id="download-selected-company-search" class="secondary" type="button" disabled>Baixar selecionadas</button><button id="download-company-search" class="secondary" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    <div class="save-actions"><button id="save-selected-company-search" data-capability="manage-library" type="button" disabled>Salvar selecionadas em uma lista</button><button id="download-selected-company-search" class="secondary" data-capability="export" type="button" disabled>Baixar selecionadas</button><button id="download-company-search" class="secondary" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
   const downloadAllButton = document.querySelector("#download-company-search");
   downloadAllButton?.addEventListener("click", () => runButtonAction(downloadAllButton, "Preparando CSV…", () => downloadCompanySearch(lastCompanySearch)));
@@ -1361,7 +1361,7 @@ async function loadSavedSearches() {
     savedSearchesGrid.innerHTML = data.saved_searches.length ? data.saved_searches.map((saved) => `<article class="resource-card">
       <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg></div>
       <div class="resource-card-body"><span class="resource-meta">${saved.last_run_at ? `Usada ${formatDate(saved.last_run_at)}` : "Ainda não executada"}</span><h2>${escapeHtml(saved.name)}</h2><p>${escapeHtml(filtersDescription(saved.filters))}</p>${saved.last_result_count !== null ? `<small>${Number(saved.last_result_count).toLocaleString("pt-BR")} resultados na última execução</small>` : ""}</div>
-      <div class="resource-card-actions"><button type="button" data-use-saved-search="${saved.id}">Usar busca</button><button class="secondary" type="button" data-delete-saved-search="${saved.id}">Excluir</button></div>
+      <div class="resource-card-actions"><button type="button" data-use-saved-search="${saved.id}">Usar busca</button><button class="secondary" data-capability="manage-library" type="button" data-delete-saved-search="${saved.id}">Excluir</button></div>
     </article>`).join("") : `<div class="empty-state resource-empty"><strong>Nenhuma busca salva.</strong><p>Monte um segmento em “Busca com filtros” e use o botão “Salvar busca”.</p><button type="button" data-switch-tab="search">Criar primeira busca</button></div>`;
     savedSearchesGrid.dataset.searches = JSON.stringify(data.saved_searches);
     savedSearchesLoading.classList.add("hidden");
@@ -1476,7 +1476,7 @@ async function deleteSavedSearch(searchId) {
 
 function listTemplateMarkup() {
   return Object.entries(listTemplates).map(([key, template]) => `
-    <button class="list-template" type="button" data-list-template="${key}">
+    <button class="list-template" data-capability="manage-library" type="button" data-list-template="${key}">
       <span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(template.description)}</small></span><b aria-hidden="true">+</b>
     </button>`).join("");
 }
@@ -1493,7 +1493,7 @@ async function loadCompanyLists() {
       <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></div>
       <div class="resource-card-body"><span class="resource-meta">Atualizada ${formatDate(item.updated_at)}</span><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description || "Lista compartilhada com sua organização.")}</p><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></div>
       <div class="resource-card-actions"><button type="button" data-open-list="${item.id}">Abrir lista</button></div>
-    </article>`).join("") : `<div class="empty-state resource-empty template-empty"><span class="eyebrow">MODELOS DE LISTA</span><strong>Como sua equipe quer organizar as empresas?</strong><p>Escolha um modelo para preencher nome e objetivo, ou comece com uma lista em branco.</p><div class="list-template-grid">${listTemplateMarkup()}</div><button class="secondary" type="button" data-open-create-list>Criar lista em branco</button></div>`;
+    </article>`).join("") : `<div class="empty-state resource-empty template-empty"><span class="eyebrow">MODELOS DE LISTA</span><strong>Como sua equipe quer organizar as empresas?</strong><p>Escolha um modelo para preencher nome e objetivo, ou comece com uma lista em branco.</p><div class="list-template-grid">${listTemplateMarkup()}</div><button class="secondary" data-capability="manage-library" type="button" data-open-create-list>Criar lista em branco</button><p data-viewer-library-note>Seu perfil pode consultar listas existentes. Um administrador pode liberar a criação e a exportação.</p></div>`;
     listsLoading.classList.add("hidden");
     listsGrid.classList.remove("hidden");
     return data.lists;
@@ -1510,10 +1510,10 @@ async function loadCompanyListDetail(listId) {
     const response = await fetch(`/api/company-lists/${listId}`);
     if (!response.ok) throw new Error(await responseError(response, "Não foi possível abrir a lista."));
     const data = await response.json();
-    const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
+    const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" data-capability="manage-library" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
     listDetail.dataset.listId = listId;
     listDetail.dataset.companies = JSON.stringify(data.companies);
-    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" type="button" data-delete-list>Excluir lista</button></div></div>
+    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
       ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
     listDetail.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {

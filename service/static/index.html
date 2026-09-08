@@ -79,6 +79,7 @@
       </header>
 
       <main id="app-content" class="content" tabindex="-1">
+        <div id="workspace-access-notice" class="workspace-access-notice hidden" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="M9 12h6"/></svg><div><strong>Acesso de consulta</strong><span>Você pode pesquisar e revisar os dados deste workspace. Exportações, créditos, listas e processamentos ficam protegidos.</span></div><a id="workspace-access-team-link" href="/organizations">Ver meu acesso</a></div>
         <section id="overview-tab" class="tab-panel">
           <div class="page-heading page-heading-row">
             <div><span class="eyebrow">VISÃO GERAL</span><h1>Transforme dados em oportunidades.</h1><p>Encontre empresas, valide CNPJs e acompanhe suas listas em um único workspace.</p></div>
@@ -159,7 +160,7 @@
               </section>
               <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
             </fieldset>
-            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e salvar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><div class="search-submit-actions"><button id="save-current-search" class="secondary" type="button">Salvar busca</button><button type="submit">Encontrar empresas</button></div></div>
+            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e salvar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><div class="search-submit-actions"><button id="save-current-search" class="secondary" data-capability="manage-library" type="button">Salvar busca</button><button type="submit">Encontrar empresas</button></div></div>
           </form>
           <section id="search-loading" class="hidden">Consultando a base da Receita…</section><section id="search-result" class="hidden"></section>
         </section>
@@ -180,7 +181,7 @@
 
           <section class="batch-section enrichment-batch">
             <div class="section-card-heading"><div><span class="eyebrow">ENRIQUECIMENTO EM MASSA</span><h2>Enviar empresas por CSV</h2><p>Processe até 10.000 empresas, com progresso salvo e ordem preservada.</p></div><button id="download-template" class="secondary compact" type="button">Baixar modelo</button></div>
-            <div class="batch-grid"><form id="batch-form" class="batch-form section-card"><label class="wide upload-field">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required><span class="input-help">Nome e UF são obrigatórios. Endereço, cidade, CEP e website aumentam a precisão.</span></label><label class="check wide"><input id="batch-check-website" type="checkbox"><span><strong>Complementar pelo website</strong><small>Mais preciso, porém mais lento.</small></span></label><button type="submit">Enviar e iniciar enriquecimento</button></form><aside class="csv-guide section-card"><div><span class="guide-number">1</span><span><strong>Uma linha por empresa</strong><p>A primeira linha deve conter os nomes das colunas.</p></span></div><div><span class="guide-number">2</span><span><strong>Campos reconhecidos</strong><p>Nome, endereço, município, UF, CEP e website.</p></span></div><div><span class="guide-number">3</span><span><strong>Progresso automático</strong><p>Você pode acompanhar depois em Processamentos.</p></span></div><pre>Company Name, Company City, Company State, Website</pre></aside></div>
+            <div class="batch-grid"><form id="batch-form" class="batch-form section-card" data-capability="run-jobs"><label class="wide upload-field">Arquivo CSV<input id="csv-file" type="file" accept=".csv,text/csv" required><span class="input-help">Nome e UF são obrigatórios. Endereço, cidade, CEP e website aumentam a precisão.</span></label><label class="check wide"><input id="batch-check-website" type="checkbox"><span><strong>Complementar pelo website</strong><small>Mais preciso, porém mais lento.</small></span></label><button type="submit">Enviar e iniciar enriquecimento</button></form><aside class="csv-guide section-card"><div><span class="guide-number">1</span><span><strong>Uma linha por empresa</strong><p>A primeira linha deve conter os nomes das colunas.</p></span></div><div><span class="guide-number">2</span><span><strong>Campos reconhecidos</strong><p>Nome, endereço, município, UF, CEP e website.</p></span></div><div><span class="guide-number">3</span><span><strong>Progresso automático</strong><p>Você pode acompanhar depois em Processamentos.</p></span></div><pre>Company Name, Company City, Company State, Website</pre></aside></div>
             <section id="batch-loading" class="hidden">Validando e colocando o arquivo na fila…</section><section id="batch-result" class="hidden"></section>
           </section>
         </section>
@@ -197,7 +198,7 @@
         </section>
 
         <section id="lists-tab" class="tab-panel hidden">
-          <div class="page-heading page-heading-row"><div><span class="eyebrow">BIBLIOTECA</span><h1>Listas de empresas</h1><p>Organize os CNPJs que sua equipe quer abordar, revisar ou acompanhar.</p></div><button id="create-list-button" class="primary-action" type="button">Criar lista</button></div>
+          <div class="page-heading page-heading-row"><div><span class="eyebrow">BIBLIOTECA</span><h1>Listas de empresas</h1><p>Organize os CNPJs que sua equipe quer abordar, revisar ou acompanhar.</p></div><button id="create-list-button" class="primary-action" data-capability="manage-library" type="button">Criar lista</button></div>
           <section id="lists-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando listas…</section>
           <section id="lists-grid" class="resource-grid hidden"></section>
           <section id="list-detail" class="section-card hidden"></section>

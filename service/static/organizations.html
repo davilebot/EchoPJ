@@ -15,8 +15,8 @@
       <p id="org-role" class="muted"></p>
       <section id="team-panel" class="hidden">
         <form id="rename-form" class="inline-form"><label>Nome da organização<input id="org-name" maxlength="120" required></label><button type="submit" class="secondary-button">Renomear</button></form>
-        <section class="org-section"><h2>Convidar pessoa</h2><p class="muted">Cada pessoa terá sua própria senha. Membros consultam e baixam resultados; administradores também gerenciam a equipe e criam organizações.</p>
-          <form id="invite-form"><div class="password-grid"><label>E-mail da pessoa<input id="invite-email" type="email" autocomplete="off" maxlength="254" required></label><label>Permissão<select id="invite-role"><option value="member">Membro</option><option value="admin">Administrador</option></select></label></div>
+        <section class="org-section"><h2>Convidar pessoa</h2><p class="muted">Escolha quanto cada pessoa pode fazer. O acesso de consulta pesquisa e revisa dados sem alterar listas, iniciar lotes, exportar ou usar créditos.</p>
+          <form id="invite-form"><div class="password-grid"><label>E-mail da pessoa<input id="invite-email" type="email" autocomplete="off" maxlength="254" required></label><label>Perfil de acesso<select id="invite-role"><option value="member">Membro · uso completo</option><option value="viewer">Consulta · sem exportação</option><option value="admin">Administrador · equipe e conta</option></select></label></div>
             <label class="checkbox-label"><input id="send-email" type="checkbox">Enviar automaticamente por e-mail</label>
             <p id="email-status" class="muted"></p><button type="submit">Gerar convite</button>
           </form>

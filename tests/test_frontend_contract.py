@@ -38,7 +38,7 @@ class FrontendContractTests(unittest.TestCase):
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
-            "search-templates",
+            "search-templates", "workspace-access-notice",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -138,6 +138,20 @@ class FrontendContractTests(unittest.TestCase):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn('new URLSearchParams(location.search).get("tab")', script)
         self.assertIn('button.dataset.tab === requestedInitialTab', script)
+
+    def test_viewer_permissions_are_visible_and_hide_protected_actions(self):
+        organizations = (STATIC_DIR / "organizations.html").read_text(encoding="utf-8")
+        organization_script = (STATIC_DIR / "organizations.js").read_text(encoding="utf-8")
+        workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('<option value="viewer">', organizations)
+        self.assertIn('viewer: "Consulta"', organization_script)
+        self.assertIn("capabilityManageLibrary", workspace)
+        self.assertIn('org.role !== "viewer"', workspace)
+        self.assertIn('data-capability-manage-library="false"', styles)
+        for capability in ('data-capability="manage-library"', 'data-capability="export"', 'data-capability="run-jobs"'):
+            self.assertIn(capability, self.html + script)
 
 
 if __name__ == "__main__":

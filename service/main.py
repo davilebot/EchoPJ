@@ -214,6 +214,7 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
         **user,
         "organization_id": org["id"],
         "organization_role": org["role"],
+        "organization_permissions": org["permissions"],
         "billing": billing,
     }
 
@@ -238,6 +239,15 @@ def enforce_heavy_rate_limit(user: dict, operation: str) -> None:
         status_code=429,
         detail="Muitas operações deste tipo em sequência. Aguarde alguns segundos e tente novamente.",
         headers={"Retry-After": str(decision.retry_after)},
+    )
+
+
+def require_capability(user: dict, capability: str, action: str) -> None:
+    if user["organization_permissions"].get(capability):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=f"Seu perfil permite consultar dados, mas não {action}. Peça a um administrador para alterar seu acesso.",
     )
 
 
@@ -829,6 +839,7 @@ def list_saved_searches(user: dict = Depends(require_organization)) -> dict:
 
 @app.post("/api/saved-searches", status_code=201)
 def create_saved_search(payload: SavedSearchRequest, user: dict = Depends(require_organization)) -> dict:
+    require_capability(user, "manage_library", "salvar buscas")
     return saas_store.create_saved_search(
         user["organization_id"],
         user["id"],
@@ -859,6 +870,7 @@ def record_saved_search_run(
 
 @app.delete("/api/saved-searches/{search_id}")
 def delete_saved_search(search_id: str, user: dict = Depends(require_organization)) -> dict:
+    require_capability(user, "manage_library", "excluir buscas salvas")
     if not saas_store.delete_saved_search(user["organization_id"], search_id):
         raise HTTPException(status_code=404, detail="Busca salva não encontrada.")
     return {"deleted": True}
@@ -871,6 +883,7 @@ def list_company_lists(user: dict = Depends(require_organization)) -> dict:
 
 @app.post("/api/company-lists", status_code=201)
 def create_company_list(payload: CompanyListRequest, user: dict = Depends(require_organization)) -> dict:
+    require_capability(user, "manage_library", "criar listas")
     return saas_store.create_company_list(
         user["organization_id"],
         user["id"],
@@ -893,6 +906,7 @@ def add_companies_to_list(
     payload: CompanySelectionRequest,
     user: dict = Depends(require_organization),
 ) -> dict:
+    require_capability(user, "manage_library", "alterar listas")
     enforce_heavy_rate_limit(user, "company-data")
     found = repository.companies_by_cnpjs(payload.cnpjs)
     companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
@@ -905,6 +919,7 @@ def add_companies_to_list(
 
 @app.post("/api/exports/companies")
 def export_companies(payload: CompanySelectionRequest, user: dict = Depends(require_organization)) -> Response:
+    require_capability(user, "export", "exportar empresas ou usar créditos")
     enforce_heavy_rate_limit(user, "exports")
     found = repository.companies_by_cnpjs(payload.cnpjs)
     companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
@@ -933,6 +948,7 @@ def remove_company_from_list(
     cnpj: str,
     user: dict = Depends(require_organization),
 ) -> dict:
+    require_capability(user, "manage_library", "alterar listas")
     normalized = normalize_cnpj_identifier(cnpj)
     if not saas_store.remove_company(user["organization_id"], list_id, normalized):
         raise HTTPException(status_code=404, detail="Empresa não encontrada nesta lista.")
@@ -941,6 +957,7 @@ def remove_company_from_list(
 
 @app.delete("/api/company-lists/{list_id}")
 def delete_company_list(list_id: str, user: dict = Depends(require_organization)) -> dict:
+    require_capability(user, "manage_library", "excluir listas")
     if not saas_store.delete_company_list(user["organization_id"], list_id):
         raise HTTPException(status_code=404, detail="Lista não encontrada.")
     return {"deleted": True}
@@ -966,6 +983,7 @@ def matches(payload: BatchRequest, user: dict = Depends(require_organization)) -
 
 @app.post("/api/jobs")
 def create_job(payload: JobRequest, user: dict = Depends(require_organization)) -> dict:
+    require_capability(user, "run_jobs", "criar processamentos em massa")
     enforce_heavy_rate_limit(user, "job-creation")
     if len(payload.items) > settings.max_job_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_job_size} itens")
@@ -1015,6 +1033,7 @@ def get_job(job_id: str, user: dict = Depends(require_organization)) -> dict:
 
 @app.get("/api/jobs/{job_id}/export.csv")
 def export_job(job_id: str, user: dict = Depends(require_organization)) -> Response:
+    require_capability(user, "export", "baixar resultados ou usar créditos")
     selected_cnpjs = job_store.selected_cnpjs(job_id, organization_id=user["organization_id"])
     if selected_cnpjs is None:
         raise HTTPException(status_code=404, detail="consulta nao encontrada")
@@ -1183,6 +1202,7 @@ def explorer_company_lookup(payload: CompanyLookupRequest, user: dict = Depends(
 
 @app.post("/api/exports/cnpj-lookup")
 def export_cnpj_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> Response:
+    require_capability(user, "export", "exportar empresas ou usar créditos")
     enforce_heavy_rate_limit(user, "exports")
     lookup = company_lookup_results(payload.cnpjs)
     found_cnpjs = [item["company"]["cnpj"] for item in lookup["results"] if item["company"]]
