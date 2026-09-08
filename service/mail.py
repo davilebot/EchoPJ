@@ -7,19 +7,10 @@ def mail_available(settings):
     return bool(settings.smtp_host and settings.smtp_from)
 
 
-def send_invitation(settings, *, email, organization_name, link):
-    """Only send via TLS. Never log tokens or SMTP exceptions/credentials."""
+def _send_message(settings, message):
+    """Only send via TLS. Never log links, tokens, SMTP exceptions or credentials."""
     if not mail_available(settings):
         return "manual"
-    message = EmailMessage()
-    message["From"] = settings.smtp_from
-    message["To"] = email
-    message["Subject"] = "Convite para uma organização no EchoPJs"
-    message.set_content(
-        f"Você foi convidado(a) para {organization_name} no EchoPJs.\n\n"
-        f"Crie sua conta ou entre com sua senha atual:\n{link}\n\n"
-        "O convite vale por 7 dias e só pode ser usado uma vez. Se não esperava este convite, ignore esta mensagem."
-    )
     try:
         context = ssl.create_default_context()
         if settings.smtp_ssl:
@@ -35,3 +26,30 @@ def send_invitation(settings, *, email, organization_name, link):
     except (OSError, smtplib.SMTPException):
         return "failed"
     return "sent"
+
+
+def send_invitation(settings, *, email, organization_name, link):
+    message = EmailMessage()
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message["Subject"] = "Convite para uma organização no EchoPJs"
+    message.set_content(
+        f"Você foi convidado(a) para {organization_name} no EchoPJs.\n\n"
+        f"Crie sua conta ou entre com sua senha atual:\n{link}\n\n"
+        "O convite vale por 7 dias e só pode ser usado uma vez. Se não esperava este convite, ignore esta mensagem."
+    )
+    return _send_message(settings, message)
+
+
+def send_password_reset(settings, *, email, link, valid_minutes):
+    message = EmailMessage()
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message["Subject"] = "Redefinição de senha do EchoPJs"
+    message.set_content(
+        "Recebemos um pedido para redefinir a senha da sua conta no EchoPJs.\n\n"
+        f"Escolha uma nova senha neste link:\n{link}\n\n"
+        f"O link vale por {valid_minutes} minutos e só pode ser usado uma vez. "
+        "Se você não pediu esta alteração, ignore esta mensagem."
+    )
+    return _send_message(settings, message)

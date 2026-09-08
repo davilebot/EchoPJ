@@ -6,13 +6,13 @@ from pathlib import Path
 from time import monotonic
 from urllib.parse import quote
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from psycopg.errors import QueryCanceled
 
-from .auth import AuthStore, LoginRateLimiter, normalize_identifier
+from .auth import AuthStore, LoginRateLimiter, normalize_identifier, token_digest
 from .config import get_settings
 from .jobs import JobRunner, JobStore, export_companies_csv
 from .matching import MatchingService
@@ -23,6 +23,8 @@ from .models import (
     CompanySearchRequest,
     JobRequest,
     LoginRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     OrganizationRequest,
     MemberRoleRequest,
     InvitationRequest,
@@ -39,7 +41,7 @@ from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
-from .mail import mail_available, send_invitation
+from .mail import mail_available, send_invitation, send_password_reset
 from .saas import SaaSError, SaaSStore
 
 
@@ -76,6 +78,8 @@ if legacy_organization_id:
     )
 login_rate_limiter = LoginRateLimiter()
 invitation_rate_limiter = LoginRateLimiter(attempts=20, window_seconds=3600)
+password_reset_request_rate_limiter = LoginRateLimiter(attempts=5, window_seconds=3600)
+password_reset_confirm_rate_limiter = LoginRateLimiter(attempts=10, window_seconds=15 * 60)
 SESSION_COOKIE = "echopjs_session"
 
 
@@ -121,7 +125,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -228,6 +232,16 @@ def login_page(request: Request) -> Response:
     return FileResponse(static_dir / "login.html")
 
 
+@app.get("/forgot-password")
+def forgot_password_page() -> Response:
+    return FileResponse(static_dir / "forgot-password.html")
+
+
+@app.get("/reset-password")
+def reset_password_page() -> Response:
+    return FileResponse(static_dir / "reset-password.html")
+
+
 @app.get("/account")
 def account_page(request: Request) -> Response:
     return page_response(request, "account.html", next_path="/account")
@@ -249,6 +263,7 @@ def auth_status(request: Request) -> dict:
     return {
         "authenticated": bool(user),
         "identifier": user["identifier"] if user else None,
+        "password_reset_available": mail_available(settings),
     }
 
 
@@ -266,6 +281,65 @@ def login(payload: LoginRequest, request: Request) -> Response:
     login_rate_limiter.succeeded(rate_key)
     token, expires_at = auth_store.create_session(user["id"])
     response = JSONResponse({"authenticated": True, "identifier": user["identifier"]})
+    set_session_cookie(response, token, expires_at)
+    return response
+
+
+@app.post("/api/auth/password-reset/request", status_code=202)
+def request_password_reset(
+    payload: PasswordResetRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    client = request.client.host if request.client else "unknown"
+    normalized = normalize_identifier(payload.identifier)
+    now = monotonic()
+    ip_key = f"password-reset-request:ip:{client}"
+    account_key = f"password-reset-request:account:{normalized}"
+    allowed = (
+        password_reset_request_rate_limiter.allowed(ip_key, now)
+        and password_reset_request_rate_limiter.allowed(account_key, now)
+    )
+    if allowed:
+        password_reset_request_rate_limiter.failed(ip_key, now)
+        password_reset_request_rate_limiter.failed(account_key, now)
+        if mail_available(settings):
+            reset = auth_store.create_password_reset(
+                normalized,
+                valid_minutes=settings.auth_password_reset_minutes,
+            )
+            if reset:
+                link = f"{settings.app_public_url.rstrip('/')}/reset-password#token={reset['token']}"
+                background_tasks.add_task(
+                    send_password_reset,
+                    settings,
+                    email=reset["identifier"],
+                    link=link,
+                    valid_minutes=settings.auth_password_reset_minutes,
+                )
+    return {"accepted": True}
+
+
+@app.post("/api/auth/password-reset/confirm")
+def confirm_password_reset(payload: PasswordResetConfirmRequest, request: Request) -> Response:
+    client = request.client.host if request.client else "unknown"
+    digest = token_digest(payload.token)
+    now = monotonic()
+    ip_key = f"password-reset-confirm:ip:{client}"
+    token_key = f"password-reset-confirm:token:{digest}"
+    if not (
+        password_reset_confirm_rate_limiter.allowed(ip_key, now)
+        and password_reset_confirm_rate_limiter.allowed(token_key, now)
+    ):
+        raise HTTPException(status_code=429, detail="Muitas tentativas. Solicite um novo link e tente novamente.")
+    updated = auth_store.reset_password(payload.token, payload.new_password)
+    if not updated:
+        password_reset_confirm_rate_limiter.failed(ip_key, now)
+        password_reset_confirm_rate_limiter.failed(token_key, now)
+        raise HTTPException(status_code=404, detail="Este link é inválido, expirou ou já foi utilizado.")
+    password_reset_confirm_rate_limiter.succeeded(token_key)
+    token, expires_at = auth_store.create_session(updated["id"])
+    response = JSONResponse({"reset": True, "identifier": updated["identifier"]})
     set_session_cookie(response, token, expires_at)
     return response
 

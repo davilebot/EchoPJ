@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     auth_database_path: str = "/data/auth.sqlite"
     saas_database_path: str = "/data/saas.sqlite"
     auth_session_days: int = 30
+    auth_password_reset_minutes: int = 30
     app_public_url: str = "https://plataforma-receita-matcher.ztnbow.easypanel.host"
     smtp_host: str = ""
     smtp_port: int = 465

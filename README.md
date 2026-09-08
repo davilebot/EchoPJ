@@ -85,8 +85,10 @@ estão em [`.env.example`](.env.example).
   no arquivo de segredos do servidor. Padrão: `SMTP_PORT=465`, `SMTP_SSL=true`;
   para STARTTLS use porta 587 e `SMTP_SSL=false`. Conexões sem TLS não são aceitas.
 - `APP_PUBLIC_URL` define o endereço confiável dos links (padrão: endereço publicado).
-  Credenciais SMTP nunca devem entrar no repositório. Não há recuperação automática
-  de senha por e-mail nesta versão.
+  Credenciais SMTP nunca devem entrar no repositório.
+- “Esqueci minha senha” envia um link de uso único, armazenado somente como hash,
+  com validade padrão de 30 minutos (`AUTH_PASSWORD_RESET_MINUTES`). A troca invalida
+  todas as sessões anteriores e a solicitação nunca revela se o e-mail possui conta.
 
 ### Validação
 

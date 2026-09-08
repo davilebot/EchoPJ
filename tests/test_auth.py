@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from service.auth import AuthStore, LoginRateLimiter
-from service.models import AccountUpdateRequest
+from service.models import AccountUpdateRequest, PasswordResetConfirmRequest
 
 
 class AuthStoreTests(unittest.TestCase):
@@ -76,6 +76,44 @@ class AuthStoreTests(unittest.TestCase):
         limiter.succeeded("client")
         self.assertTrue(limiter.allowed("client", 13))
 
+    def test_password_reset_is_single_use_and_invalidates_sessions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.sqlite"
+            store = AuthStore(str(path), session_days=30)
+            store.bootstrap("owner@example.com", "senha-antiga-segura")
+            user = store.authenticate("owner@example.com", "senha-antiga-segura")
+            old_session, _ = store.create_session(user["id"])
+            reset = store.create_password_reset("OWNER@example.com", valid_minutes=30)
+            self.assertEqual(reset["identifier"], "owner@example.com")
+
+            connection = sqlite3.connect(path)
+            stored = connection.execute("SELECT token_hash FROM password_reset_tokens").fetchone()[0]
+            connection.close()
+            self.assertNotEqual(stored, reset["token"])
+
+            updated = store.reset_password(reset["token"], "senha-nova-segura")
+            self.assertEqual(updated["identifier"], "owner@example.com")
+            self.assertIsNone(store.reset_password(reset["token"], "outra-senha-segura"))
+            self.assertIsNone(store.user_for_session(old_session))
+            self.assertIsNone(store.authenticate("owner@example.com", "senha-antiga-segura"))
+            self.assertIsNotNone(store.authenticate("owner@example.com", "senha-nova-segura"))
+            store.close()
+
+    def test_new_password_reset_replaces_previous_link_without_enumeration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = AuthStore(str(Path(directory) / "auth.sqlite"))
+            store.bootstrap("owner@example.com", "senha-antiga-segura")
+            first = store.create_password_reset("owner@example.com")
+            second = store.create_password_reset("owner@example.com")
+            self.assertIsNone(store.create_password_reset("missing@example.com"))
+            self.assertIsNone(store.reset_password(first["token"], "senha-nova-segura"))
+            self.assertIsNotNone(store.reset_password(second["token"], "senha-nova-segura"))
+            store.close()
+
+    def test_password_reset_model_requires_a_stronger_minimum(self):
+        with self.assertRaises(ValidationError):
+            PasswordResetConfirmRequest(token="x" * 40, new_password="curta")
+
 
 class AuthFrontendTests(unittest.TestCase):
     def test_login_and_account_pages_have_expected_controls(self):
@@ -83,8 +121,15 @@ class AuthFrontendTests(unittest.TestCase):
         login = (static_dir / "login.html").read_text(encoding="utf-8")
         account = (static_dir / "account.html").read_text(encoding="utf-8")
         index = (static_dir / "index.html").read_text(encoding="utf-8")
+        forgot = (static_dir / "forgot-password.html").read_text(encoding="utf-8")
+        reset = (static_dir / "reset-password.html").read_text(encoding="utf-8")
         self.assertIn('id="login-form"', login)
         self.assertIn('autocomplete="current-password"', login)
+        self.assertIn('href="/forgot-password"', login)
+        self.assertIn('id="forgot-form"', forgot)
+        self.assertIn('autocomplete="email"', forgot)
+        self.assertIn('id="reset-form"', reset)
+        self.assertEqual(reset.count('autocomplete="new-password"'), 2)
         self.assertIn('id="account-form"', account)
         self.assertIn('autocomplete="new-password"', account)
         self.assertIn('id="logout-button"', account)

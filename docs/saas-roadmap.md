@@ -43,7 +43,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 ## Entrega 3 — aquisição e ativação
 
-- cadastro verificado por e-mail e recuperação segura de senha;
+- [x] recuperação segura de senha por link temporário e uso único;
+- cadastro verificado por e-mail;
 - onboarding para criar organização, convidar equipe e realizar a primeira busca;
 - exemplos de segmentos e modelos de listas;
 - medição do funil de cadastro, ativação, compra e retenção;

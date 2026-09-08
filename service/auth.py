@@ -63,6 +63,16 @@ class AuthStore(OrganizationStoreMixin):
               FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
             );
             CREATE INDEX IF NOT EXISTS idx_sessions_expiration ON sessions(expires_at);
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+              token_hash TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              used_at TEXT,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_password_resets_user
+              ON password_reset_tokens(user_id, expires_at);
         """)
         self._connection.commit()
         self._initialize_organizations()
@@ -180,6 +190,63 @@ class AuthStore(OrganizationStoreMixin):
                 "DELETE FROM sessions WHERE token_hash=?",
                 (token_digest(token),),
             )
+
+    def create_password_reset(self, identifier: str, *, valid_minutes: int = 30) -> dict[str, Any] | None:
+        normalized = normalize_identifier(identifier)
+        created_at = utc_now()
+        with self._lock, self._connection:
+            user = self._connection.execute(
+                "SELECT id,identifier FROM users WHERE identifier=? COLLATE NOCASE",
+                (normalized,),
+            ).fetchone()
+            self._connection.execute(
+                "DELETE FROM password_reset_tokens WHERE expires_at<=?",
+                (isoformat(created_at),),
+            )
+            if not user or "@" not in user["identifier"]:
+                return None
+            token = secrets.token_urlsafe(32)
+            expires_at = created_at + timedelta(minutes=max(5, valid_minutes))
+            self._connection.execute(
+                "UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL",
+                (isoformat(created_at), user["id"]),
+            )
+            self._connection.execute(
+                """INSERT INTO password_reset_tokens(token_hash,user_id,created_at,expires_at)
+                   VALUES(?,?,?,?)""",
+                (token_digest(token), user["id"], isoformat(created_at), isoformat(expires_at)),
+            )
+        return {"token": token, "identifier": user["identifier"], "expires_at": isoformat(expires_at)}
+
+    def reset_password(self, token: str, new_password: str) -> dict[str, Any] | None:
+        if not 8 <= len(new_password) <= 1024:
+            raise ValueError("Escolha uma senha de pelo menos 8 caracteres.")
+        changed_at = utc_now()
+        with self._org_transaction():
+            reset = self._connection.execute(
+                """SELECT r.user_id,u.* FROM password_reset_tokens r
+                   JOIN users u ON u.id=r.user_id
+                   WHERE r.token_hash=? AND r.used_at IS NULL AND r.expires_at>?""",
+                (token_digest(token), isoformat(changed_at)),
+            ).fetchone()
+            if not reset:
+                return None
+            salt = secrets.token_bytes(16)
+            self._connection.execute(
+                """UPDATE users SET password_hash=?,password_salt=?,password_iterations=?,updated_at=?
+                   WHERE id=?""",
+                (
+                    password_digest(new_password, salt), salt, PASSWORD_ITERATIONS,
+                    isoformat(changed_at), reset["user_id"],
+                ),
+            )
+            self._connection.execute(
+                "UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at IS NULL",
+                (isoformat(changed_at), reset["user_id"]),
+            )
+            self._connection.execute("DELETE FROM sessions WHERE user_id=?", (reset["user_id"],))
+            updated = self._connection.execute("SELECT * FROM users WHERE id=?", (reset["user_id"],)).fetchone()
+        return self._public_user(updated)
 
     def update_account(
         self,

@@ -93,6 +93,34 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(len(data["organizations"]), 1)
         self.assertFalse(data["can_create"])
 
+    def test_password_recovery_is_generic_single_use_and_logs_in(self):
+        existing = self.request(
+            "/api/auth/password-reset/request", "POST", {"identifier": "owner@example.com"},
+        )
+        missing = self.request(
+            "/api/auth/password-reset/request", "POST", {"identifier": "missing@example.com"},
+        )
+        self.assertEqual(existing[:2], (202, {"accepted": True}))
+        self.assertEqual(missing[:2], (202, {"accepted": True}))
+
+        reset = self.auth.create_password_reset("owner@example.com")
+        status, payload, headers = self.request(
+            "/api/auth/password-reset/confirm", "POST",
+            {"token": reset["token"], "new_password": "new-secure-password"},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["reset"])
+        self.assertIn(b"set-cookie", headers)
+        self.assertIsNone(self.auth.user_for_session(self.owner_token))
+        self.assertIsNotNone(self.auth.authenticate("owner@example.com", "new-secure-password"))
+        self.assertEqual(
+            self.request(
+                "/api/auth/password-reset/confirm", "POST",
+                {"token": reset["token"], "new_password": "another-secure-password"},
+            )[0],
+            404,
+        )
+
     def test_tenant_history_and_export_enforced_for_owner_of_both_orgs(self):
         job = self.jobs.create_job("private.csv", [], active_only=True, check_website=False, organization_id=self.org)
         status, data, _ = self.request("/api/jobs", token=self.owner_token, headers={"x-organization-id": str(self.other)})

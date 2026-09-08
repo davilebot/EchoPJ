@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111114">
   <title>Entrar — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260903-org-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260908-recovery-1">
 </head>
 <body>
   <main class="auth-shell">
@@ -26,10 +26,11 @@
         <label>Senha
           <input id="login-password" name="password" type="password" autocomplete="current-password" required>
         </label>
+        <div class="form-meta"><a class="text-link" href="/forgot-password">Esqueci minha senha</a></div>
         <p id="login-message" class="auth-message hidden" role="alert"></p>
         <button id="login-submit" type="submit">Entrar no EchoPJs</button>
       </form>
-      <p class="auth-footnote">Ainda não tem conta? Peça um convite ao administrador da sua organização. Para mudar seu e-mail ou sua senha, acesse “Minha conta” depois de entrar.</p>
+      <p class="auth-footnote">Ainda não tem conta? Peça um convite ao administrador da sua organização.</p>
     </section>
   </main>
   <script src="/static/login.js?v=20260903-org-1"></script>

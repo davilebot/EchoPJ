@@ -14,6 +14,15 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class PasswordResetRequest(BaseModel):
+    identifier: str = Field(min_length=1, max_length=254)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+    new_password: str = Field(min_length=8, max_length=1024)
+
+
 class OrganizationRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
