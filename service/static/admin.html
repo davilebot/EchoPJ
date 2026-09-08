@@ -6,20 +6,32 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260908-admin-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260908-funnel-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
     <section class="auth-card org-card admin-card" aria-labelledby="admin-title">
       <div class="auth-brand-row"><div class="auth-brand"><img src="/static/assets/echo-wordmark-light.png" alt="Echo"><span>PJs</span></div><a id="back-platform" href="/">Voltar à plataforma</a></div>
-      <div class="auth-heading admin-heading"><span class="eyebrow">OPERAÇÃO ECHOHUB</span><h1 id="admin-title">Administração do SaaS.</h1><p>Acompanhe as empresas clientes e ajuste planos ou créditos com registro no histórico.</p></div>
+      <div class="auth-heading admin-heading"><span class="eyebrow">OPERAÇÃO ECHOHUB</span><h1 id="admin-title">Administração do SaaS.</h1><p>Acompanhe aquisição, ativação e uso das empresas clientes. Ajustes de plano e créditos ficam registrados no histórico.</p></div>
       <p id="admin-message" class="auth-message hidden" role="status"></p>
       <section id="admin-metrics" class="admin-metrics" aria-label="Indicadores comerciais">
         <article><strong>—</strong><span>Empresas</span></article><article><strong>—</strong><span>Usuários</span></article><article><strong>—</strong><span>Aguardando e-mail</span></article><article><strong>—</strong><span>Créditos em saldo</span></article><article><strong>—</strong><span>CNPJs desbloqueados</span></article>
       </section>
+      <section class="admin-funnel" aria-labelledby="admin-funnel-title">
+        <div class="admin-funnel-header">
+          <div><span class="eyebrow">JORNADA DO PRODUTO</span><h2 id="admin-funnel-title">Do cadastro ao uso recorrente</h2><p class="muted">A EchoHub não entra nestes indicadores.</p></div>
+          <div class="admin-funnel-period"><strong id="admin-active-30">—</strong><span>ativas nos últimos 30 dias</span><small><b id="admin-new-30">—</b> novos cadastros no período</small></div>
+        </div>
+        <div id="admin-funnel-stages" class="admin-funnel-stages">
+          <article data-funnel="registered"><span>1 · Cadastradas</span><div><strong>—</strong><small>100%</small></div><p>Workspaces de clientes criados.</p><div class="admin-funnel-bar"><i></i></div></article>
+          <article data-funnel="activated"><span>2 · Ativadas</span><div><strong>—</strong><small>—</small></div><p>Primeira ação no produto ou na equipe.</p><div class="admin-funnel-bar"><i></i></div></article>
+          <article data-funnel="converted"><span>3 · Plano comercial</span><div><strong>—</strong><small>—</small></div><p>Saíram do teste para um plano comercial.</p><div class="admin-funnel-bar"><i></i></div></article>
+          <article data-funnel="retained"><span>4 · Uso recorrente</span><div><strong>—</strong><small>—</small></div><p>Atividade registrada em dois ou mais dias.</p><div class="admin-funnel-bar"><i></i></div></article>
+        </div>
+      </section>
       <section class="admin-catalog">
         <div class="admin-section-heading"><div><h2>Empresas clientes</h2><p class="muted">Busque pelo nome da empresa ou e-mail de qualquer integrante.</p></div><form id="admin-search-form" class="admin-search"><label><span class="sr-only">Buscar empresa ou usuário</span><input id="admin-search" type="search" maxlength="120" placeholder="Buscar empresa ou e-mail"></label><button type="submit">Buscar</button></form></div>
-        <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="7">Carregando empresas…</td></tr></tbody></table></div>
+        <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="9">Carregando empresas…</td></tr></tbody></table></div>
         <div class="admin-pagination"><span id="admin-range">—</span><div><button id="admin-previous" class="secondary-button" type="button">Anterior</button><button id="admin-next" class="secondary-button" type="button">Próxima</button></div></div>
       </section>
     </section>
@@ -44,6 +56,6 @@
       <section class="admin-ledger"><h3>Histórico comercial</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Variação</th><th>Saldo</th></tr></thead><tbody id="admin-ledger"></tbody></table></div></section>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260908-admin-1"></script>
+  <script src="/static/admin.js?v=20260908-funnel-1"></script>
 </body>
 </html>

@@ -97,6 +97,10 @@ estão em [`.env.example`](.env.example).
   empresas clientes, alterar plano e status, conceder ou descontar créditos e
   consultar o histórico de movimentações. A EchoHub permanece protegida como
   organização interna ativa com créditos ilimitados.
+- O painel interno mede cadastro, ativação, entrada em plano comercial, uso em
+  dias distintos e atividade nos últimos 30 dias. Eventos de produto guardam
+  apenas o tipo da ação, identificadores técnicos e contagens; filtros e dados
+  completos das empresas pesquisadas não são copiados para a telemetria.
 
 ### Validação
 

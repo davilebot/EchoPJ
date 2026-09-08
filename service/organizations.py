@@ -186,6 +186,25 @@ class OrganizationStoreMixin:
             "offset": offset,
         }
 
+    def admin_product_funnel_base(self):
+        """Return the organization facts needed to calculate the product funnel."""
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT o.id,o.created_at,
+                   (SELECT count(*) FROM memberships m
+                    WHERE m.organization_id=o.id) AS member_count,
+                   (SELECT count(*) FROM invitations i
+                    WHERE i.organization_id=o.id AND i.accepted_at IS NULL
+                      AND i.revoked_at IS NULL AND i.expires_at>?) AS pending_invitation_count,
+                   (SELECT max(a.created_at) FROM organization_audit a
+                    WHERE a.organization_id=o.id
+                      AND a.action IN ('invitation.created','invitation.accepted',
+                                       'member.role_changed','member.removed')) AS last_team_activity_at
+                   FROM organizations o ORDER BY o.id""",
+                (now_iso(),),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def admin_organization(self, organization_id):
         with self._lock:
             row = self._connection.execute(

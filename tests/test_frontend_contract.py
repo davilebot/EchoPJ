@@ -99,6 +99,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("/api/notifications/read-all", script)
         self.assertIn("data-notification-id", script)
 
+    def test_internal_admin_shows_product_funnel_and_customer_activity(self):
+        html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "auth.css").read_text(encoding="utf-8")
+        self.assertIn('id="admin-funnel-stages"', html)
+        self.assertIn('data-funnel="activated"', html)
+        self.assertIn("last_activity_at", script)
+        self.assertIn("renderFunnel(data.funnel)", script)
+        self.assertIn(".admin-funnel-stages", styles)
+
 
 if __name__ == "__main__":
     unittest.main()

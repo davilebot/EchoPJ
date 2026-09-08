@@ -1,7 +1,7 @@
 import base64
 import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from urllib.parse import quote
@@ -418,6 +418,14 @@ def verify_signup(payload: SignupVerificationRequest) -> Response:
         organization_id,
         initial_credits=settings.saas_trial_credits,
     )
+    saas_store.record_product_event(
+        organization_id,
+        user["id"],
+        "workspace.signup_verified",
+        subject_type="organization",
+        subject_id=str(organization_id),
+        deduplication_key=f"workspace.signup_verified:{organization_id}",
+    )
     token, expires_at = auth_store.create_session(user["id"])
     response = JSONResponse({"verified": True, "organization_id": organization_id})
     set_session_cookie(response, token, expires_at)
@@ -477,6 +485,14 @@ def create_organization(payload: OrganizationRequest, user: dict = Depends(requi
     org["billing"] = saas_store.ensure_organization(
         org["id"], initial_credits=settings.saas_trial_credits
     )
+    saas_store.record_product_event(
+        org["id"],
+        user["id"],
+        "workspace.created",
+        subject_type="organization",
+        subject_id=str(org["id"]),
+        deduplication_key=f"workspace.created:{org['id']}",
+    )
     invitation_rate_limiter.failed(key, monotonic())
     return org
 
@@ -509,6 +525,14 @@ def create_invitation(org_id: int, payload: InvitationRequest, user: dict = Depe
     if not invitation_rate_limiter.allowed(key, monotonic()):
         raise HTTPException(status_code=429, detail="Limite temporário de convites atingido. Tente mais tarde.")
     invite = auth_store.create_invitation(user["id"], org_id, payload.email, payload.role)
+    saas_store.record_product_event(
+        org_id,
+        user["id"],
+        "team.invitation_created",
+        subject_type="invitation",
+        subject_id=str(invite["id"]),
+        deduplication_key=f"team.invitation_created:{invite['id']}",
+    )
     invitation_rate_limiter.failed(key, monotonic())
     link = f"{settings.app_public_url.rstrip('/')}/invite#token={invite.pop('token')}"
     delivery = send_invitation(settings, email=invite["email"], organization_name=invite["organization_name"], link=link) if payload.send_email else "manual"
@@ -548,6 +572,14 @@ def accept_invitation(payload: InvitationAcceptRequest, request: Request) -> Res
         login_rate_limiter.failed(key, monotonic())
         raise
     login_rate_limiter.succeeded(key)
+    saas_store.record_product_event(
+        org_id,
+        user["id"],
+        "team.invitation_accepted",
+        subject_type="organization",
+        subject_id=str(org_id),
+        deduplication_key=f"team.invitation_accepted:{org_id}:{user['id']}",
+    )
     auth_store.delete_session(request.cookies.get(SESSION_COOKIE))
     token, expires = auth_store.create_session(user["id"])
     response = JSONResponse({"accepted": True, "organization_id": org_id})
@@ -571,6 +603,88 @@ def dashboard(user: dict = Depends(require_organization)) -> dict:
     return summary
 
 
+def _admin_product_report() -> tuple[dict, dict[int, dict]]:
+    """Join auth and SaaS facts only after internal-admin authorization."""
+    organizations = auth_store.admin_product_funnel_base()
+    for organization in organizations:
+        saas_store.ensure_organization(
+            organization["id"],
+            unlimited=organization["id"] == settings.saas_internal_organization_id,
+            initial_credits=settings.saas_trial_credits,
+        )
+    product_activity = saas_store.admin_product_activity()
+    customer_count = activated_count = converted_count = retained_count = 0
+    active_last_30_days = registrations_last_30_days = 0
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+    enriched: dict[int, dict] = {}
+
+    def recent(value: str | None) -> bool:
+        if not value:
+            return False
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed >= cutoff
+        except (TypeError, ValueError):
+            return False
+
+    for organization in organizations:
+        organization_id = organization["id"]
+        activity = product_activity.get(organization_id, {})
+        last_activity_at = max(
+            filter(None, (activity.get("last_activity_at"), organization.get("last_team_activity_at"))),
+            default=None,
+        )
+        activated = bool(
+            activity.get("action_count")
+            or organization["member_count"] > 1
+            or organization["pending_invitation_count"]
+        )
+        converted = activity.get("plan_code") not in {None, "internal", "trial"}
+        retained = int(activity.get("activity_days") or 0) >= 2
+        reached_value = bool(activity.get("unlocked_companies"))
+        stage = (
+            "converted" if converted else
+            "value" if reached_value else
+            "activated" if activated else
+            "registered"
+        )
+        enriched[organization_id] = {
+            **activity,
+            "activated": activated,
+            "converted": converted,
+            "retained": retained,
+            "reached_value": reached_value,
+            "stage": stage,
+            "last_activity_at": last_activity_at,
+        }
+        if organization_id == settings.saas_internal_organization_id:
+            continue
+        customer_count += 1
+        activated_count += int(activated)
+        converted_count += int(converted)
+        retained_count += int(retained)
+        active_last_30_days += int(recent(last_activity_at))
+        registrations_last_30_days += int(recent(organization["created_at"]))
+
+    def rate(value: int) -> int:
+        return round(100 * value / customer_count) if customer_count else 0
+
+    funnel = {
+        "registered_organizations": customer_count,
+        "activated_organizations": activated_count,
+        "converted_organizations": converted_count,
+        "retained_organizations": retained_count,
+        "active_last_30_days": active_last_30_days,
+        "registrations_last_30_days": registrations_last_30_days,
+        "activation_rate": rate(activated_count),
+        "conversion_rate": rate(converted_count),
+        "retention_rate": rate(retained_count),
+    }
+    return funnel, enriched
+
+
 @app.get("/api/admin/overview")
 def admin_overview(
     query: str = Query("", max_length=120),
@@ -578,6 +692,7 @@ def admin_overview(
     offset: int = Query(0, ge=0),
     user: dict = Depends(require_internal_admin),
 ) -> dict:
+    funnel, activity = _admin_product_report()
     catalog = auth_store.admin_organization_catalog(query, limit=limit, offset=offset)
     for organization in catalog["organizations"]:
         organization["billing"] = saas_store.ensure_organization(
@@ -588,7 +703,9 @@ def admin_overview(
         organization["unlocked_companies"] = saas_store.billing_summary(
             organization["id"], ledger_limit=0
         )["unlocked_companies"]
+        organization["activity"] = activity.get(organization["id"], {})
     catalog["metrics"] = saas_store.admin_metrics()
+    catalog["funnel"] = funnel
     return catalog
 
 
@@ -629,6 +746,8 @@ def admin_organization_detail(
         initial_credits=settings.saas_trial_credits,
     )
     organization["commercial"] = saas_store.billing_summary(organization_id, ledger_limit=50)
+    _, activity = _admin_product_report()
+    organization["activity"] = activity.get(organization_id, {})
     return organization
 
 
@@ -703,7 +822,7 @@ def record_saved_search_run(
     user: dict = Depends(require_organization),
 ) -> dict:
     return saas_store.record_saved_search_run(
-        user["organization_id"], search_id, payload.result_count
+        user["organization_id"], search_id, payload.result_count, actor_id=user["id"]
     )
 
 
@@ -795,15 +914,20 @@ def delete_company_list(list_id: str, user: dict = Depends(require_organization)
 
 
 @app.post("/api/matches/batch")
-def matches(payload: BatchRequest, _: dict = Depends(require_organization)) -> dict:
+def matches(payload: BatchRequest, user: dict = Depends(require_organization)) -> dict:
     if len(payload.items) > settings.max_batch_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_batch_size} itens")
     items = [item.model_dump() for item in payload.items]
-    return matching_service.match_items(
+    result = matching_service.match_items(
         items,
         active_only=payload.active_only,
         check_website=payload.check_website,
     )
+    saas_store.record_product_event(
+        user["organization_id"], user["id"], "match.executed",
+        metadata={"submitted": len(items)},
+    )
+    return result
 
 
 @app.post("/api/jobs")
@@ -818,6 +942,16 @@ def create_job(payload: JobRequest, user: dict = Depends(require_organization)) 
         check_website=payload.check_website,
         organization_id=user["organization_id"],
         created_by=user["id"],
+    )
+    saas_store.record_product_event(
+        user["organization_id"],
+        user["id"],
+        "job.created",
+        subject_type="job",
+        subject_id=job["id"],
+        metadata={"submitted": len(items)},
+        deduplication_key=f"job.created:{job['id']}",
+        occurred_at=job["created_at"],
     )
     job_runner.notify()
     return job
@@ -904,7 +1038,7 @@ def search_municipality_options(
 
 
 @app.post("/api/search")
-def search_companies(payload: CompanySearchRequest, _: dict = Depends(require_organization)) -> dict:
+def search_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
     try:
         results, capabilities, duration_ms, has_more = repository.search_companies(payload.model_dump())
     except SearchCapabilityUnavailable as error:
@@ -914,7 +1048,7 @@ def search_companies(payload: CompanySearchRequest, _: dict = Depends(require_or
             status_code=408,
             detail="A busca ficou ampla demais. Acrescente uma regiao, UF ou CNAE e tente novamente.",
         ) from error
-    return {
+    response = {
         "results": results,
         "returned": len(results),
         "limit": payload.limit,
@@ -923,6 +1057,13 @@ def search_companies(payload: CompanySearchRequest, _: dict = Depends(require_or
         "capabilities": capabilities.as_dict(),
         "timing_ms": duration_ms,
     }
+    saas_store.record_product_event(
+        user["organization_id"],
+        user["id"],
+        "search.executed",
+        metadata={"returned": len(results), "limit": payload.limit},
+    )
+    return response
 
 
 @app.get("/api/explorer/overview")
@@ -984,8 +1125,15 @@ def company_lookup_results(cnpjs: list[str]) -> dict:
 
 
 @app.post("/api/explorer/company-lookup")
-def explorer_company_lookup(payload: CompanyLookupRequest, _: dict = Depends(require_organization)) -> dict:
-    return company_lookup_results(payload.cnpjs)
+def explorer_company_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> dict:
+    result = company_lookup_results(payload.cnpjs)
+    saas_store.record_product_event(
+        user["organization_id"],
+        user["id"],
+        "company_lookup.executed",
+        metadata={"submitted": len(payload.cnpjs), "found": result["found"]},
+    )
+    return result
 
 
 @app.post("/api/exports/cnpj-lookup")

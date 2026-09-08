@@ -24,6 +24,10 @@ function statusLabel(value) {
   return { trialing: "Em teste", active: "Ativo", past_due: "Pagamento pendente", canceled: "Cancelado", suspended: "Suspenso" }[value] || value;
 }
 
+function stageLabel(value) {
+  return { internal: "EchoHub", registered: "Cadastro", activated: "Ativada", value: "Gerou valor", converted: "Cliente" }[value] || "Cadastro";
+}
+
 function notify(message, target = adminMessage, success = false) {
   target.textContent = message;
   target.dataset.type = success ? "success" : "";
@@ -48,12 +52,41 @@ function renderMetrics(data) {
   });
 }
 
+function renderFunnel(funnel) {
+  const stages = {
+    registered: [funnel.registered_organizations, 100],
+    activated: [funnel.activated_organizations, funnel.activation_rate],
+    converted: [funnel.converted_organizations, funnel.conversion_rate],
+    retained: [funnel.retained_organizations, funnel.retention_rate],
+  };
+  Object.entries(stages).forEach(([key, values]) => {
+    const card = document.querySelector(`[data-funnel="${key}"]`);
+    card.querySelector("strong").textContent = Number(values[0] || 0).toLocaleString("pt-BR");
+    card.querySelector("small").textContent = `${Number(values[1] || 0).toLocaleString("pt-BR")}%`;
+    card.querySelector(".admin-funnel-bar i").style.width = `${Math.max(0, Math.min(100, Number(values[1] || 0)))}%`;
+  });
+  document.querySelector("#admin-active-30").textContent = Number(funnel.active_last_30_days || 0).toLocaleString("pt-BR");
+  document.querySelector("#admin-new-30").textContent = Number(funnel.registrations_last_30_days || 0).toLocaleString("pt-BR");
+}
+
+function activitySummary(activity) {
+  const parts = [];
+  if (activity.search_count) parts.push(`${activity.search_count} busca${activity.search_count === 1 ? "" : "s"}`);
+  if (activity.saved_search_count) parts.push(`${activity.saved_search_count} salva${activity.saved_search_count === 1 ? "" : "s"}`);
+  if (activity.list_count) parts.push(`${activity.list_count} lista${activity.list_count === 1 ? "" : "s"}`);
+  if (activity.job_count) parts.push(`${activity.job_count} processamento${activity.job_count === 1 ? "" : "s"}`);
+  return parts.slice(0, 2).join(" · ") || "Ainda sem uso";
+}
+
 function renderOrganizations(data) {
   adminTotal = data.total;
   adminRows.innerHTML = data.organizations.length ? data.organizations.map((organization) => {
     const billing = organization.billing;
-    return `<tr><td><strong>${escapeHtml(organization.name)}</strong><small>#${organization.id} · ${formatDate(organization.created_at)}</small></td><td>${escapeHtml(organization.owner_email)}</td><td>${organization.member_count.toLocaleString("pt-BR")}</td><td>${escapeHtml(planLabel(billing.plan_code))}</td><td>${billing.unlimited_credits ? "Ilimitados" : Number(billing.credit_balance).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(billing.subscription_status)}">${escapeHtml(statusLabel(billing.subscription_status))}</span></td><td><button class="secondary-button admin-open" type="button" data-organization-id="${organization.id}">Abrir</button></td></tr>`;
-  }).join("") : `<tr><td colspan="7"><div class="admin-empty"><strong>Nenhuma empresa encontrada.</strong><span>Tente outro nome ou e-mail.</span></div></td></tr>`;
+    const activity = organization.activity || {};
+    const stage = billing.is_internal ? "internal" : activity.stage;
+    const activityDate = activity.last_activity_at ? formatDate(activity.last_activity_at) : "Sem atividade";
+    return `<tr><td><strong>${escapeHtml(organization.name)}</strong><small>#${organization.id} · ${formatDate(organization.created_at)}</small></td><td>${escapeHtml(organization.owner_email)}</td><td>${organization.member_count.toLocaleString("pt-BR")}</td><td><span class="admin-stage stage-${escapeHtml(stage)}">${escapeHtml(stageLabel(stage))}</span></td><td><strong>${activityDate}</strong><small>${escapeHtml(activitySummary(activity))}</small></td><td>${escapeHtml(planLabel(billing.plan_code))}</td><td>${billing.unlimited_credits ? "Ilimitados" : Number(billing.credit_balance).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(billing.subscription_status)}">${escapeHtml(statusLabel(billing.subscription_status))}</span></td><td><button class="secondary-button admin-open" type="button" data-organization-id="${organization.id}">Abrir</button></td></tr>`;
+  }).join("") : `<tr><td colspan="9"><div class="admin-empty"><strong>Nenhuma empresa encontrada.</strong><span>Tente outro nome ou e-mail.</span></div></td></tr>`;
   const start = data.total ? data.offset + 1 : 0;
   const end = Math.min(data.offset + data.organizations.length, data.total);
   document.querySelector("#admin-range").textContent = `${start}–${end} de ${data.total.toLocaleString("pt-BR")}`;
@@ -68,6 +101,7 @@ async function loadOrganizations() {
   try {
     const data = await adminFetch(`/api/admin/overview?query=${encodeURIComponent(query)}&limit=${pageSize}&offset=${adminOffset}`);
     renderMetrics(data);
+    renderFunnel(data.funnel);
     renderOrganizations(data);
   } catch (error) {
     adminRows.innerHTML = "";
@@ -77,9 +111,11 @@ async function loadOrganizations() {
 
 function renderOrganizationDetail(data) {
   const profile = data.commercial.profile;
+  const activity = data.activity || {};
   document.querySelector("#admin-organization-name").textContent = data.name;
-  document.querySelector("#admin-organization-meta").textContent = `${data.owner_email} · criada em ${formatDate(data.created_at)}`;
-  document.querySelector("#admin-detail-metrics").innerHTML = `<article><strong>${data.member_count.toLocaleString("pt-BR")}</strong><span>Pessoas</span></article><article><strong>${data.commercial.unlocked_companies.toLocaleString("pt-BR")}</strong><span>CNPJs desbloqueados</span></article><article><strong>${profile.unlimited_credits ? "Ilimitados" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Créditos</span></article>`;
+  const lastActivity = activity.last_activity_at ? ` · última atividade ${formatDate(activity.last_activity_at)}` : " · ainda sem atividade";
+  document.querySelector("#admin-organization-meta").textContent = `${data.owner_email} · criada em ${formatDate(data.created_at)}${lastActivity}`;
+  document.querySelector("#admin-detail-metrics").innerHTML = `<article><strong>${data.member_count.toLocaleString("pt-BR")}</strong><span>Pessoas</span></article><article><strong>${Number(activity.saved_search_count || 0).toLocaleString("pt-BR")}</strong><span>Buscas salvas</span></article><article><strong>${Number(activity.list_count || 0).toLocaleString("pt-BR")}</strong><span>Listas</span></article><article><strong>${Number(activity.job_count || 0).toLocaleString("pt-BR")}</strong><span>Processamentos</span></article><article><strong>${data.commercial.unlocked_companies.toLocaleString("pt-BR")}</strong><span>CNPJs desbloqueados</span></article><article><strong>${profile.unlimited_credits ? "Ilimitados" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Créditos</span></article>`;
   document.querySelector("#admin-plan").value = profile.plan_code;
   document.querySelector("#admin-status").value = profile.subscription_status;
   document.querySelector("#admin-unlimited").checked = profile.unlimited_credits;

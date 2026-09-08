@@ -161,6 +161,37 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(metrics["active_organizations"], 1)
         self.assertEqual(metrics["credits_available"], 10)
 
+    def test_product_activity_tracks_activation_and_distinct_usage_days(self):
+        self.store.ensure_organization(19, initial_credits=3)
+        self.store.record_product_event(
+            19, 31, "search.executed", metadata={"returned": 4},
+            occurred_at="2026-08-10T10:00:00+00:00",
+        )
+        self.store.record_product_event(
+            19, 31, "search.executed", metadata={"returned": 2},
+            occurred_at="2026-08-11T10:00:00+00:00",
+        )
+        saved = self.store.create_saved_search(19, 31, name="Clientes", filters={"limit": 10})
+        company_list = self.store.create_company_list(19, 31, name="Prioridade")
+        self.store.add_companies(19, company_list["id"], 31, [COMPANY_A])
+
+        activity = self.store.admin_product_activity()[19]
+        self.assertEqual(activity["search_count"], 2)
+        self.assertEqual(activity["saved_search_count"], 1)
+        self.assertEqual(activity["list_count"], 1)
+        self.assertEqual(activity["unlocked_companies"], 1)
+        self.assertGreaterEqual(activity["activity_days"], 3)
+        self.assertIsNotNone(activity["last_activity_at"])
+        self.assertEqual(self.store.saved_search(19, saved["id"])["name"], "Clientes")
+
+    def test_product_event_deduplication_is_scoped_by_organization(self):
+        self.store.ensure_organization(20)
+        self.store.ensure_organization(21)
+        self.assertTrue(self.store.record_product_event(20, 7, "job.created", deduplication_key="job:one"))
+        self.assertFalse(self.store.record_product_event(20, 7, "job.created", deduplication_key="job:one"))
+        self.assertTrue(self.store.record_product_event(21, 7, "job.created", deduplication_key="job:one"))
+        self.assertEqual(self.store.admin_product_activity()[20]["job_count"], 1)
+
     def test_notifications_are_user_scoped_idempotent_and_episode_based(self):
         self.store.ensure_organization(17, initial_credits=5)
         jobs = [{"id": "job-1", "filename": "clientes.csv", "status": "completed", "processed": 12}]

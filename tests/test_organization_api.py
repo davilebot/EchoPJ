@@ -152,6 +152,14 @@ class OrganizationAPITests(unittest.TestCase):
 
     def test_internal_admin_can_manage_commercial_profiles(self):
         headers = {"x-organization-id": str(self.org)}
+        self.saas.record_product_event(
+            self.other, self.owner["id"], "search.executed",
+            occurred_at="2026-08-10T10:00:00+00:00",
+        )
+        self.saas.record_product_event(
+            self.other, self.owner["id"], "search.executed",
+            occurred_at="2026-08-11T10:00:00+00:00",
+        )
         status, overview, _ = self.request(
             "/api/admin/overview", token=self.owner_token, headers=headers,
         )
@@ -159,6 +167,11 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(overview["total"], 2)
         self.assertEqual(overview["user_count"], 2)
         self.assertTrue(any(item["id"] == self.other for item in overview["organizations"]))
+        self.assertEqual(overview["funnel"]["registered_organizations"], 1)
+        self.assertEqual(overview["funnel"]["activated_organizations"], 1)
+        self.assertEqual(overview["funnel"]["retained_organizations"], 1)
+        other = next(item for item in overview["organizations"] if item["id"] == self.other)
+        self.assertEqual(other["activity"]["stage"], "activated")
 
         status, profile, _ = self.request(
             f"/api/admin/organizations/{self.other}/billing", "PATCH",
@@ -167,6 +180,10 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(profile["plan_code"], "growth")
+        detail = self.request(
+            f"/api/admin/organizations/{self.other}", token=self.owner_token, headers=headers,
+        )[1]
+        self.assertTrue(detail["activity"]["converted"])
         status, adjusted, _ = self.request(
             f"/api/admin/organizations/{self.other}/credits", "POST",
             {"amount": 8, "description": "Crédito comercial"}, self.owner_token, headers,

@@ -123,6 +123,22 @@ class SaaSStore:
                 updated_at TEXT NOT NULL,
                 PRIMARY KEY(organization_id, user_id, state_key)
             );
+            CREATE TABLE IF NOT EXISTS product_events (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                user_id INTEGER,
+                event_name TEXT NOT NULL,
+                subject_type TEXT,
+                subject_id TEXT,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                deduplication_key TEXT,
+                occurred_at TEXT NOT NULL,
+                UNIQUE(organization_id, deduplication_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_product_events_org_occurred
+                ON product_events(organization_id, occurred_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_product_events_name_occurred
+                ON product_events(event_name, occurred_at DESC);
         """)
         self._connection.commit()
 
@@ -172,6 +188,15 @@ class SaaSStore:
                        ) VALUES(?,?,?,?,?,?,?)""",
                     (organization_id, plan_code, "active", int(unlimited), balance, now, now),
                 )
+                self._insert_product_event(
+                    organization_id,
+                    None,
+                    "workspace.provisioned",
+                    subject_type="organization",
+                    subject_id=str(organization_id),
+                    deduplication_key=f"workspace.provisioned:{organization_id}",
+                    occurred_at=now,
+                )
                 if balance:
                     self._insert_ledger(
                         organization_id,
@@ -217,6 +242,46 @@ class SaaSStore:
                 description, reference_id, idempotency_key, actor_id, utc_now(),
             ),
         )
+
+    def _insert_product_event(
+        self,
+        organization_id: int,
+        user_id: int | None,
+        event_name: str,
+        *,
+        subject_type: str | None = None,
+        subject_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        deduplication_key: str | None = None,
+        occurred_at: str | None = None,
+    ) -> bool:
+        """Insert an append-only product event while the caller owns a transaction."""
+        cursor = self._connection.execute(
+            """INSERT OR IGNORE INTO product_events(
+                 id,organization_id,user_id,event_name,subject_type,subject_id,
+                 metadata_json,deduplication_key,occurred_at
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), organization_id, user_id, event_name,
+                subject_type, subject_id,
+                json.dumps(metadata or {}, ensure_ascii=False, sort_keys=True),
+                deduplication_key, occurred_at or utc_now(),
+            ),
+        )
+        return bool(cursor.rowcount)
+
+    def record_product_event(
+        self,
+        organization_id: int,
+        user_id: int | None,
+        event_name: str,
+        **kwargs: Any,
+    ) -> bool:
+        """Record a meaningful customer action for activation and retention analysis."""
+        with self._lock, self._connection:
+            return self._insert_product_event(
+                organization_id, user_id, event_name, **kwargs
+            )
 
     def _unlocked_cnpjs(self, organization_id: int, cnpjs: list[str]) -> set[str]:
         unlocked: set[str] = set()
@@ -317,6 +382,19 @@ class SaaSStore:
             self._connection.executemany(
                 "INSERT INTO company_unlocks(organization_id,cnpj,unlocked_by,unlocked_at) VALUES(?,?,?,?)",
                 [(organization_id, cnpj, actor_id, now) for cnpj in new_unlocks],
+            )
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "companies.exported",
+                subject_type=kind,
+                subject_id=reference_id,
+                metadata={
+                    "requested": len(unique),
+                    "newly_unlocked": len(new_unlocks),
+                    "credits_spent": credits_spent,
+                },
+                occurred_at=now,
             )
         return {
             "unlocked": len(new_unlocks),
@@ -422,6 +500,58 @@ class SaaSStore:
             "credits_available": row["credits_available"],
             "unlocked_companies": unlocked,
         }
+
+    def admin_product_activity(self) -> dict[int, dict[str, Any]]:
+        """Return cross-tenant product signals for authorized internal reporting."""
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT p.*,
+                   (SELECT count(*) FROM saved_searches s
+                    WHERE s.organization_id=p.organization_id) AS saved_search_count,
+                   (SELECT count(*) FROM company_lists l
+                    WHERE l.organization_id=p.organization_id) AS list_count,
+                   (SELECT count(*) FROM company_unlocks u
+                    WHERE u.organization_id=p.organization_id) AS unlocked_companies,
+                   (SELECT count(*) FROM product_events e
+                    WHERE e.organization_id=p.organization_id
+                      AND e.event_name='search.executed') AS search_count,
+                   (SELECT count(*) FROM product_events e
+                    WHERE e.organization_id=p.organization_id
+                      AND e.event_name='job.created') AS job_count,
+                   (SELECT count(*) FROM product_events e
+                    WHERE e.organization_id=p.organization_id
+                      AND e.event_name LIKE 'team.invitation%') AS invitation_actions
+                   FROM organization_profiles p"""
+            ).fetchall()
+            activity_rows = self._connection.execute(
+                """WITH activity(organization_id,occurred_at) AS (
+                       SELECT organization_id,occurred_at FROM product_events
+                        WHERE event_name NOT LIKE 'workspace.%'
+                       UNION ALL SELECT organization_id,created_at FROM saved_searches
+                       UNION ALL SELECT organization_id,last_run_at FROM saved_searches
+                        WHERE last_run_at IS NOT NULL
+                       UNION ALL SELECT organization_id,created_at FROM company_lists
+                       UNION ALL SELECT organization_id,added_at FROM company_list_items
+                       UNION ALL SELECT organization_id,unlocked_at FROM company_unlocks
+                   )
+                   SELECT organization_id,count(*) AS action_count,
+                          count(DISTINCT substr(occurred_at,1,10)) AS activity_days,
+                          max(occurred_at) AS last_activity_at
+                   FROM activity GROUP BY organization_id"""
+            ).fetchall()
+        activity = {row["organization_id"]: dict(row) for row in activity_rows}
+        result: dict[int, dict[str, Any]] = {}
+        for row in rows:
+            current = dict(row)
+            organization_id = current.pop("organization_id")
+            current["unlimited_credits"] = bool(current["unlimited_credits"])
+            current.update(activity.get(organization_id, {
+                "action_count": 0,
+                "activity_days": 0,
+                "last_activity_at": None,
+            }))
+            result[organization_id] = current
+        return result
 
     def update_billing_profile(
         self,
@@ -660,6 +790,16 @@ class SaaSStore:
                     now if result_count is not None else None, now, now,
                 ),
             )
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "saved_search.created",
+                subject_type="saved_search",
+                subject_id=search_id,
+                metadata={"has_result_count": result_count is not None},
+                deduplication_key=f"saved_search.created:{search_id}",
+                occurred_at=now,
+            )
             row = self._connection.execute("SELECT * FROM saved_searches WHERE id=?", (search_id,)).fetchone()
         return self._saved_search(row)
 
@@ -679,7 +819,14 @@ class SaaSStore:
             ).fetchone()
         return self._saved_search(row) if row else None
 
-    def record_saved_search_run(self, organization_id: int, search_id: str, result_count: int) -> dict[str, Any]:
+    def record_saved_search_run(
+        self,
+        organization_id: int,
+        search_id: str,
+        result_count: int,
+        *,
+        actor_id: int | None = None,
+    ) -> dict[str, Any]:
         now = utc_now()
         with self._lock, self._connection:
             cursor = self._connection.execute(
@@ -689,6 +836,15 @@ class SaaSStore:
             )
             if not cursor.rowcount:
                 raise SaaSError("Busca salva não encontrada.", 404)
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "saved_search.executed",
+                subject_type="saved_search",
+                subject_id=search_id,
+                metadata={"result_count": result_count},
+                occurred_at=now,
+            )
             row = self._connection.execute("SELECT * FROM saved_searches WHERE id=?", (search_id,)).fetchone()
         return self._saved_search(row)
 
@@ -720,6 +876,15 @@ class SaaSStore:
                      id,organization_id,created_by,name,description,created_at,updated_at
                    ) VALUES(?,?,?,?,?,?,?)""",
                 (list_id, organization_id, actor_id, name, description, now, now),
+            )
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "company_list.created",
+                subject_type="company_list",
+                subject_id=list_id,
+                deduplication_key=f"company_list.created:{list_id}",
+                occurred_at=now,
             )
         return self.company_list(organization_id, list_id)
 
@@ -834,6 +999,20 @@ class SaaSStore:
                 (list_id,),
             ).fetchone()[0]
             self._connection.execute("UPDATE company_lists SET updated_at=? WHERE id=?", (now, list_id))
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "company_list.companies_added",
+                subject_type="company_list",
+                subject_id=list_id,
+                metadata={
+                    "submitted": len(unique),
+                    "added": after - before,
+                    "newly_unlocked": len(new_unlocks),
+                    "credits_spent": credits_spent,
+                },
+                occurred_at=now,
+            )
         return {
             "list_id": list_id,
             "added": after - before,

@@ -63,6 +63,10 @@ class OrganizationTests(unittest.TestCase):
         summary = self.store.organization_activation_summary(self.org)
         self.assertEqual(summary["member_count"], 2)
         self.assertEqual(summary["pending_invitation_count"], 0)
+        funnel = self.store.admin_product_funnel_base()
+        self.assertEqual(funnel[0]["id"], self.org)
+        self.assertEqual(funnel[0]["member_count"], 2)
+        self.assertIsNotNone(funnel[0]["last_team_activity_at"])
 
     def test_invite_is_email_bound_one_time_and_only_hash_is_stored(self):
         invite = self.store.create_invitation(self.owner, self.org, "New@Example.com", "member")
