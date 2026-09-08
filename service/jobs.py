@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+class JobCapacityError(RuntimeError):
+    pass
+
+
 COMPANY_EXPORT_HEADERS = [
     "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação",
     "Data Situação", "Data Abertura", "Porte", "Capital Social",
@@ -190,10 +194,20 @@ class JobStore:
         check_website: bool,
         organization_id: int | None = None,
         created_by: int | None = None,
+        max_active_jobs: int | None = None,
     ) -> dict[str, Any]:
         job_id = str(uuid.uuid4())
         created_at = utc_now()
         with self._lock, self._connection:
+            if organization_id is not None and max_active_jobs is not None:
+                active_jobs = self._connection.execute(
+                    "SELECT count(*) FROM jobs WHERE organization_id=? AND status IN ('queued','running')",
+                    (organization_id,),
+                ).fetchone()[0]
+                if active_jobs >= max_active_jobs:
+                    raise JobCapacityError(
+                        f"A organização já possui {active_jobs} processamentos em andamento."
+                    )
             self._connection.execute(
                 """INSERT INTO jobs(
                      id,filename,status,total,active_only,check_website,created_at,organization_id,created_by

@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from service.auth import AuthStore
 from service.jobs import JobStore
+from service.limits import SlidingWindowRateLimiter
 from service.saas import SaaSStore
 
 
@@ -51,7 +52,7 @@ class OrganizationAPITests(unittest.TestCase):
         invite = self.auth.create_invitation(self.owner["id"], self.org, "member@example.com", "member")
         self.member = self.auth.accept_invitation(invite["token"], "member-password")[0]
         self.member_token = self.auth.create_session(self.member["id"])[0]
-        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main.job_runner, "notify")]
+        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main, "heavy_rate_limiter", SlidingWindowRateLimiter(requests=1000)), patch.object(self.main.job_runner, "notify")]
         for mock in self.patches: mock.start()
 
     def tearDown(self):
@@ -273,6 +274,36 @@ class OrganizationAPITests(unittest.TestCase):
         secret = "do-not-echo-this-secret"
         status, payload, _ = self.request("/api/invitations/accept", "POST", {"token": secret, "password": secret})
         self.assertEqual(status, 422); self.assertNotIn(secret, str(payload))
+
+    def test_large_payload_heavy_rate_and_job_queue_are_bounded_per_org(self):
+        with patch.object(self.main.settings, "saas_max_request_bytes", 20):
+            status, payload, _ = self.request(
+                "/api/search", "POST", {"limit": 1}, self.owner_token,
+                {"x-organization-id": str(self.org), "content-length": "21"},
+            )
+        self.assertEqual(status, 413)
+        self.assertIn("limite seguro", payload["detail"])
+
+        limiter = SlidingWindowRateLimiter(requests=2, window_seconds=60)
+        self.main.repository.companies_by_cnpjs.return_value = {}
+        with patch.object(self.main, "heavy_rate_limiter", limiter):
+            headers = {"x-organization-id": str(self.org)}
+            payload = {"cnpjs": ["11222333000181"]}
+            self.assertEqual(self.request("/api/explorer/company-lookup", "POST", payload, self.owner_token, headers)[0], 200)
+            self.assertEqual(self.request("/api/explorer/company-lookup", "POST", payload, self.owner_token, headers)[0], 200)
+            status, blocked, response_headers = self.request("/api/explorer/company-lookup", "POST", payload, self.owner_token, headers)
+        self.assertEqual(status, 429)
+        self.assertIn("Muitas operações", blocked["detail"])
+        self.assertIn(b"retry-after", response_headers)
+
+        job_payload = {"filename": "test.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}], "check_website": False}
+        with patch.object(self.main.settings, "saas_max_active_jobs_per_organization", 1):
+            headers = {"x-organization-id": str(self.other)}
+            self.assertEqual(self.request("/api/jobs", "POST", job_payload, self.owner_token, headers)[0], 200)
+            status, blocked, response_headers = self.request("/api/jobs", "POST", job_payload, self.owner_token, headers)
+        self.assertEqual(status, 429)
+        self.assertIn("processamentos em andamento", blocked["detail"])
+        self.assertEqual(response_headers[b"retry-after"], b"30")
 
     def test_admin_pages_and_membership_free_invite_page(self):
         self.assertEqual(self.request("/organizations")[0], 303)

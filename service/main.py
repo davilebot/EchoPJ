@@ -14,7 +14,8 @@ from psycopg.errors import QueryCanceled
 
 from .auth import AuthStore, LoginRateLimiter, normalize_identifier, token_digest
 from .config import get_settings
-from .jobs import JobRunner, JobStore, export_companies_csv
+from .jobs import JobCapacityError, JobRunner, JobStore, export_companies_csv
+from .limits import SlidingWindowRateLimiter
 from .matching import MatchingService
 from .models import (
     AccountUpdateRequest,
@@ -85,6 +86,10 @@ invitation_rate_limiter = LoginRateLimiter(attempts=20, window_seconds=3600)
 password_reset_request_rate_limiter = LoginRateLimiter(attempts=5, window_seconds=3600)
 password_reset_confirm_rate_limiter = LoginRateLimiter(attempts=10, window_seconds=15 * 60)
 signup_rate_limiter = LoginRateLimiter(attempts=5, window_seconds=3600)
+heavy_rate_limiter = SlidingWindowRateLimiter(
+    requests=settings.saas_heavy_requests_per_minute,
+    window_seconds=60,
+)
 SESSION_COOKIE = "echopjs_session"
 
 
@@ -124,6 +129,16 @@ async def validation_error_handler(request: Request, error: RequestValidationErr
 
 @app.middleware("http")
 async def prevent_stale_application_state(request, call_next):
+    if request.method in {"POST", "PUT", "PATCH"}:
+        try:
+            content_length = int(request.headers.get("content-length", "0"))
+        except ValueError:
+            content_length = 0
+        if content_length > settings.saas_max_request_bytes:
+            return JSONResponse(
+                {"detail": "O arquivo ou conjunto enviado excede o limite seguro desta operação."},
+                status_code=413,
+            )
     if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
         origin = request.headers.get("origin")
         allowed_origins = {settings.app_public_url.rstrip("/"), str(request.base_url).rstrip("/")}
@@ -213,6 +228,17 @@ def require_internal_admin(user: dict = Depends(require_organization)) -> dict:
     if not user["billing"]["is_internal"] or user["organization_role"] != "admin":
         raise HTTPException(status_code=403, detail="Acesso disponível somente para administradores da EchoHub.")
     return user
+
+
+def enforce_heavy_rate_limit(user: dict, operation: str) -> None:
+    decision = heavy_rate_limiter.consume(f"{user['organization_id']}:{operation}")
+    if decision.allowed:
+        return
+    raise HTTPException(
+        status_code=429,
+        detail="Muitas operações deste tipo em sequência. Aguarde alguns segundos e tente novamente.",
+        headers={"Retry-After": str(decision.retry_after)},
+    )
 
 
 def page_response(request: Request, filename: str, *, next_path: str) -> Response:
@@ -867,6 +893,7 @@ def add_companies_to_list(
     payload: CompanySelectionRequest,
     user: dict = Depends(require_organization),
 ) -> dict:
+    enforce_heavy_rate_limit(user, "company-data")
     found = repository.companies_by_cnpjs(payload.cnpjs)
     companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
     if len(companies) != len(payload.cnpjs):
@@ -878,6 +905,7 @@ def add_companies_to_list(
 
 @app.post("/api/exports/companies")
 def export_companies(payload: CompanySelectionRequest, user: dict = Depends(require_organization)) -> Response:
+    enforce_heavy_rate_limit(user, "exports")
     found = repository.companies_by_cnpjs(payload.cnpjs)
     companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
     if len(companies) != len(payload.cnpjs):
@@ -920,6 +948,7 @@ def delete_company_list(list_id: str, user: dict = Depends(require_organization)
 
 @app.post("/api/matches/batch")
 def matches(payload: BatchRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "matching")
     if len(payload.items) > settings.max_batch_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_batch_size} itens")
     items = [item.model_dump() for item in payload.items]
@@ -937,17 +966,26 @@ def matches(payload: BatchRequest, user: dict = Depends(require_organization)) -
 
 @app.post("/api/jobs")
 def create_job(payload: JobRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "job-creation")
     if len(payload.items) > settings.max_job_size:
         raise HTTPException(status_code=422, detail=f"maximo de {settings.max_job_size} itens")
     items = [item.model_dump() for item in payload.items]
-    job = job_store.create_job(
-        payload.filename,
-        items,
-        active_only=payload.active_only,
-        check_website=payload.check_website,
-        organization_id=user["organization_id"],
-        created_by=user["id"],
-    )
+    try:
+        job = job_store.create_job(
+            payload.filename,
+            items,
+            active_only=payload.active_only,
+            check_website=payload.check_website,
+            organization_id=user["organization_id"],
+            created_by=user["id"],
+            max_active_jobs=settings.saas_max_active_jobs_per_organization,
+        )
+    except JobCapacityError as error:
+        raise HTTPException(
+            status_code=429,
+            detail=f"{error} Aguarde a conclusão antes de enviar outro arquivo.",
+            headers={"Retry-After": "30"},
+        ) from error
     saas_store.record_product_event(
         user["organization_id"],
         user["id"],
@@ -1044,6 +1082,7 @@ def search_municipality_options(
 
 @app.post("/api/search")
 def search_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "search")
     try:
         results, capabilities, duration_ms, has_more = repository.search_companies(payload.model_dump())
     except SearchCapabilityUnavailable as error:
@@ -1131,6 +1170,7 @@ def company_lookup_results(cnpjs: list[str]) -> dict:
 
 @app.post("/api/explorer/company-lookup")
 def explorer_company_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "company-data")
     result = company_lookup_results(payload.cnpjs)
     saas_store.record_product_event(
         user["organization_id"],
@@ -1143,6 +1183,7 @@ def explorer_company_lookup(payload: CompanyLookupRequest, user: dict = Depends(
 
 @app.post("/api/exports/cnpj-lookup")
 def export_cnpj_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> Response:
+    enforce_heavy_rate_limit(user, "exports")
     lookup = company_lookup_results(payload.cnpjs)
     found_cnpjs = [item["company"]["cnpj"] for item in lookup["results"] if item["company"]]
     companies = [item["company"] or {} for item in lookup["results"]]

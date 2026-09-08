@@ -57,7 +57,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 ## Entrega 4 — produto comercial maduro
 
 - permissões granulares além de administrador e membro;
-- limites de uso e proteção contra abuso por organização;
+- [x] limites seguros de requisições pesadas, tamanho de payload e processamentos ativos por organização;
 - termos de uso, política de privacidade, retenção e exclusão de dados;
 - observabilidade, alertas, backups testados e plano de recuperação;
 - testes de carga, metas de disponibilidade e atendimento;

@@ -107,6 +107,9 @@ estão em [`.env.example`](.env.example).
 - “Ajuda e suporte” reúne guias pesquisáveis, atalhos que abrem a ferramenta no
   workspace atual e um diagnóstico copiável com organização, plano, saldo e versão
   da base. O diagnóstico não inclui senha, sessão, filtros ou empresas pesquisadas.
+- Operações pesadas possuem limite por organização, arquivos excessivos são recusados
+  antes do processamento e cada workspace tem um teto de jobs simultâneos. Os valores
+  podem ser ajustados por ambiente sem alterar os planos comerciais.
 
 ### Validação
 

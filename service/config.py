@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     saas_self_signup_enabled: bool = False
     saas_internal_organization_id: int = 1
     saas_internal_organization_name: str = "EchoHub"
+    saas_heavy_requests_per_minute: int = 30
+    saas_max_active_jobs_per_organization: int = 5
+    saas_max_request_bytes: int = 16_777_216
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

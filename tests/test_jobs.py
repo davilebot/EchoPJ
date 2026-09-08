@@ -5,7 +5,7 @@ import time
 import unittest
 from pathlib import Path
 
-from service.jobs import JobRunner, JobStore, export_companies_csv
+from service.jobs import JobCapacityError, JobRunner, JobStore, export_companies_csv
 
 
 class JobTests(unittest.TestCase):
@@ -148,6 +148,25 @@ class JobTests(unittest.TestCase):
             self.assertIsNone(store.selected_cnpjs(job["id"], organization_id=11))
             self.assertEqual(store.active_job_count(organization_id=10), 1)
             self.assertEqual(store.active_job_count(organization_id=11), 0)
+            store.close()
+
+    def test_active_job_cap_is_atomic_per_organization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = JobStore(str(Path(directory) / "jobs.sqlite"))
+            store.create_job(
+                "first.csv", [], active_only=True, check_website=False,
+                organization_id=10, max_active_jobs=1,
+            )
+            with self.assertRaises(JobCapacityError):
+                store.create_job(
+                    "second.csv", [], active_only=True, check_website=False,
+                    organization_id=10, max_active_jobs=1,
+                )
+            other = store.create_job(
+                "other.csv", [], active_only=True, check_website=False,
+                organization_id=11, max_active_jobs=1,
+            )
+            self.assertEqual(other["organization_id"], 11)
             store.close()
 
 
