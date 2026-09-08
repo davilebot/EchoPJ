@@ -84,6 +84,34 @@ def company_export_values(company: dict[str, Any], max_partners: int) -> list[An
     return values
 
 
+def csv_safe_value(value: Any) -> Any:
+    """Prevent spreadsheet applications from executing exported text as formulas."""
+    if not isinstance(value, str):
+        return value
+    if value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+def export_companies_csv(
+    companies: list[dict[str, Any]],
+    *,
+    leading_headers: list[str] | None = None,
+    leading_rows: list[list[Any]] | None = None,
+) -> bytes:
+    leading_headers = leading_headers or []
+    leading_rows = leading_rows or [[] for _ in companies]
+    if len(leading_rows) != len(companies):
+        raise ValueError("leading_rows must have one entry per company")
+    max_partners = max((len(company.get("partners") or []) for company in companies), default=0)
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow([*leading_headers, *COMPANY_EXPORT_HEADERS, *partner_export_headers(max_partners)])
+    for company, leading in zip(companies, leading_rows):
+        writer.writerow([csv_safe_value(value) for value in [*leading, *company_export_values(company, max_partners)]])
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -187,6 +215,13 @@ class JobStore:
                 "SELECT * FROM jobs WHERE organization_id IS ? ORDER BY created_at DESC LIMIT ?", (organization_id, limit)
             ).fetchall()
         return [self._job(row) for row in rows]
+
+    def active_job_count(self, *, organization_id: int | None = None) -> int:
+        with self._lock:
+            return self._connection.execute(
+                "SELECT count(*) FROM jobs WHERE organization_id IS ? AND status IN ('queued','running')",
+                (organization_id,),
+            ).fetchone()[0]
 
     def get_job(self, job_id: str, *, organization_id: int | None = None) -> dict[str, Any] | None:
         with self._lock:
@@ -309,25 +344,41 @@ class JobStore:
         audit_headers = ["Matcher Status", "Score", "Confiança", "Erro"]
         output = io.StringIO(newline="")
         writer = csv.writer(output)
-        writer.writerow([
+        writer.writerow([csv_safe_value(value) for value in [
             *source_headers,
             *audit_headers,
             *COMPANY_EXPORT_HEADERS,
             *partner_export_headers(max_partners),
-        ])
+        ]])
         for item, source, response, item_status, error in parsed:
             result = response["results"][0] if response else {}
             selected = result.get("selected") or {}
             company = companies.get(selected.get("cnpj")) or selected
-            writer.writerow([
+            writer.writerow([csv_safe_value(value) for value in [
                 *[source.get(header, "") for header in source_headers],
                 result.get("status", item_status),
                 selected.get("score", ""),
                 result.get("confidence", ""),
                 error or "",
                 *company_export_values(company, max_partners),
-            ])
+            ]])
         return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+    def selected_cnpjs(self, job_id: str, *, organization_id: int | None = None) -> list[str] | None:
+        if not self.get_job(job_id, organization_id=organization_id):
+            return None
+        with self._lock:
+            rows = self._connection.execute(
+                "SELECT result_json FROM job_items WHERE job_id=? AND result_json IS NOT NULL ORDER BY position",
+                (job_id,),
+            ).fetchall()
+        selected: list[str] = []
+        for row in rows:
+            response = json.loads(row["result_json"])
+            company = response["results"][0].get("selected") or {}
+            if company.get("cnpj") and company["cnpj"] not in selected:
+                selected.append(company["cnpj"])
+        return selected
 
 
 class JobRunner:

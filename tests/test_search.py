@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import ValidationError
 
-from service.models import CompanyLookupRequest, CompanySearchRequest
+from service.models import CompanyLookupRequest, CompanySearchRequest, CompanySelectionRequest
 from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 from service.search import (
     SearchCapabilities,
@@ -13,6 +13,10 @@ from service.search import (
 
 
 class SearchModelTests(unittest.TestCase):
+    def test_company_selection_accepts_future_alphanumeric_cnpjs(self):
+        request = CompanySelectionRequest(cnpjs=["12.ABC.678/00D1-95", "12ABC67800D195"])
+        self.assertEqual(request.cnpjs, ["12ABC67800D195"])
+
     def test_normalizes_filters(self):
         request = CompanySearchRequest(
             ufs=["sp", "SP"],

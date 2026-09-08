@@ -172,8 +172,11 @@ class OrganizationAPITests(unittest.TestCase):
             {"cnpj": "11222333000181", "legal_name": "Empresa A"},
             {"cnpj": "19131243000197", "legal_name": "Empresa B"},
         ]
+        self.main.repository.companies_by_cnpjs.return_value = {
+            company["cnpj"]: company for company in companies
+        }
         status, result, _ = self.request(
-            f"/api/company-lists/{company_list['id']}/companies", "POST", {"companies": companies},
+            f"/api/company-lists/{company_list['id']}/companies", "POST", {"cnpjs": [company["cnpj"] for company in companies]},
             self.owner_token, {"x-organization-id": str(self.other)},
         )
         self.assertEqual(status, 200)
@@ -187,6 +190,47 @@ class OrganizationAPITests(unittest.TestCase):
             self.request(f"/api/company-lists/{company_list['id']}", token=self.owner_token, headers={"x-organization-id": str(self.org)})[0],
             404,
         )
+
+    def test_server_exports_estimate_and_charge_each_company_only_once(self):
+        companies = {
+            "11222333000181": {"cnpj": "11222333000181", "legal_name": "Empresa A", "partners": []},
+            "19131243000197": {"cnpj": "19131243000197", "legal_name": "Empresa B", "partners": []},
+        }
+        self.main.repository.companies_by_cnpjs.side_effect = lambda cnpjs: {
+            cnpj: companies[cnpj] for cnpj in cnpjs if cnpj in companies
+        }
+        headers = {"x-organization-id": str(self.other)}
+        selection = {"cnpjs": list(companies)}
+        status, estimate, _ = self.request("/api/credits/estimate", "POST", selection, self.owner_token, headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(estimate["credits_required"], 2)
+        self.assertTrue(estimate["can_complete"])
+
+        status, csv_content, response_headers = self.request("/api/exports/companies", "POST", selection, self.owner_token, headers)
+        self.assertEqual(status, 200)
+        self.assertIn("Empresa A", csv_content)
+        self.assertEqual(response_headers[b"x-credits-spent"], b"2")
+        self.assertEqual(response_headers[b"x-credit-balance"], b"0")
+
+        status, _, response_headers = self.request("/api/exports/companies", "POST", selection, self.owner_token, headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(response_headers[b"x-credits-spent"], b"0")
+        self.assertEqual(self.request("/api/credits/estimate", "POST", selection, self.owner_token, headers)[1]["credits_required"], 0)
+
+    def test_dashboard_aggregates_only_the_active_organization(self):
+        company_list = self.saas.create_company_list(self.other, self.owner["id"], name="Prospects")
+        self.saas.create_saved_search(self.other, self.owner["id"], name="SP", filters={"ufs": ["SP"]})
+        self.saas.add_companies(self.other, company_list["id"], self.owner["id"], [{"cnpj": "11222333000181", "legal_name": "Empresa A"}])
+        self.jobs.create_job("running.csv", [], active_only=True, check_website=False, organization_id=self.other)
+        status, dashboard, _ = self.request(
+            "/api/dashboard", token=self.owner_token, headers={"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(dashboard["list_count"], 1)
+        self.assertEqual(dashboard["saved_search_count"], 1)
+        self.assertEqual(dashboard["unlocked_companies"], 1)
+        self.assertEqual(dashboard["active_jobs"], 1)
+        self.assertEqual(dashboard["recent_lists"][0]["name"], "Prospects")
 
     def test_database_schema_is_internal_only(self):
         self.main.repository.database_schema.return_value = {"relations": []}

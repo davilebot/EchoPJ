@@ -14,7 +14,7 @@ from psycopg.errors import QueryCanceled
 
 from .auth import AuthStore, LoginRateLimiter, normalize_identifier
 from .config import get_settings
-from .jobs import JobRunner, JobStore
+from .jobs import JobRunner, JobStore, export_companies_csv
 from .matching import MatchingService
 from .models import (
     AccountUpdateRequest,
@@ -28,8 +28,8 @@ from .models import (
     InvitationRequest,
     InvitationTokenRequest,
     InvitationAcceptRequest,
-    CompanyListItemsRequest,
     CompanyListRequest,
+    CompanySelectionRequest,
     SavedSearchRequest,
     SavedSearchRunRequest,
     VALID_UFS,
@@ -406,6 +406,20 @@ def billing_summary(user: dict = Depends(require_organization)) -> dict:
     return saas_store.billing_summary(user["organization_id"])
 
 
+@app.get("/api/dashboard")
+def dashboard(user: dict = Depends(require_organization)) -> dict:
+    summary = saas_store.dashboard_summary(user["organization_id"])
+    jobs = job_store.list_jobs(limit=5, organization_id=user["organization_id"])
+    summary["recent_jobs"] = jobs
+    summary["active_jobs"] = job_store.active_job_count(organization_id=user["organization_id"])
+    return summary
+
+
+@app.post("/api/credits/estimate")
+def estimate_credits(payload: CompanySelectionRequest, user: dict = Depends(require_organization)) -> dict:
+    return saas_store.credit_estimate(user["organization_id"], payload.cnpjs)
+
+
 @app.get("/api/saved-searches")
 def list_saved_searches(user: dict = Depends(require_organization)) -> dict:
     return {"saved_searches": saas_store.list_saved_searches(user["organization_id"])}
@@ -474,11 +488,38 @@ def get_company_list(list_id: str, user: dict = Depends(require_organization)) -
 @app.post("/api/company-lists/{list_id}/companies")
 def add_companies_to_list(
     list_id: str,
-    payload: CompanyListItemsRequest,
+    payload: CompanySelectionRequest,
     user: dict = Depends(require_organization),
 ) -> dict:
+    found = repository.companies_by_cnpjs(payload.cnpjs)
+    companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
+    if len(companies) != len(payload.cnpjs):
+        raise HTTPException(status_code=409, detail="Uma ou mais empresas não estão disponíveis na versão atual da Receita.")
     return saas_store.add_companies(
-        user["organization_id"], list_id, user["id"], payload.companies
+        user["organization_id"], list_id, user["id"], companies
+    )
+
+
+@app.post("/api/exports/companies")
+def export_companies(payload: CompanySelectionRequest, user: dict = Depends(require_organization)) -> Response:
+    found = repository.companies_by_cnpjs(payload.cnpjs)
+    companies = [found[cnpj] for cnpj in payload.cnpjs if cnpj in found]
+    if len(companies) != len(payload.cnpjs):
+        raise HTTPException(status_code=409, detail="Uma ou mais empresas não estão disponíveis na versão atual da Receita.")
+    content = export_companies_csv(companies)
+    unlock = saas_store.unlock_companies(
+        user["organization_id"], user["id"], [company["cnpj"] for company in companies],
+        kind="company_export", description=f"Exportação de {len(companies)} empresa(s)",
+    )
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="empresas-echopjs.csv"',
+            "X-Credits-Spent": str(unlock["credits_spent"]),
+            "X-Credit-Balance": str(unlock["credit_balance"]),
+            "X-Unlimited-Credits": str(unlock["unlimited_credits"]).lower(),
+        },
     )
 
 
@@ -545,14 +586,34 @@ def get_job(job_id: str, user: dict = Depends(require_organization)) -> dict:
 
 @app.get("/api/jobs/{job_id}/export.csv")
 def export_job(job_id: str, user: dict = Depends(require_organization)) -> Response:
+    selected_cnpjs = job_store.selected_cnpjs(job_id, organization_id=user["organization_id"])
+    if selected_cnpjs is None:
+        raise HTTPException(status_code=404, detail="consulta nao encontrada")
     content = job_store.export_csv(job_id, repository.companies_by_cnpjs, organization_id=user["organization_id"])
     if content is None:
         raise HTTPException(status_code=404, detail="consulta nao encontrada")
+    unlock = saas_store.unlock_companies(
+        user["organization_id"], user["id"], selected_cnpjs,
+        kind="job_export", description=f"Exportação do processamento {job_id}", reference_id=job_id,
+    )
     return Response(
         content=content,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="resultado-{job_id}.csv"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="resultado-{job_id}.csv"',
+            "X-Credits-Spent": str(unlock["credits_spent"]),
+            "X-Credit-Balance": str(unlock["credit_balance"]),
+            "X-Unlimited-Credits": str(unlock["unlimited_credits"]).lower(),
+        },
     )
+
+
+@app.get("/api/jobs/{job_id}/credit-estimate")
+def estimate_job_export(job_id: str, user: dict = Depends(require_organization)) -> dict:
+    selected_cnpjs = job_store.selected_cnpjs(job_id, organization_id=user["organization_id"])
+    if selected_cnpjs is None:
+        raise HTTPException(status_code=404, detail="consulta nao encontrada")
+    return saas_store.credit_estimate(user["organization_id"], selected_cnpjs)
 
 
 @app.get("/api/search/capabilities")
@@ -636,12 +697,11 @@ def explorer_relation_preview(
         raise HTTPException(status_code=408, detail="a pre-visualizacao excedeu o limite seguro de tempo") from error
 
 
-@app.post("/api/explorer/company-lookup")
-def explorer_company_lookup(payload: CompanyLookupRequest, _: dict = Depends(require_organization)) -> dict:
+def company_lookup_results(cnpjs: list[str]) -> dict:
     started = monotonic()
     entries: list[tuple[str, str | None]] = []
     normalized_cnpjs: list[str] = []
-    for original in payload.cnpjs:
+    for original in cnpjs:
         try:
             normalized = normalize_cnpj_identifier(original)
         except ValueError:
@@ -669,6 +729,38 @@ def explorer_company_lookup(payload: CompanyLookupRequest, _: dict = Depends(req
         "dataset_version": repository.current_version(),
         "timing_ms": round((monotonic() - started) * 1000),
     }
+
+
+@app.post("/api/explorer/company-lookup")
+def explorer_company_lookup(payload: CompanyLookupRequest, _: dict = Depends(require_organization)) -> dict:
+    return company_lookup_results(payload.cnpjs)
+
+
+@app.post("/api/exports/cnpj-lookup")
+def export_cnpj_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> Response:
+    lookup = company_lookup_results(payload.cnpjs)
+    found_cnpjs = [item["company"]["cnpj"] for item in lookup["results"] if item["company"]]
+    companies = [item["company"] or {} for item in lookup["results"]]
+    leading_rows = [[item["input"], item["status"]] for item in lookup["results"]]
+    content = export_companies_csv(
+        companies,
+        leading_headers=["CNPJ informado", "Resultado"],
+        leading_rows=leading_rows,
+    )
+    unlock = saas_store.unlock_companies(
+        user["organization_id"], user["id"], found_cnpjs,
+        kind="cnpj_export", description=f"Exportação de {len(found_cnpjs)} CNPJ(s)",
+    )
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="consulta-cnpjs-echopjs.csv"',
+            "X-Credits-Spent": str(unlock["credits_spent"]),
+            "X-Credit-Balance": str(unlock["credit_balance"]),
+            "X-Unlimited-Credits": str(unlock["unlimited_credits"]).lower(),
+        },
+    )
 
 
 @app.get("/api/explorer/companies/{cnpj}")

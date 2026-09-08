@@ -36,7 +36,7 @@ class FrontendContractTests(unittest.TestCase):
             "explorer-cnpj-form", "history-list", "explorer-overview",
             "schema-catalog", "relation-preview", "theme-toggle",
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
-            "save-search-dialog", "save-list-dialog", "create-list-dialog",
+            "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -66,6 +66,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".search-form { display: grid; grid-template-columns: minmax(0, 1fr)", styles)
         self.assertIn("select { appearance: none", styles)
         self.assertIn(".multi-picker-trigger::after", styles)
+
+    def test_downloads_use_server_credit_enforcement(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('fetch("/api/credits/estimate"', script)
+        self.assertIn('downloadCsvResponse("/api/exports/companies"', script)
+        self.assertIn('downloadCsvResponse("/api/exports/cnpj-lookup"', script)
+        self.assertNotIn("downloadCompleteCompanyCsv", script)
 
 
 if __name__ == "__main__":

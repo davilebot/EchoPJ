@@ -42,6 +42,8 @@ const historyList = document.querySelector("#history-list");
 const companySearchForm = document.querySelector("#company-search-form");
 const companySearchLoading = document.querySelector("#search-loading");
 const companySearchResult = document.querySelector("#search-result");
+const saasOverviewLoading = document.querySelector("#saas-overview-loading");
+const saasOverview = document.querySelector("#saas-overview");
 const explorerOverviewLoading = document.querySelector("#explorer-overview-loading");
 const explorerOverview = document.querySelector("#explorer-overview");
 const schemaLoading = document.querySelector("#schema-loading");
@@ -446,67 +448,9 @@ function batchItem(row, index) {
 }
 
 function csvCell(value) {
-  const text = String(value ?? "");
+  let text = String(value ?? "");
+  if (/^\s*[=+\-@]/.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-const companyExportHeaders = [
-  "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Data Situação",
-  "Data Abertura", "Porte", "Capital Social", "CNAE Principal", "CNAEs Secundários",
-  "Município", "UF", "CEP", "Endereço", "Simples", "MEI", "Natureza Jurídica",
-  "Matriz/Filial", "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail",
-  "Telefone", "Versão Receita",
-];
-
-const partnerExportFields = [
-  ["Sócio", (partner) => partner.partner_name],
-  ["Faixa Etária", (partner) => partner.age_range],
-  ["CPF/CNPJ Público", (partner) => partner.partner_document],
-  ["Tipo de Sócio", (partner) => partner.partner_type],
-  ["Qualificação do Sócio", (partner) => partner.qualification || partner.qualification_code],
-  ["Data de Entrada do Sócio", (partner) => partner.joined_at],
-  ["País do Sócio", (partner) => partner.country || partner.country_code],
-  ["Representante Legal do Sócio", (partner) => partner.legal_representative_name],
-  ["Documento Público do Representante", (partner) => partner.legal_representative_document],
-  ["Qualificação do Representante", (partner) => partner.legal_representative_qualification || partner.legal_representative_qualification_code],
-];
-
-function companyExportValues(company, maxPartners) {
-  if (!company?.cnpj) return Array(companyExportHeaders.length + (maxPartners * partnerExportFields.length)).fill("");
-  const partners = company.partners || [];
-  const values = [
-    company.cnpj, company.cnpj_root, company.legal_name, company.trade_name, company.registration_status,
-    company.registration_status_date, company.opened_at, companySizeLabel(company.company_size), company.share_capital,
-    company.primary_cnae, (company.secondary_cnaes || []).join(";"), company.municipality, company.uf,
-    company.postal_code, company.address, company.is_simples, company.is_mei, company.legal_nature_code,
-    company.branch_type_code, company.active_branch_count, company.branch_count,
-    company.partner_count ?? partners.length, company.email,
-    [company.phone_area_code, company.phone].filter(Boolean).join(" "), company.dataset_version,
-  ];
-  for (let index = 0; index < maxPartners; index += 1) {
-    const partner = partners[index] || {};
-    partnerExportFields.forEach(([, getter]) => values.push(getter(partner) ?? ""));
-  }
-  return values;
-}
-
-function downloadCompleteCompanyCsv(companies, filenamePrefix, leadingHeaders = [], leadingValues = () => []) {
-  const maxPartners = companies.reduce((maximum, company) => Math.max(maximum, company?.partners?.length || 0), 0);
-  const partnerHeaders = Array.from({ length: maxPartners }, (_, index) => (
-    partnerExportFields.map(([label]) => `${label} ${index + 1}`)
-  )).flat();
-  const headers = [...leadingHeaders, ...companyExportHeaders, ...partnerHeaders];
-  const rows = companies.map((company, index) => [
-    ...leadingValues(company, index),
-    ...companyExportValues(company, maxPartners),
-  ]);
-  const content = "\uFEFF" + [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `${filenamePrefix}-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
 }
 
 function downloadTemplate() {
@@ -540,7 +484,10 @@ function switchTab(tabName) {
   const activeButton = document.querySelector(`.tab-button[data-tab="${tabName}"]`);
   document.querySelector("#current-view").textContent = activeButton?.dataset.viewTitle || "EchoPJs";
   if (tabName === "history") loadHistory();
-  if (tabName === "overview") loadExplorerOverview();
+  if (tabName === "overview") {
+    loadSaaSOverview();
+    loadExplorerOverview();
+  }
   if (tabName === "search") {
     loadSearchCapabilities();
     loadCnaeOptions();
@@ -565,7 +512,7 @@ function renderHistory(jobs) {
   historyList.innerHTML = jobs.map((job) => {
     const active = job.status === "queued" || job.status === "running";
     const download = job.processed > 0
-      ? `<a class="download-link" href="/api/jobs/${job.id}/export.csv?organization_id=${activeOrganizationId}">${active ? "Baixar parcial" : "Baixar CSV"}</a>`
+      ? `<button class="download-link" type="button" data-download-job="${job.id}">${active ? "Baixar parcial" : "Baixar CSV"}</button>`
       : `<span class="download-disabled">Download após a primeira linha</span>`;
     return `<article class="job-card">
       <div class="job-topline">
@@ -1022,13 +969,16 @@ function parseCnpjList(value) {
     .filter(Boolean);
 }
 
-function downloadBulkCnpjLookup() {
-  downloadCompleteCompanyCsv(
-    lastBulkCnpjLookup.map((item) => item.company),
-    "consulta-cnpjs-completa",
-    ["CNPJ informado", "Resultado"],
-    (_, index) => [lastBulkCnpjLookup[index].input, lastBulkCnpjLookup[index].status],
-  );
+async function downloadBulkCnpjLookup() {
+  const inputs = lastBulkCnpjLookup.map((item) => item.input);
+  const foundCnpjs = lastBulkCnpjLookup.filter((item) => item.company).map((item) => item.company.cnpj);
+  const estimate = await estimateCredits(foundCnpjs);
+  if (!confirmCreditUse(estimate, "baixar este resultado")) return;
+  await downloadCsvResponse("/api/exports/cnpj-lookup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cnpjs: inputs }),
+  }, "consulta-cnpjs-echopjs.csv");
 }
 
 function renderBulkCnpjLookup(data) {
@@ -1058,7 +1008,8 @@ function renderBulkCnpjLookup(data) {
     <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="save-actions"><button id="download-bulk-cnpj" type="button">Baixar resultado completo com sócios</button></div>
   </article>`;
-  document.querySelector("#download-bulk-cnpj").addEventListener("click", downloadBulkCnpjLookup);
+  const downloadButton = document.querySelector("#download-bulk-cnpj");
+  downloadButton.addEventListener("click", () => runButtonAction(downloadButton, "Preparando CSV…", downloadBulkCnpjLookup));
 }
 
 bulkCnpjForm.addEventListener("submit", async (event) => {
@@ -1111,11 +1062,13 @@ function renderCompanySearch(data) {
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
     <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="save-actions"><button id="save-selected-company-search" type="button" disabled>Salvar selecionadas em uma lista</button><button id="download-selected-company-search" class="secondary" type="button" disabled>Baixar selecionadas</button><button id="download-company-search" class="secondary" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
-  document.querySelector("#save-selected-company-search")?.addEventListener("click", openSaveListDialog);
-  document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
-  document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
-    downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas");
-  });
+  document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
+  const downloadAllButton = document.querySelector("#download-company-search");
+  downloadAllButton?.addEventListener("click", () => runButtonAction(downloadAllButton, "Preparando CSV…", () => downloadCompanySearch(lastCompanySearch)));
+  const downloadSelectedButton = document.querySelector("#download-selected-company-search");
+  downloadSelectedButton?.addEventListener("click", () => runButtonAction(downloadSelectedButton, "Preparando CSV…", () => (
+    downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas.csv")
+  )));
   document.querySelector("#select-preview")?.addEventListener("click", () => {
     preview.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
     companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = true; });
@@ -1138,8 +1091,15 @@ function updateSearchSelection() {
   if (saveButton) saveButton.disabled = count === 0;
 }
 
-function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
-  downloadCompleteCompanyCsv(companies, filenamePrefix);
+async function downloadCompanySearch(companies, filename = "empresas-echopjs.csv") {
+  const cnpjs = companies.map((company) => company.cnpj);
+  const estimate = await estimateCredits(cnpjs);
+  if (!confirmCreditUse(estimate, "baixar estas empresas")) return;
+  await downloadCsvResponse("/api/exports/companies", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cnpjs }),
+  }, filename);
 }
 
 companySearchForm.addEventListener("submit", async (event) => {
@@ -1193,6 +1153,76 @@ async function responseError(response, fallback) {
   }
 }
 
+async function estimateCredits(cnpjs) {
+  if (!cnpjs.length) {
+    return { requested_companies: 0, already_unlocked: 0, credits_required: 0, credit_balance: 0, unlimited_credits: false, can_complete: true };
+  }
+  const response = await fetch("/api/credits/estimate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cnpjs }),
+  });
+  if (!response.ok) throw new Error(await responseError(response, "Não foi possível calcular os créditos."));
+  return response.json();
+}
+
+function confirmCreditUse(estimate, action) {
+  if (!estimate.can_complete) {
+    showToast(`Créditos insuficientes: esta ação precisa de ${estimate.credits_required.toLocaleString("pt-BR")} e o saldo é ${estimate.credit_balance.toLocaleString("pt-BR")}.`);
+    switchTab("billing");
+    return false;
+  }
+  if (estimate.unlimited_credits || estimate.credits_required === 0) return true;
+  const repeated = estimate.already_unlocked
+    ? ` ${estimate.already_unlocked.toLocaleString("pt-BR")} já ${estimate.already_unlocked === 1 ? "está desbloqueada" : "estão desbloqueadas"} e não ${estimate.already_unlocked === 1 ? "será cobrada" : "serão cobradas"}.`
+    : "";
+  return window.confirm(`Para ${action}, serão usados ${estimate.credits_required.toLocaleString("pt-BR")} crédito${estimate.credits_required === 1 ? "" : "s"}.${repeated}`);
+}
+
+function filenameFromResponse(response, fallback) {
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const plain = disposition.match(/filename="?([^";]+)"?/i);
+  try { return decodeURIComponent(encoded?.[1] || plain?.[1] || fallback); }
+  catch (_) { return plain?.[1] || fallback; }
+}
+
+function updateCreditsFromResponse(response) {
+  const unlimited = response.headers.get("X-Unlimited-Credits");
+  const balance = response.headers.get("X-Credit-Balance");
+  if (unlimited === null || balance === null) return;
+  updateCreditIndicator({ unlimited_credits: unlimited === "true", credit_balance: Number(balance) });
+}
+
+async function downloadCsvResponse(url, init, fallbackFilename) {
+  const response = await fetch(url, init);
+  if (!response.ok) throw new Error(await responseError(response, "Não foi possível gerar o CSV."));
+  const blob = await response.blob();
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+  link.href = objectUrl;
+  link.download = filenameFromResponse(response, fallbackFilename);
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  updateCreditsFromResponse(response);
+  const spent = Number(response.headers.get("X-Credits-Spent") || 0);
+  showToast(spent ? `CSV gerado. ${spent.toLocaleString("pt-BR")} crédito${spent === 1 ? " usado" : "s usados"}.` : "CSV gerado sem novo consumo de créditos.");
+}
+
+async function runButtonAction(button, busyLabel, action) {
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = busyLabel;
+  try { await action(); }
+  catch (error) { showToast(error.message); }
+  finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
 function setDialogFeedback(element, message = "") {
   element.textContent = message;
   element.classList.toggle("hidden", !message);
@@ -1204,6 +1234,32 @@ function updateCreditIndicator(profile) {
   value.textContent = profile.unlimited_credits
     ? "Ilimitados"
     : `${Number(profile.credit_balance).toLocaleString("pt-BR")} disponíveis`;
+}
+
+async function loadSaaSOverview() {
+  saasOverviewLoading.classList.remove("hidden");
+  saasOverview.classList.add("hidden");
+  try {
+    const response = await fetch("/api/dashboard");
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar o workspace."));
+    const data = await response.json();
+    updateCreditIndicator(data.profile);
+    const recentLists = data.recent_lists.length ? data.recent_lists.map((item) => `<button class="workspace-row" type="button" data-dashboard-list="${item.id}"><span><strong>${escapeHtml(item.name)}</strong><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma lista ainda</span><button type="button" data-switch-tab="search">Encontrar empresas</button></div>`;
+    const recentSearches = data.recent_searches.length ? data.recent_searches.map((saved) => `<button class="workspace-row" type="button" data-dashboard-search="${saved.id}"><span><strong>${escapeHtml(saved.name)}</strong><small>${escapeHtml(filtersDescription(saved.filters))}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma busca salva</span><button type="button" data-switch-tab="search">Criar uma busca</button></div>`;
+    saasOverview.dataset.searches = JSON.stringify(data.recent_searches);
+    saasOverview.innerHTML = `<div class="workspace-metrics">
+      <button type="button" data-switch-tab="billing"><span>Créditos</span><strong>${data.profile.unlimited_credits ? "Ilimitados" : Number(data.profile.credit_balance).toLocaleString("pt-BR")}</strong><small>${data.profile.unlimited_credits ? "Plano interno EchoHub" : "Saldo compartilhado"}</small></button>
+      <button type="button" data-switch-tab="lists"><span>Empresas desbloqueadas</span><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><small>Disponíveis sem nova cobrança</small></button>
+      <button type="button" data-switch-tab="lists"><span>Listas</span><strong>${Number(data.list_count).toLocaleString("pt-BR")}</strong><small>Organizadas pela equipe</small></button>
+      <button type="button" data-switch-tab="saved-searches"><span>Buscas salvas</span><strong>${Number(data.saved_search_count).toLocaleString("pt-BR")}</strong><small>Segmentos reutilizáveis</small></button>
+    </div>
+    ${data.active_jobs ? `<button class="active-jobs-banner" type="button" data-switch-tab="history"><span class="spinner" aria-hidden="true"></span><span><strong>${data.active_jobs} processamento${data.active_jobs === 1 ? "" : "s"} em andamento</strong><small>Acompanhe o progresso e baixe os resultados quando quiser.</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>` : ""}
+    <div class="workspace-columns"><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">LISTAS RECENTES</span><h2>Empresas organizadas</h2></div><button class="secondary compact" type="button" data-switch-tab="lists">Ver todas</button></div>${recentLists}</section><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">BUSCAS RECENTES</span><h2>Segmentos da equipe</h2></div><button class="secondary compact" type="button" data-switch-tab="saved-searches">Ver todas</button></div>${recentSearches}</section></div>`;
+    saasOverviewLoading.classList.add("hidden");
+    saasOverview.classList.remove("hidden");
+  } catch (error) {
+    saasOverviewLoading.textContent = error.message;
+  }
 }
 
 async function loadBillingSummary() {
@@ -1221,7 +1277,7 @@ async function loadBillingSummary() {
       <td class="ledger-value ${entry.delta > 0 ? "positive" : "negative"}">${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}</td>
     </tr>`).join("") : `<tr><td colspan="3">Nenhuma movimentação de créditos.</td></tr>`;
     billingSummary.innerHTML = `<div class="billing-hero section-card">
-      <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva uma empresa."}</p></div>
+      <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva ou exporta uma empresa."}</p></div>
       <span class="plan-badge">${escapeHtml(planName)}</span>
     </div>
     <div class="billing-metrics"><article><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><span>Empresas desbloqueadas</span></article><article><strong>${profile.unlimited_credits ? "Sem limite" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Saldo disponível</span></article><article><strong>${escapeHtml(profile.subscription_status === "active" ? "Ativo" : profile.subscription_status)}</strong><span>Status do plano</span></article></div>
@@ -1361,17 +1417,31 @@ async function loadCompanyListDetail(listId) {
 async function openSaveListDialog() {
   const selected = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
   if (!selected.length) return;
-  const response = await fetch("/api/company-lists");
+  const cnpjs = selected.map((company) => company.cnpj);
+  const [response, estimate] = await Promise.all([
+    fetch("/api/company-lists"),
+    estimateCredits(cnpjs),
+  ]);
   if (!response.ok) {
     showToast(await responseError(response, "Não foi possível carregar as listas."));
     return;
   }
   const data = await response.json();
   const select = document.querySelector("#target-list");
+  const submitButton = document.querySelector("#save-list-form button[type='submit']");
   select.innerHTML = `<option value="">Selecione uma lista</option>${data.lists.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (${item.company_count})</option>`).join("")}`;
   document.querySelector("#new-list-name").value = "";
-  document.querySelector("#save-list-count").textContent = `${selected.length.toLocaleString("pt-BR")} empresa${selected.length === 1 ? "" : "s"} selecionada${selected.length === 1 ? "" : "s"}. O primeiro salvamento de cada CNPJ usa um crédito.`;
-  setDialogFeedback(document.querySelector("#save-list-feedback"));
+  const creditCopy = estimate.unlimited_credits
+    ? "Sua organização possui créditos ilimitados."
+    : estimate.credits_required
+      ? `${estimate.credits_required.toLocaleString("pt-BR")} crédito${estimate.credits_required === 1 ? " será usado" : "s serão usados"}; ${estimate.already_unlocked.toLocaleString("pt-BR")} já ${estimate.already_unlocked === 1 ? "está desbloqueada" : "estão desbloqueadas"}.`
+      : "Todas já estão desbloqueadas, sem novo consumo de créditos.";
+  document.querySelector("#save-list-count").textContent = `${selected.length.toLocaleString("pt-BR")} empresa${selected.length === 1 ? "" : "s"} selecionada${selected.length === 1 ? "" : "s"}. ${creditCopy}`;
+  setDialogFeedback(
+    document.querySelector("#save-list-feedback"),
+    estimate.can_complete ? "" : `Saldo insuficiente: você tem ${estimate.credit_balance.toLocaleString("pt-BR")} crédito${estimate.credit_balance === 1 ? "" : "s"}.`,
+  );
+  submitButton.disabled = !estimate.can_complete;
   saveListDialog.showModal();
 }
 
@@ -1420,8 +1490,19 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
   event.preventDefault();
   const feedback = document.querySelector("#save-list-feedback");
   setDialogFeedback(feedback);
+  const cnpjs = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)).map((company) => company.cnpj);
   let listId = document.querySelector("#target-list").value;
   const newName = document.querySelector("#new-list-name").value.trim();
+  try {
+    const estimate = await estimateCredits(cnpjs);
+    if (!estimate.can_complete) {
+      setDialogFeedback(feedback, `Créditos insuficientes. Esta ação precisa de ${estimate.credits_required.toLocaleString("pt-BR")} e o saldo é ${estimate.credit_balance.toLocaleString("pt-BR")}.`);
+      return;
+    }
+  } catch (error) {
+    setDialogFeedback(feedback, error.message);
+    return;
+  }
   if (newName) {
     const createResponse = await fetch("/api/company-lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName }) });
     if (!createResponse.ok) {
@@ -1434,8 +1515,7 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
     setDialogFeedback(feedback, "Escolha uma lista ou informe o nome de uma nova.");
     return;
   }
-  const companies = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
-  const response = await fetch(`/api/company-lists/${listId}/companies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companies }) });
+  const response = await fetch(`/api/company-lists/${listId}/companies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cnpjs }) });
   if (!response.ok) {
     setDialogFeedback(feedback, await responseError(response, "Não foi possível salvar as empresas."));
     return;
@@ -1467,6 +1547,22 @@ document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addE
 document.querySelectorAll("dialog").forEach((dialog) => dialog.addEventListener("click", (event) => {
   if (event.target === dialog) dialog.close();
 }));
+
+saasOverview.addEventListener("click", async (event) => {
+  const switchButton = event.target.closest("[data-switch-tab]");
+  if (switchButton) switchTab(switchButton.dataset.switchTab);
+  const listButton = event.target.closest("[data-dashboard-list]");
+  if (listButton) {
+    switchTab("lists");
+    await loadCompanyListDetail(listButton.dataset.dashboardList);
+  }
+  const searchButton = event.target.closest("[data-dashboard-search]");
+  if (searchButton) {
+    const searches = JSON.parse(saasOverview.dataset.searches || "[]");
+    const saved = searches.find((item) => item.id === searchButton.dataset.dashboardSearch);
+    if (saved) await applySavedSearch(saved);
+  }
+});
 
 savedSearchesGrid.addEventListener("click", async (event) => {
   const switchButton = event.target.closest("[data-switch-tab]");
@@ -1505,8 +1601,9 @@ listDetail.addEventListener("click", async (event) => {
     try { await removeCompanyFromList(listId, removeButton.dataset.removeListCompany); }
     catch (error) { showToast(error.message); }
   }
-  if (event.target.closest("[data-download-list]")) {
-    downloadCompanySearch(JSON.parse(listDetail.dataset.companies || "[]"), "lista-empresas");
+  const downloadButton = event.target.closest("[data-download-list]");
+  if (downloadButton) {
+    await runButtonAction(downloadButton, "Preparando CSV…", () => downloadCompanySearch(JSON.parse(listDetail.dataset.companies || "[]"), "lista-empresas.csv"));
   }
   if (event.target.closest("[data-delete-list]")) {
     if (!window.confirm("Excluir esta lista e remover todas as empresas dela?")) return;
@@ -1520,6 +1617,17 @@ listDetail.addEventListener("click", async (event) => {
 document.querySelectorAll(".tab-button").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.tab)));
 document.querySelectorAll("[data-switch-tab]").forEach((button) => button.addEventListener("click", () => switchTab(button.dataset.switchTab)));
 document.querySelector("#refresh-history").addEventListener("click", loadHistory);
+historyList.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-download-job]");
+  if (!button) return;
+  await runButtonAction(button, "Preparando CSV…", async () => {
+    const estimateResponse = await fetch(`/api/jobs/${button.dataset.downloadJob}/credit-estimate`);
+    if (!estimateResponse.ok) throw new Error(await responseError(estimateResponse, "Não foi possível calcular os créditos."));
+    const estimate = await estimateResponse.json();
+    if (!confirmCreditUse(estimate, "baixar este processamento")) return;
+    await downloadCsvResponse(`/api/jobs/${button.dataset.downloadJob}/export.csv`, {}, `resultado-${button.dataset.downloadJob}.csv`);
+  });
+});
 document.querySelector("#refresh-explorer").addEventListener("click", loadExplorerOverview);
 document.querySelector("#refresh-schema").addEventListener("click", () => loadDatabaseSchema(true));
 document.querySelector("#download-template").addEventListener("click", downloadTemplate);

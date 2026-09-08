@@ -5,7 +5,7 @@ import time
 import unittest
 from pathlib import Path
 
-from service.jobs import JobRunner, JobStore
+from service.jobs import JobRunner, JobStore, export_companies_csv
 
 
 class JobTests(unittest.TestCase):
@@ -60,6 +60,7 @@ class JobTests(unittest.TestCase):
             self.assertEqual(current["processed"], 2)
             self.assertEqual(current["confirmed"], 1)
             self.assertEqual(current["not_found"], 1)
+            self.assertEqual(store.selected_cnpjs(job["id"]), ["11222333000181"])
             def company_lookup(cnpjs):
                 self.assertEqual(cnpjs, ["11222333000181"])
                 return {"11222333000181": {
@@ -123,6 +124,31 @@ class JobTests(unittest.TestCase):
             reopened = JobStore(path)
             self.assertEqual(reopened.get_job(job["id"])["status"], "queued")
             reopened.close()
+
+    def test_exports_neutralize_spreadsheet_formulas(self):
+        content = export_companies_csv([{
+            "cnpj": "11222333000181",
+            "legal_name": '=HYPERLINK("https://attacker.example")',
+            "trade_name": "+SUM(1,1)",
+            "partners": [{"partner_name": "@malicious"}],
+        }]).decode("utf-8")
+        rows = list(csv.reader(io.StringIO(content.lstrip("\ufeff"))))
+        headers, company = rows
+        self.assertTrue(company[headers.index("Razão Social")].startswith("'="))
+        self.assertTrue(company[headers.index("Nome Fantasia")].startswith("'+"))
+        self.assertTrue(company[headers.index("Sócio 1")].startswith("'@"))
+
+    def test_selected_cnpjs_respects_job_organization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = JobStore(str(Path(directory) / "jobs.sqlite"))
+            job = store.create_job(
+                "tenant.csv", [], active_only=True, check_website=False, organization_id=10,
+            )
+            self.assertEqual(store.selected_cnpjs(job["id"], organization_id=10), [])
+            self.assertIsNone(store.selected_cnpjs(job["id"], organization_id=11))
+            self.assertEqual(store.active_job_count(organization_id=10), 1)
+            self.assertEqual(store.active_job_count(organization_id=11), 0)
+            store.close()
 
 
 if __name__ == "__main__":

@@ -82,6 +82,55 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(summary["profile"]["credit_balance"], 500)
         self.assertEqual(len(summary["ledger"]), 1)
 
+    def test_credit_estimate_and_export_unlock_are_consistent(self):
+        self.store.ensure_organization(8, initial_credits=2)
+        estimate = self.store.credit_estimate(8, [COMPANY_A["cnpj"], COMPANY_B["cnpj"], COMPANY_A["cnpj"]])
+        self.assertEqual(estimate["requested_companies"], 2)
+        self.assertEqual(estimate["credits_required"], 2)
+        self.assertTrue(estimate["can_complete"])
+        first = self.store.unlock_companies(
+            8, 13, [COMPANY_A["cnpj"], COMPANY_B["cnpj"]],
+            kind="company_export", description="Exportação",
+        )
+        self.assertEqual(first["credits_spent"], 2)
+        repeat = self.store.unlock_companies(
+            8, 13, [COMPANY_A["cnpj"]], kind="company_export", description="Nova exportação",
+        )
+        self.assertEqual(repeat["credits_spent"], 0)
+        self.assertEqual(self.store.credit_estimate(8, [COMPANY_A["cnpj"]])["credits_required"], 0)
+
+    def test_export_unlock_rolls_back_when_balance_is_insufficient(self):
+        self.store.ensure_organization(9, initial_credits=1)
+        with self.assertRaises(SaaSError) as raised:
+            self.store.unlock_companies(
+                9, 14, [COMPANY_A["cnpj"], COMPANY_B["cnpj"]],
+                kind="company_export", description="Exportação",
+            )
+        self.assertEqual(raised.exception.status, 402)
+        summary = self.store.billing_summary(9)
+        self.assertEqual(summary["profile"]["credit_balance"], 1)
+        self.assertEqual(summary["unlocked_companies"], 0)
+
+    def test_dashboard_counts_resources_and_recent_items(self):
+        self.store.ensure_organization(10, initial_credits=3)
+        company_list = self.store.create_company_list(10, 15, name="Clientes")
+        self.store.add_companies(10, company_list["id"], 15, [COMPANY_A])
+        self.store.create_saved_search(10, 15, name="Indústrias", filters={"cnaes": ["1091102"]})
+        dashboard = self.store.dashboard_summary(10)
+        self.assertEqual(dashboard["list_count"], 1)
+        self.assertEqual(dashboard["saved_search_count"], 1)
+        self.assertEqual(dashboard["unlocked_companies"], 1)
+        self.assertEqual(dashboard["recent_lists"][0]["company_count"], 1)
+
+    def test_payment_idempotency_key_cannot_cross_organizations(self):
+        self.store.ensure_organization(11, initial_credits=0)
+        self.store.ensure_organization(12, initial_credits=0)
+        self.store.grant_credits(11, 20, description="Pagamento", idempotency_key="payment:shared")
+        with self.assertRaises(SaaSError) as raised:
+            self.store.grant_credits(12, 20, description="Pagamento", idempotency_key="payment:shared")
+        self.assertEqual(raised.exception.status, 409)
+        self.assertEqual(self.store.billing_summary(12)["profile"]["credit_balance"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 - A organização é a unidade de assinatura, saldo, equipe, listas e histórico.
 - Busca e prévia são gratuitas. Um crédito desbloqueia uma empresa quando ela é
-  salva pela primeira vez pela organização.
+  salva ou exportada pela primeira vez pela organização.
 - O mesmo CNPJ pode ser usado em várias listas sem nova cobrança.
 - A organização interna EchoHub usa o plano `internal` com créditos ilimitados.
 - Novas organizações começam no plano `trial` com o saldo definido por
@@ -26,6 +26,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] buscas salvas com os filtros completos;
 - [x] navegação agrupada em “Buscar empresas”;
 - [x] telas responsivas de listas, buscas salvas e créditos;
+- [x] painel da organização com saldo, listas, buscas e processamentos;
+- [x] exportações debitadas e geradas no servidor, com trilha de auditoria;
 - [x] catálogo técnico restrito à organização interna.
 
 ## Entrega 2 — cobrança e administração
@@ -50,7 +52,6 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 ## Entrega 4 — produto comercial maduro
 
-- exportações debitadas e geradas no servidor, com trilha de auditoria;
 - permissões granulares além de administrador e membro;
 - limites de uso e proteção contra abuso por organização;
 - termos de uso, política de privacidade, retenção e exclusão de dados;

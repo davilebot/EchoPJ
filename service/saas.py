@@ -195,6 +195,20 @@ class SaaSStore:
             ),
         )
 
+    def _unlocked_cnpjs(self, organization_id: int, cnpjs: list[str]) -> set[str]:
+        unlocked: set[str] = set()
+        for start in range(0, len(cnpjs), 500):
+            chunk = cnpjs[start:start + 500]
+            if not chunk:
+                continue
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._connection.execute(
+                f"SELECT cnpj FROM company_unlocks WHERE organization_id=? AND cnpj IN ({placeholders})",
+                (organization_id, *chunk),
+            ).fetchall()
+            unlocked.update(row[0] for row in rows)
+        return unlocked
+
     def billing_summary(self, organization_id: int, *, ledger_limit: int = 20) -> dict[str, Any]:
         with self._lock:
             profile = self._connection.execute(
@@ -215,6 +229,109 @@ class SaaSStore:
             ).fetchone()[0]
         return {"profile": self._profile(profile), "ledger": ledger, "unlocked_companies": unlocked}
 
+    def credit_estimate(self, organization_id: int, cnpjs: list[str]) -> dict[str, Any]:
+        unique = list(dict.fromkeys(cnpjs))
+        with self._lock:
+            profile = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+            if not profile:
+                raise SaaSError("Configuração comercial da organização não encontrada.", 404)
+            unlocked = self._unlocked_cnpjs(organization_id, unique)
+        required = 0 if profile["unlimited_credits"] else sum(cnpj not in unlocked for cnpj in unique)
+        return {
+            "requested_companies": len(unique),
+            "already_unlocked": sum(cnpj in unlocked for cnpj in unique),
+            "credits_required": required,
+            "credit_balance": profile["credit_balance"],
+            "unlimited_credits": bool(profile["unlimited_credits"]),
+            "can_complete": bool(profile["unlimited_credits"] or required <= profile["credit_balance"]),
+        }
+
+    def unlock_companies(
+        self,
+        organization_id: int,
+        actor_id: int,
+        cnpjs: list[str],
+        *,
+        kind: str,
+        description: str,
+        reference_id: str | None = None,
+    ) -> dict[str, Any]:
+        unique = list(dict.fromkeys(cnpjs))
+        now = utc_now()
+        with self._transaction():
+            profile = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+            if not profile:
+                raise SaaSError("Configuração comercial da organização não encontrada.", 404)
+            unlocked = self._unlocked_cnpjs(organization_id, unique)
+            new_unlocks = [cnpj for cnpj in unique if cnpj not in unlocked]
+            credits_spent = 0 if profile["unlimited_credits"] else len(new_unlocks)
+            if credits_spent > profile["credit_balance"]:
+                raise SaaSError(
+                    f"Créditos insuficientes. Esta ação precisa de {credits_spent} e o saldo é {profile['credit_balance']}.",
+                    402,
+                )
+            balance = profile["credit_balance"] - credits_spent
+            if credits_spent:
+                self._connection.execute(
+                    "UPDATE organization_profiles SET credit_balance=?,updated_at=? WHERE organization_id=?",
+                    (balance, now, organization_id),
+                )
+                self._insert_ledger(
+                    organization_id,
+                    delta=-credits_spent,
+                    balance_after=balance,
+                    kind=kind,
+                    description=description,
+                    reference_id=reference_id,
+                    actor_id=actor_id,
+                )
+            self._connection.executemany(
+                "INSERT INTO company_unlocks(organization_id,cnpj,unlocked_by,unlocked_at) VALUES(?,?,?,?)",
+                [(organization_id, cnpj, actor_id, now) for cnpj in new_unlocks],
+            )
+        return {
+            "unlocked": len(new_unlocks),
+            "credits_spent": credits_spent,
+            "credit_balance": balance,
+            "unlimited_credits": bool(profile["unlimited_credits"]),
+        }
+
+    def dashboard_summary(self, organization_id: int) -> dict[str, Any]:
+        billing = self.billing_summary(organization_id, ledger_limit=5)
+        with self._lock:
+            list_count = self._connection.execute(
+                "SELECT count(*) FROM company_lists WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()[0]
+            saved_search_count = self._connection.execute(
+                "SELECT count(*) FROM saved_searches WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()[0]
+            recent_lists = [dict(row) for row in self._connection.execute(
+                """SELECT l.id,l.name,l.updated_at,count(i.cnpj) AS company_count
+                   FROM company_lists l LEFT JOIN company_list_items i ON i.list_id=l.id
+                   WHERE l.organization_id=? GROUP BY l.id
+                   ORDER BY l.updated_at DESC LIMIT 3""",
+                (organization_id,),
+            ).fetchall()]
+            recent_searches = [self._saved_search(row) for row in self._connection.execute(
+                "SELECT * FROM saved_searches WHERE organization_id=? ORDER BY updated_at DESC LIMIT 3",
+                (organization_id,),
+            ).fetchall()]
+        return {
+            **billing,
+            "list_count": list_count,
+            "saved_search_count": saved_search_count,
+            "recent_lists": recent_lists,
+            "recent_searches": recent_searches,
+        }
+
     def grant_credits(
         self,
         organization_id: int,
@@ -228,10 +345,12 @@ class SaaSStore:
             raise SaaSError("A quantidade de créditos precisa ser positiva.", 422)
         with self._transaction():
             duplicate = self._connection.execute(
-                "SELECT 1 FROM credit_ledger WHERE idempotency_key=?",
+                "SELECT organization_id FROM credit_ledger WHERE idempotency_key=?",
                 (idempotency_key,),
             ).fetchone()
             if duplicate:
+                if duplicate["organization_id"] != organization_id:
+                    raise SaaSError("Chave de pagamento já utilizada por outra organização.", 409)
                 row = self._connection.execute(
                     "SELECT * FROM organization_profiles WHERE organization_id=?",
                     (organization_id,),
@@ -417,12 +536,7 @@ class SaaSStore:
             ).fetchone()
             if not profile:
                 raise SaaSError("Configuração comercial da organização não encontrada.", 404)
-            unlocked = {
-                row[0] for row in self._connection.execute(
-                    "SELECT cnpj FROM company_unlocks WHERE organization_id=?",
-                    (organization_id,),
-                ).fetchall()
-            }
+            unlocked = self._unlocked_cnpjs(organization_id, list(unique))
             new_unlocks = [cnpj for cnpj in unique if cnpj not in unlocked]
             credits_spent = 0 if profile["unlimited_credits"] else len(new_unlocks)
             if credits_spent > profile["credit_balance"]:

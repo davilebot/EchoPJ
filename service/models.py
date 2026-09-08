@@ -1,12 +1,12 @@
 from datetime import date
 from decimal import Decimal
-import json
 import re
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from plataforma_receita.normalization import digits, normalize, valid_cnpj
+from .explorer import normalize_cnpj_identifier
 
 
 class LoginRequest(BaseModel):
@@ -350,24 +350,20 @@ class CompanyListRequest(BaseModel):
         return " ".join(value.split())
 
 
-class CompanyListItemsRequest(BaseModel):
-    companies: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+class CompanySelectionRequest(BaseModel):
+    cnpjs: list[str] = Field(min_length=1, max_length=10000)
 
-    @field_validator("companies")
+    @field_validator("cnpjs")
     @classmethod
-    def clean_companies(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        cleaned: list[dict[str, Any]] = []
-        total_bytes = 0
-        for company in value:
-            normalized = digits(str(company.get("cnpj", "")))
-            if not valid_cnpj(normalized):
-                raise ValueError("Todas as empresas precisam ter um CNPJ válido.")
-            snapshot = {**company, "cnpj": normalized}
-            encoded = json.dumps(snapshot, ensure_ascii=False, default=str).encode("utf-8")
-            total_bytes += len(encoded)
-            if len(encoded) > 200_000:
-                raise ValueError("Os dados de uma empresa excedem o limite permitido.")
-            cleaned.append(snapshot)
-        if total_bytes > 5_000_000:
-            raise ValueError("A seleção excede o limite de 5 MB. Salve em partes menores.")
+    def clean_cnpjs(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for item in value:
+            try:
+                normalized = normalize_cnpj_identifier(str(item))
+            except ValueError as error:
+                raise ValueError("Todos os CNPJs selecionados precisam ser válidos.") from error
+            if normalized.isdigit() and not valid_cnpj(normalized):
+                raise ValueError("Todos os CNPJs selecionados precisam ser válidos.")
+            if normalized not in cleaned:
+                cleaned.append(normalized)
         return cleaned
