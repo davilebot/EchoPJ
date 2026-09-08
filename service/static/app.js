@@ -55,6 +55,16 @@ const explorerEstablishmentsResult = document.querySelector("#explorer-establish
 const bulkCnpjForm = document.querySelector("#bulk-cnpj-form");
 const bulkCnpjLoading = document.querySelector("#bulk-cnpj-loading");
 const bulkCnpjResult = document.querySelector("#bulk-cnpj-result");
+const listsLoading = document.querySelector("#lists-loading");
+const listsGrid = document.querySelector("#lists-grid");
+const listDetail = document.querySelector("#list-detail");
+const savedSearchesLoading = document.querySelector("#saved-searches-loading");
+const savedSearchesGrid = document.querySelector("#saved-searches-grid");
+const billingLoading = document.querySelector("#billing-loading");
+const billingSummary = document.querySelector("#billing-summary");
+const saveSearchDialog = document.querySelector("#save-search-dialog");
+const saveListDialog = document.querySelector("#save-list-dialog");
+const createListDialog = document.querySelector("#create-list-dialog");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
@@ -62,6 +72,9 @@ let searchCnaeOptionsLoaded = false;
 let municipalityOptionsRequest = 0;
 let explorerSchemaLoaded = false;
 let lastCompanySearch = [];
+let lastCompanySearchPayload = null;
+let activeSavedSearchId = null;
+let activeSavedSearchFilters = null;
 let selectedCompanyCnpjs = new Set();
 let lastBulkCnpjLookup = [];
 
@@ -532,6 +545,9 @@ function switchTab(tabName) {
     loadSearchCapabilities();
     loadCnaeOptions();
   }
+  if (tabName === "lists") loadCompanyLists();
+  if (tabName === "saved-searches") loadSavedSearches();
+  if (tabName === "billing") loadBillingSummary();
   if (tabName === "data") loadDatabaseSchema();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1094,7 +1110,8 @@ function renderCompanySearch(data) {
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
     ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
     <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-selected-company-search" class="secondary" type="button" disabled>Baixar selecionadas com sócios</button><button id="download-company-search" type="button">Baixar todas com sócios (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    <div class="save-actions"><button id="save-selected-company-search" type="button" disabled>Salvar selecionadas em uma lista</button><button id="download-selected-company-search" class="secondary" type="button" disabled>Baixar selecionadas</button><button id="download-company-search" class="secondary" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+  document.querySelector("#save-selected-company-search")?.addEventListener("click", openSaveListDialog);
   document.querySelector("#download-company-search")?.addEventListener("click", () => downloadCompanySearch(lastCompanySearch));
   document.querySelector("#download-selected-company-search")?.addEventListener("click", () => {
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas");
@@ -1115,8 +1132,10 @@ function updateSearchSelection() {
   const count = selectedCompanyCnpjs.size;
   const label = document.querySelector("#selection-count");
   const button = document.querySelector("#download-selected-company-search");
+  const saveButton = document.querySelector("#save-selected-company-search");
   if (label) label.textContent = `${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}`;
   if (button) button.disabled = count === 0;
+  if (saveButton) saveButton.disabled = count === 0;
 }
 
 function downloadCompanySearch(companies, filenamePrefix = "empresas-receita") {
@@ -1128,18 +1147,373 @@ companySearchForm.addEventListener("submit", async (event) => {
   companySearchResult.classList.add("hidden");
   companySearchLoading.classList.remove("hidden");
   try {
+    lastCompanySearchPayload = companySearchPayload();
     const response = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(companySearchPayload()),
+      body: JSON.stringify(lastCompanySearchPayload),
     });
     if (!response.ok) throw new Error((await response.json()).detail || "Falha na busca");
-    renderCompanySearch(await response.json());
+    const data = await response.json();
+    renderCompanySearch(data);
+    if (activeSavedSearchId && JSON.stringify(lastCompanySearchPayload) === activeSavedSearchFilters) {
+      fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.returned }),
+      }).catch(() => {});
+    }
   } catch (error) {
     companySearchResult.innerHTML = `<div class="error"><strong>Não foi possível buscar as empresas.</strong><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
     companySearchLoading.classList.add("hidden");
     companySearchResult.classList.remove("hidden");
+  }
+});
+
+function showToast(message) {
+  const current = document.querySelector(".saas-toast");
+  current?.remove();
+  const toast = document.createElement("div");
+  toast.className = "saas-toast";
+  toast.setAttribute("role", "status");
+  toast.textContent = message;
+  document.body.append(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 180);
+  }, 3200);
+}
+
+async function responseError(response, fallback) {
+  try {
+    const payload = await response.json();
+    return typeof payload.detail === "string" ? payload.detail : fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function setDialogFeedback(element, message = "") {
+  element.textContent = message;
+  element.classList.toggle("hidden", !message);
+}
+
+function updateCreditIndicator(profile) {
+  const value = document.querySelector("#credit-indicator strong");
+  if (!value) return;
+  value.textContent = profile.unlimited_credits
+    ? "Ilimitados"
+    : `${Number(profile.credit_balance).toLocaleString("pt-BR")} disponíveis`;
+}
+
+async function loadBillingSummary() {
+  billingLoading.classList.remove("hidden");
+  billingSummary.classList.add("hidden");
+  try {
+    const response = await fetch("/api/billing/summary");
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar os créditos."));
+    const data = await response.json();
+    const profile = data.profile;
+    updateCreditIndicator(profile);
+    const planName = profile.plan_code === "internal" ? "EchoHub interno" : profile.plan_code === "trial" ? "Avaliação" : profile.plan_code;
+    const ledger = data.ledger.length ? data.ledger.map((entry) => `<tr>
+      <td>${formatDate(entry.created_at)}</td><td>${escapeHtml(entry.description)}</td>
+      <td class="ledger-value ${entry.delta > 0 ? "positive" : "negative"}">${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}</td>
+    </tr>`).join("") : `<tr><td colspan="3">Nenhuma movimentação de créditos.</td></tr>`;
+    billingSummary.innerHTML = `<div class="billing-hero section-card">
+      <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva uma empresa."}</p></div>
+      <span class="plan-badge">${escapeHtml(planName)}</span>
+    </div>
+    <div class="billing-metrics"><article><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><span>Empresas desbloqueadas</span></article><article><strong>${profile.unlimited_credits ? "Sem limite" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Saldo disponível</span></article><article><strong>${escapeHtml(profile.subscription_status === "active" ? "Ativo" : profile.subscription_status)}</strong><span>Status do plano</span></article></div>
+    <section class="section-card billing-history"><div class="section-card-heading"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2><p>Entradas e usos de créditos desta organização.</p></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Créditos</th></tr></thead><tbody>${ledger}</tbody></table></div></section>`;
+    billingLoading.classList.add("hidden");
+    billingSummary.classList.remove("hidden");
+  } catch (error) {
+    billingLoading.textContent = error.message;
+  }
+}
+
+function filtersDescription(filters) {
+  const parts = [];
+  if (filters.cnaes?.length) parts.push(`${filters.cnaes.length} CNAE${filters.cnaes.length === 1 ? "" : "s"}`);
+  if (filters.regions?.length) parts.push(filters.regions.join(", "));
+  if (filters.ufs?.length) parts.push(filters.ufs.join(", "));
+  if (filters.municipalities?.length) parts.push(`${filters.municipalities.length} município${filters.municipalities.length === 1 ? "" : "s"}`);
+  if (filters.company_name) parts.push(`Nome: ${filters.company_name}`);
+  if (filters.company_sizes?.length) parts.push(`${filters.company_sizes.length} porte${filters.company_sizes.length === 1 ? "" : "s"}`);
+  return parts.length ? parts.slice(0, 4).join(" · ") : "Busca ampla na base da Receita";
+}
+
+async function loadSavedSearches() {
+  savedSearchesLoading.classList.remove("hidden");
+  savedSearchesGrid.classList.add("hidden");
+  try {
+    const response = await fetch("/api/saved-searches");
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar as buscas salvas."));
+    const data = await response.json();
+    savedSearchesGrid.innerHTML = data.saved_searches.length ? data.saved_searches.map((saved) => `<article class="resource-card">
+      <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg></div>
+      <div class="resource-card-body"><span class="resource-meta">${saved.last_run_at ? `Usada ${formatDate(saved.last_run_at)}` : "Ainda não executada"}</span><h2>${escapeHtml(saved.name)}</h2><p>${escapeHtml(filtersDescription(saved.filters))}</p>${saved.last_result_count !== null ? `<small>${Number(saved.last_result_count).toLocaleString("pt-BR")} resultados na última execução</small>` : ""}</div>
+      <div class="resource-card-actions"><button type="button" data-use-saved-search="${saved.id}">Usar busca</button><button class="secondary" type="button" data-delete-saved-search="${saved.id}">Excluir</button></div>
+    </article>`).join("") : `<div class="empty-state resource-empty"><strong>Nenhuma busca salva.</strong><p>Monte um segmento em “Busca com filtros” e use o botão “Salvar busca”.</p><button type="button" data-switch-tab="search">Criar primeira busca</button></div>`;
+    savedSearchesGrid.dataset.searches = JSON.stringify(data.saved_searches);
+    savedSearchesLoading.classList.add("hidden");
+    savedSearchesGrid.classList.remove("hidden");
+  } catch (error) {
+    savedSearchesLoading.textContent = error.message;
+  }
+}
+
+function setInputValue(selector, value) {
+  const input = document.querySelector(selector);
+  if (input) input.value = value ?? "";
+}
+
+async function applySavedSearch(saved) {
+  switchTab("search");
+  await Promise.all([loadSearchCapabilities(), loadCnaeOptions()]);
+  const filters = saved.filters;
+  cnaePicker.setSelected(filters.cnaes || []);
+  statusPicker.setSelected(filters.registration_statuses || []);
+  sizePicker.setSelected(filters.company_sizes || []);
+  partnerAgePicker.setSelected(filters.partner_age_ranges || []);
+  regionPicker.setSelected(filters.regions || []);
+  updateUfOptions();
+  ufPicker.setSelected(filters.ufs || []);
+  await loadMunicipalityOptions();
+  municipalityPicker.setSelected(filters.municipalities || []);
+  setInputValue("#search-cnae-scope", filters.cnae_scope || "primary");
+  setInputValue("#search-name", filters.company_name);
+  setInputValue("#search-excluded-names", (filters.excluded_company_names || []).join("\n"));
+  setInputValue("#search-capital-min", filters.share_capital_min);
+  setInputValue("#search-capital-max", filters.share_capital_max);
+  setInputValue("#search-opened-from", filters.opened_from);
+  setInputValue("#search-opened-to", filters.opened_to);
+  setInputValue("#search-postal-codes", (filters.postal_code_prefixes || []).join("\n"));
+  setInputValue("#search-simples", filters.simples === null || filters.simples === undefined ? "" : String(filters.simples));
+  setInputValue("#search-mei", filters.mei === null || filters.mei === undefined ? "" : String(filters.mei));
+  setInputValue("#search-legal-nature", filters.legal_nature_code);
+  setInputValue("#search-branch-type", filters.branch_type);
+  setInputValue("#search-has-email", filters.has_email === null || filters.has_email === undefined ? "" : String(filters.has_email));
+  setInputValue("#search-has-phone", filters.has_phone === null || filters.has_phone === undefined ? "" : String(filters.has_phone));
+  setInputValue("#search-branches-min", filters.active_branch_count_min);
+  setInputValue("#search-branches-max", filters.active_branch_count_max);
+  setInputValue("#search-limit", filters.limit || 500);
+  activeSavedSearchId = saved.id;
+  activeSavedSearchFilters = JSON.stringify(filters);
+  const guidance = document.querySelector(".filter-guidance");
+  guidance.innerHTML = `<span aria-hidden="true"></span>Busca salva: ${escapeHtml(saved.name)}`;
+  companySearchForm.scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast(`Critérios de “${saved.name}” carregados.`);
+}
+
+async function deleteSavedSearch(searchId) {
+  const response = await fetch(`/api/saved-searches/${searchId}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(await responseError(response, "Não foi possível excluir a busca."));
+  if (activeSavedSearchId === searchId) {
+    activeSavedSearchId = null;
+    activeSavedSearchFilters = null;
+  }
+  await loadSavedSearches();
+  showToast("Busca excluída.");
+}
+
+async function loadCompanyLists() {
+  listsLoading.classList.remove("hidden");
+  listsGrid.classList.add("hidden");
+  listDetail.classList.add("hidden");
+  try {
+    const response = await fetch("/api/company-lists");
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar as listas."));
+    const data = await response.json();
+    listsGrid.innerHTML = data.lists.length ? data.lists.map((item) => `<article class="resource-card list-card">
+      <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></div>
+      <div class="resource-card-body"><span class="resource-meta">Atualizada ${formatDate(item.updated_at)}</span><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description || "Lista compartilhada com sua organização.")}</p><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></div>
+      <div class="resource-card-actions"><button type="button" data-open-list="${item.id}">Abrir lista</button></div>
+    </article>`).join("") : `<div class="empty-state resource-empty"><strong>Nenhuma lista criada.</strong><p>Crie uma lista para organizar empresas encontradas pela equipe.</p><button type="button" data-open-create-list>Criar primeira lista</button></div>`;
+    listsLoading.classList.add("hidden");
+    listsGrid.classList.remove("hidden");
+    return data.lists;
+  } catch (error) {
+    listsLoading.textContent = error.message;
+    return [];
+  }
+}
+
+async function loadCompanyListDetail(listId) {
+  listDetail.innerHTML = `<div class="loading-inline">Abrindo lista…</div>`;
+  listDetail.classList.remove("hidden");
+  try {
+    const response = await fetch(`/api/company-lists/${listId}`);
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível abrir a lista."));
+    const data = await response.json();
+    const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
+    listDetail.dataset.listId = listId;
+    listDetail.dataset.companies = JSON.stringify(data.companies);
+    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" type="button" data-delete-list>Excluir lista</button></div></div>
+      ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
+    listDetail.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (error) {
+    listDetail.innerHTML = `<div class="error"><strong>Não foi possível abrir a lista.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+async function openSaveListDialog() {
+  const selected = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
+  if (!selected.length) return;
+  const response = await fetch("/api/company-lists");
+  if (!response.ok) {
+    showToast(await responseError(response, "Não foi possível carregar as listas."));
+    return;
+  }
+  const data = await response.json();
+  const select = document.querySelector("#target-list");
+  select.innerHTML = `<option value="">Selecione uma lista</option>${data.lists.map((item) => `<option value="${item.id}">${escapeHtml(item.name)} (${item.company_count})</option>`).join("")}`;
+  document.querySelector("#new-list-name").value = "";
+  document.querySelector("#save-list-count").textContent = `${selected.length.toLocaleString("pt-BR")} empresa${selected.length === 1 ? "" : "s"} selecionada${selected.length === 1 ? "" : "s"}. O primeiro salvamento de cada CNPJ usa um crédito.`;
+  setDialogFeedback(document.querySelector("#save-list-feedback"));
+  saveListDialog.showModal();
+}
+
+async function removeCompanyFromList(listId, cnpj) {
+  const response = await fetch(`/api/company-lists/${listId}/companies/${encodeURIComponent(cnpj)}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(await responseError(response, "Não foi possível remover a empresa."));
+  await loadCompanyLists();
+  await loadCompanyListDetail(listId);
+  showToast("Empresa removida da lista. O desbloqueio continua disponível para a organização.");
+}
+
+function openCreateListDialog() {
+  document.querySelector("#create-list-form").reset();
+  setDialogFeedback(document.querySelector("#create-list-feedback"));
+  createListDialog.showModal();
+}
+
+document.querySelector("#save-current-search").addEventListener("click", () => {
+  document.querySelector("#saved-search-name").value = "";
+  setDialogFeedback(document.querySelector("#save-search-feedback"));
+  saveSearchDialog.showModal();
+  document.querySelector("#saved-search-name").focus();
+});
+
+document.querySelector("#save-search-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const feedback = document.querySelector("#save-search-feedback");
+  setDialogFeedback(feedback);
+  const filters = companySearchPayload();
+  const sameAsLastRun = lastCompanySearchPayload && JSON.stringify(filters) === JSON.stringify(lastCompanySearchPayload);
+  const payload = { name: document.querySelector("#saved-search-name").value, filters };
+  if (sameAsLastRun) payload.result_count = lastCompanySearch.length;
+  const response = await fetch("/api/saved-searches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  if (!response.ok) {
+    setDialogFeedback(feedback, await responseError(response, "Não foi possível salvar a busca."));
+    return;
+  }
+  const saved = await response.json();
+  activeSavedSearchId = saved.id;
+  activeSavedSearchFilters = JSON.stringify(saved.filters);
+  saveSearchDialog.close();
+  showToast("Busca salva para toda a organização.");
+});
+
+document.querySelector("#save-list-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const feedback = document.querySelector("#save-list-feedback");
+  setDialogFeedback(feedback);
+  let listId = document.querySelector("#target-list").value;
+  const newName = document.querySelector("#new-list-name").value.trim();
+  if (newName) {
+    const createResponse = await fetch("/api/company-lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: newName }) });
+    if (!createResponse.ok) {
+      setDialogFeedback(feedback, await responseError(createResponse, "Não foi possível criar a lista."));
+      return;
+    }
+    listId = (await createResponse.json()).id;
+  }
+  if (!listId) {
+    setDialogFeedback(feedback, "Escolha uma lista ou informe o nome de uma nova.");
+    return;
+  }
+  const companies = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
+  const response = await fetch(`/api/company-lists/${listId}/companies`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ companies }) });
+  if (!response.ok) {
+    setDialogFeedback(feedback, await responseError(response, "Não foi possível salvar as empresas."));
+    return;
+  }
+  const result = await response.json();
+  saveListDialog.close();
+  updateCreditIndicator({ unlimited_credits: result.unlimited_credits, credit_balance: result.credit_balance });
+  showToast(`${result.added.toLocaleString("pt-BR")} empresa${result.added === 1 ? "" : "s"} adicionada${result.added === 1 ? "" : "s"} à lista.`);
+});
+
+document.querySelector("#create-list-button").addEventListener("click", openCreateListDialog);
+document.querySelector("#create-list-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const feedback = document.querySelector("#create-list-feedback");
+  setDialogFeedback(feedback);
+  const response = await fetch("/api/company-lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: document.querySelector("#create-list-name").value, description: document.querySelector("#create-list-description").value }) });
+  if (!response.ok) {
+    setDialogFeedback(feedback, await responseError(response, "Não foi possível criar a lista."));
+    return;
+  }
+  const created = await response.json();
+  createListDialog.close();
+  await loadCompanyLists();
+  await loadCompanyListDetail(created.id);
+  showToast("Lista criada.");
+});
+
+document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
+document.querySelectorAll("dialog").forEach((dialog) => dialog.addEventListener("click", (event) => {
+  if (event.target === dialog) dialog.close();
+}));
+
+savedSearchesGrid.addEventListener("click", async (event) => {
+  const switchButton = event.target.closest("[data-switch-tab]");
+  if (switchButton) switchTab(switchButton.dataset.switchTab);
+  const useButton = event.target.closest("[data-use-saved-search]");
+  if (useButton) {
+    const searches = JSON.parse(savedSearchesGrid.dataset.searches || "[]");
+    const saved = searches.find((item) => item.id === useButton.dataset.useSavedSearch);
+    if (saved) await applySavedSearch(saved);
+  }
+  const deleteButton = event.target.closest("[data-delete-saved-search]");
+  if (deleteButton) {
+    if (!window.confirm("Excluir esta busca salva para toda a organização?")) return;
+    try { await deleteSavedSearch(deleteButton.dataset.deleteSavedSearch); }
+    catch (error) { showToast(error.message); }
+  }
+});
+
+listsGrid.addEventListener("click", (event) => {
+  const createButton = event.target.closest("[data-open-create-list]");
+  if (createButton) openCreateListDialog();
+  const openButton = event.target.closest("[data-open-list]");
+  if (openButton) loadCompanyListDetail(openButton.dataset.openList);
+});
+
+listDetail.addEventListener("click", async (event) => {
+  const listId = listDetail.dataset.listId;
+  const companyButton = event.target.closest("[data-company-cnpj]");
+  if (companyButton) {
+    switchTab("batch");
+    document.querySelector("#explorer-cnpj").value = companyButton.dataset.companyCnpj;
+    explorerCnpjForm.requestSubmit();
+  }
+  const removeButton = event.target.closest("[data-remove-list-company]");
+  if (removeButton) {
+    try { await removeCompanyFromList(listId, removeButton.dataset.removeListCompany); }
+    catch (error) { showToast(error.message); }
+  }
+  if (event.target.closest("[data-download-list]")) {
+    downloadCompanySearch(JSON.parse(listDetail.dataset.companies || "[]"), "lista-empresas");
+  }
+  if (event.target.closest("[data-delete-list]")) {
+    if (!window.confirm("Excluir esta lista e remover todas as empresas dela?")) return;
+    const response = await fetch(`/api/company-lists/${listId}`, { method: "DELETE" });
+    if (!response.ok) { showToast(await responseError(response, "Não foi possível excluir a lista.")); return; }
+    await loadCompanyLists();
+    showToast("Lista excluída.");
   }
 });
 

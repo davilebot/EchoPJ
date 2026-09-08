@@ -28,6 +28,10 @@ from .models import (
     InvitationRequest,
     InvitationTokenRequest,
     InvitationAcceptRequest,
+    CompanyListItemsRequest,
+    CompanyListRequest,
+    SavedSearchRequest,
+    SavedSearchRunRequest,
     VALID_UFS,
 )
 from .repository import Repository
@@ -36,6 +40,7 @@ from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
 from .mail import mail_available, send_invitation
+from .saas import SaaSError, SaaSStore
 
 
 settings = get_settings()
@@ -57,6 +62,18 @@ auth_store.bootstrap(settings.app_username, settings.app_password)
 legacy_organization_id = auth_store.ensure_initial_organization()
 if legacy_organization_id:
     job_store.assign_legacy_organization(legacy_organization_id)
+    if legacy_organization_id == settings.saas_internal_organization_id:
+        auth_store.configure_internal_organization(
+            legacy_organization_id,
+            settings.saas_internal_organization_name,
+        )
+saas_store = SaaSStore(settings.saas_database_path)
+if legacy_organization_id:
+    saas_store.ensure_organization(
+        legacy_organization_id,
+        unlimited=legacy_organization_id == settings.saas_internal_organization_id,
+        initial_credits=settings.saas_trial_credits,
+    )
 login_rate_limiter = LoginRateLimiter()
 invitation_rate_limiter = LoginRateLimiter(attempts=20, window_seconds=3600)
 SESSION_COOKIE = "echopjs_session"
@@ -71,6 +88,7 @@ async def lifespan(_: FastAPI):
     repository.close()
     website_checker.close()
     job_store.close()
+    saas_store.close()
     auth_store.close()
 
 
@@ -81,6 +99,11 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.exception_handler(OrganizationError)
 async def organization_error_handler(request: Request, error: OrganizationError):
+    return JSONResponse({"detail": str(error)}, status_code=error.status)
+
+
+@app.exception_handler(SaaSError)
+async def saas_error_handler(request: Request, error: SaaSError):
     return JSONResponse({"detail": str(error)}, status_code=error.status)
 
 
@@ -153,7 +176,23 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
     except ValueError:
         raise HTTPException(status_code=422, detail="Organização inválida.")
     org = auth_store.organization_for_user(user["id"], org_id)
-    return {**user, "organization_id": org["id"], "organization_role": org["role"]}
+    billing = saas_store.ensure_organization(
+        org["id"],
+        unlimited=org["id"] == settings.saas_internal_organization_id,
+        initial_credits=settings.saas_trial_credits,
+    )
+    return {
+        **user,
+        "organization_id": org["id"],
+        "organization_role": org["role"],
+        "billing": billing,
+    }
+
+
+def require_internal_organization(user: dict = Depends(require_organization)) -> dict:
+    if not user["billing"]["is_internal"]:
+        raise HTTPException(status_code=403, detail="Recurso disponível somente para a equipe interna.")
+    return user
 
 
 def page_response(request: Request, filename: str, *, next_path: str) -> Response:
@@ -266,6 +305,12 @@ def update_account(payload: AccountUpdateRequest, request: Request, user: dict =
 @app.get("/api/organizations")
 def list_organizations(user: dict = Depends(require_auth)) -> dict:
     organizations = auth_store.organizations_for_user(user["id"])
+    for organization in organizations:
+        organization["billing"] = saas_store.ensure_organization(
+            organization["id"],
+            unlimited=organization["id"] == settings.saas_internal_organization_id,
+            initial_credits=settings.saas_trial_credits,
+        )
     return {"user": user, "organizations": organizations, "can_create": any(o["role"] == "admin" for o in organizations), "email_delivery_available": mail_available(settings)}
 
 
@@ -275,6 +320,9 @@ def create_organization(payload: OrganizationRequest, user: dict = Depends(requi
     if not invitation_rate_limiter.allowed(key, monotonic()):
         raise HTTPException(status_code=429, detail="Limite temporário de criação atingido. Tente mais tarde.")
     org = auth_store.create_organization(user["id"], payload.name)
+    org["billing"] = saas_store.ensure_organization(
+        org["id"], initial_credits=settings.saas_trial_credits
+    )
     invitation_rate_limiter.failed(key, monotonic())
     return org
 
@@ -351,6 +399,106 @@ def accept_invitation(payload: InvitationAcceptRequest, request: Request) -> Res
     response = JSONResponse({"accepted": True, "organization_id": org_id})
     set_session_cookie(response, token, expires)
     return response
+
+
+@app.get("/api/billing/summary")
+def billing_summary(user: dict = Depends(require_organization)) -> dict:
+    return saas_store.billing_summary(user["organization_id"])
+
+
+@app.get("/api/saved-searches")
+def list_saved_searches(user: dict = Depends(require_organization)) -> dict:
+    return {"saved_searches": saas_store.list_saved_searches(user["organization_id"])}
+
+
+@app.post("/api/saved-searches", status_code=201)
+def create_saved_search(payload: SavedSearchRequest, user: dict = Depends(require_organization)) -> dict:
+    return saas_store.create_saved_search(
+        user["organization_id"],
+        user["id"],
+        name=payload.name,
+        filters=payload.filters.model_dump(mode="json"),
+        result_count=payload.result_count,
+    )
+
+
+@app.get("/api/saved-searches/{search_id}")
+def get_saved_search(search_id: str, user: dict = Depends(require_organization)) -> dict:
+    saved = saas_store.saved_search(user["organization_id"], search_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Busca salva não encontrada.")
+    return saved
+
+
+@app.post("/api/saved-searches/{search_id}/runs")
+def record_saved_search_run(
+    search_id: str,
+    payload: SavedSearchRunRequest,
+    user: dict = Depends(require_organization),
+) -> dict:
+    return saas_store.record_saved_search_run(
+        user["organization_id"], search_id, payload.result_count
+    )
+
+
+@app.delete("/api/saved-searches/{search_id}")
+def delete_saved_search(search_id: str, user: dict = Depends(require_organization)) -> dict:
+    if not saas_store.delete_saved_search(user["organization_id"], search_id):
+        raise HTTPException(status_code=404, detail="Busca salva não encontrada.")
+    return {"deleted": True}
+
+
+@app.get("/api/company-lists")
+def list_company_lists(user: dict = Depends(require_organization)) -> dict:
+    return {"lists": saas_store.list_company_lists(user["organization_id"])}
+
+
+@app.post("/api/company-lists", status_code=201)
+def create_company_list(payload: CompanyListRequest, user: dict = Depends(require_organization)) -> dict:
+    return saas_store.create_company_list(
+        user["organization_id"],
+        user["id"],
+        name=payload.name,
+        description=payload.description,
+    )
+
+
+@app.get("/api/company-lists/{list_id}")
+def get_company_list(list_id: str, user: dict = Depends(require_organization)) -> dict:
+    company_list = saas_store.company_list_detail(user["organization_id"], list_id)
+    if not company_list:
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    return company_list
+
+
+@app.post("/api/company-lists/{list_id}/companies")
+def add_companies_to_list(
+    list_id: str,
+    payload: CompanyListItemsRequest,
+    user: dict = Depends(require_organization),
+) -> dict:
+    return saas_store.add_companies(
+        user["organization_id"], list_id, user["id"], payload.companies
+    )
+
+
+@app.delete("/api/company-lists/{list_id}/companies/{cnpj}")
+def remove_company_from_list(
+    list_id: str,
+    cnpj: str,
+    user: dict = Depends(require_organization),
+) -> dict:
+    normalized = normalize_cnpj_identifier(cnpj)
+    if not saas_store.remove_company(user["organization_id"], list_id, normalized):
+        raise HTTPException(status_code=404, detail="Empresa não encontrada nesta lista.")
+    return {"removed": True}
+
+
+@app.delete("/api/company-lists/{list_id}")
+def delete_company_list(list_id: str, user: dict = Depends(require_organization)) -> dict:
+    if not saas_store.delete_company_list(user["organization_id"], list_id):
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    return {"deleted": True}
 
 
 @app.post("/api/matches/batch")
@@ -470,7 +618,7 @@ def explorer_overview(_: dict = Depends(require_organization)) -> dict:
 
 
 @app.get("/api/explorer/schema")
-def explorer_schema(_: dict = Depends(require_organization)) -> dict:
+def explorer_schema(_: dict = Depends(require_internal_organization)) -> dict:
     return repository.database_schema()
 
 
@@ -478,7 +626,7 @@ def explorer_schema(_: dict = Depends(require_organization)) -> dict:
 def explorer_relation_preview(
     relation_name: str,
     limit: int = Query(default=10, ge=1, le=20),
-    _: dict = Depends(require_organization),
+    _: dict = Depends(require_internal_organization),
 ) -> dict:
     try:
         return repository.preview_relation(relation_name, limit=limit)

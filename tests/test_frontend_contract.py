@@ -35,13 +35,21 @@ class FrontendContractTests(unittest.TestCase):
             "match-form", "batch-form", "company-search-form", "bulk-cnpj-form",
             "explorer-cnpj-form", "history-list", "explorer-overview",
             "schema-catalog", "relation-preview", "theme-toggle",
+            "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
+            "save-search-dialog", "save-list-dialog", "create-list-dialog",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
     def test_every_navigation_item_has_a_panel(self):
         ids = set(self.parser.ids)
-        self.assertEqual(len(self.parser.tabs), 6)
+        self.assertEqual(len(self.parser.tabs), 9)
         self.assertTrue(all(f"{tab}-tab" in ids for tab in self.parser.tabs))
+
+    def test_search_navigation_is_grouped_and_saas_library_is_visible(self):
+        self.assertIn('class="nav-group-title"', self.html)
+        self.assertIn("Buscar empresas", self.html)
+        for label in ("Busca com filtros", "Consultar CNPJs", "Identificar CNPJ", "Listas", "Buscas salvas", "Plano e créditos"):
+            self.assertIn(label, self.html)
 
     def test_echo_brand_assets_and_themes_are_present(self):
         self.assertIn("EchoPJs", self.html)

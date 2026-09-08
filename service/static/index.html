@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260903-org-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260908-saas-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -31,12 +31,21 @@
       <nav class="tabs sidebar-nav" aria-label="Navegação principal">
         <span class="nav-section-label">Workspace</span>
         <button class="tab-button active" data-tab="overview" data-view-title="Visão geral" type="button" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Visão geral</span></button>
-        <button class="tab-button" data-tab="search" data-view-title="Encontrar empresas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span>Encontrar empresas</span></button>
-        <button class="tab-button" data-tab="consulta" data-view-title="Enriquecimento de CNPJ" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7V3Z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg><span>Enriquecimento de CNPJ</span></button>
-        <button class="tab-button" data-tab="batch" data-view-title="Consultar CNPJ" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg><span>Consultar CNPJ</span></button>
-        <span class="nav-section-label nav-section-secondary">Operação</span>
+        <div class="nav-group">
+          <div class="nav-group-title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span>Buscar empresas</span></div>
+          <div class="nav-submenu">
+            <button class="tab-button nav-subitem" data-tab="search" data-view-title="Busca com filtros" type="button" title="Busca com filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Busca com filtros</span></button>
+            <button class="tab-button nav-subitem" data-tab="batch" data-view-title="Consultar CNPJs" type="button" title="Consultar CNPJs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>Consultar CNPJs</span></button>
+            <button class="tab-button nav-subitem" data-tab="consulta" data-view-title="Identificar CNPJ" type="button" title="Identificar CNPJ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="m14 14 5 5"/></svg><span>Identificar CNPJ</span></button>
+          </div>
+        </div>
+        <span class="nav-section-label nav-section-secondary">Biblioteca</span>
+        <button class="tab-button" data-tab="lists" data-view-title="Listas de empresas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="3" cy="6" r=".6"/><circle cx="3" cy="12" r=".6"/><circle cx="3" cy="18" r=".6"/></svg><span>Listas</span></button>
+        <button class="tab-button" data-tab="saved-searches" data-view-title="Buscas salvas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg><span>Buscas salvas</span></button>
+        <span class="nav-section-label nav-section-secondary">Operação e conta</span>
         <button class="tab-button" data-tab="history" data-view-title="Processamentos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Processamentos</span></button>
-        <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
+        <button class="tab-button" data-tab="billing" data-view-title="Plano e créditos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg><span>Plano e créditos</span></button>
+        <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" data-internal-only type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
       </nav>
       <div class="sidebar-footer">
         <div class="dataset-status"><span aria-hidden="true"></span><strong>Base da Receita</strong></div>
@@ -49,6 +58,7 @@
         <div class="breadcrumbs" aria-label="Localização atual"><span>EchoPJs</span><i aria-hidden="true">/</i><strong id="current-view">Visão geral</strong></div>
         <div class="topbar-actions">
           <a id="mobile-organizations-link" class="mobile-organizations" href="/organizations">Organizações e equipe</a>
+          <button id="credit-indicator" class="credit-indicator" data-switch-tab="billing" type="button"><span>Créditos</span><strong>Carregando…</strong></button>
           <span class="secure-label"><span aria-hidden="true"></span>Base oficial</span>
           <a id="account-link" class="secure-label" href="/account"><span aria-hidden="true"></span>Minha conta</a>
           <button id="theme-toggle" class="icon-button" type="button" aria-label="Ativar tema escuro" aria-pressed="false">
@@ -129,7 +139,7 @@
               </section>
               <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
             </fieldset>
-            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e exportar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><button type="submit">Encontrar e mostrar prévia</button></div>
+            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e salvar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><div class="search-submit-actions"><button id="save-current-search" class="secondary" type="button">Salvar busca</button><button type="submit">Encontrar empresas</button></div></div>
           </form>
           <section id="search-loading" class="hidden">Consultando a base da Receita…</section><section id="search-result" class="hidden"></section>
         </section>
@@ -166,6 +176,25 @@
           <section id="bulk-cnpj-loading" class="section-card hidden">Consultando os CNPJs exatos na Receita…</section><section id="bulk-cnpj-result" class="hidden"></section>
         </section>
 
+        <section id="lists-tab" class="tab-panel hidden">
+          <div class="page-heading page-heading-row"><div><span class="eyebrow">BIBLIOTECA</span><h1>Listas de empresas</h1><p>Organize os CNPJs que sua equipe quer abordar, revisar ou acompanhar.</p></div><button id="create-list-button" class="primary-action" type="button">Criar lista</button></div>
+          <section id="lists-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando listas…</section>
+          <section id="lists-grid" class="resource-grid hidden"></section>
+          <section id="list-detail" class="section-card hidden"></section>
+        </section>
+
+        <section id="saved-searches-tab" class="tab-panel hidden">
+          <div class="page-heading page-heading-row"><div><span class="eyebrow">BIBLIOTECA</span><h1>Buscas salvas</h1><p>Reaproveite segmentos e critérios de prospecção sem montar os filtros novamente.</p></div><button class="primary-action" data-switch-tab="search" type="button">Nova busca</button></div>
+          <section id="saved-searches-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando buscas…</section>
+          <section id="saved-searches-grid" class="resource-grid hidden"></section>
+        </section>
+
+        <section id="billing-tab" class="tab-panel hidden">
+          <div class="page-heading"><span class="eyebrow">CONTA</span><h1>Plano e créditos</h1><p>Acompanhe o acesso da organização e o uso compartilhado pela equipe.</p></div>
+          <section id="billing-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando plano…</section>
+          <section id="billing-summary" class="billing-layout hidden"></section>
+        </section>
+
         <section id="history-tab" class="tab-panel hidden"><div class="page-heading page-heading-row history-heading"><div><span class="eyebrow">OPERAÇÃO</span><h1>Processamentos</h1><p>Acompanhe consultas em lote e baixe resultados completos ou parciais.</p></div><button id="refresh-history" class="secondary compact" type="button">Atualizar</button></div><section id="history-loading" class="loading-state"><span class="spinner" aria-hidden="true"></span>Carregando consultas…</section><section id="history-list" class="history-list hidden"></section></section>
 
         <section id="data-tab" class="tab-panel hidden">
@@ -175,7 +204,34 @@
       </main>
     </div>
   </div>
-  <script src="/static/workspace.js?v=20260903-org-1"></script>
-  <script src="/static/app.js?v=20260903-org-1"></script>
+  <dialog id="save-search-dialog" class="saas-dialog">
+    <form id="save-search-form" class="dialog-form">
+      <div class="dialog-heading"><span class="eyebrow">SALVAR SEGMENTO</span><h2>Nomeie esta busca</h2><p>Os critérios atuais ficarão disponíveis para toda a organização.</p></div>
+      <label>Nome da busca<input id="saved-search-name" maxlength="120" required placeholder="Ex.: Autopeças ativas em São Paulo"></label>
+      <p id="save-search-feedback" class="dialog-feedback hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Salvar busca</button></div>
+    </form>
+  </dialog>
+  <dialog id="save-list-dialog" class="saas-dialog">
+    <form id="save-list-form" class="dialog-form">
+      <div class="dialog-heading"><span class="eyebrow">SALVAR EMPRESAS</span><h2>Adicionar a uma lista</h2><p id="save-list-count">Escolha onde guardar as empresas selecionadas.</p></div>
+      <label>Lista existente<select id="target-list"><option value="">Selecione uma lista</option></select></label>
+      <div class="dialog-separator"><span>ou</span></div>
+      <label>Criar uma nova lista<input id="new-list-name" maxlength="120" placeholder="Ex.: Prospecção de setembro"></label>
+      <p id="save-list-feedback" class="dialog-feedback hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Salvar empresas</button></div>
+    </form>
+  </dialog>
+  <dialog id="create-list-dialog" class="saas-dialog">
+    <form id="create-list-form" class="dialog-form">
+      <div class="dialog-heading"><span class="eyebrow">NOVA LISTA</span><h2>Crie uma lista para sua equipe</h2><p>Use listas para separar campanhas, territórios e etapas comerciais.</p></div>
+      <label>Nome da lista<input id="create-list-name" maxlength="120" required placeholder="Ex.: Leads prioritários"></label>
+      <label>Descrição opcional<textarea id="create-list-description" maxlength="500" rows="3" placeholder="Explique quando esta lista deve ser usada"></textarea></label>
+      <p id="create-list-feedback" class="dialog-feedback hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Criar lista</button></div>
+    </form>
+  </dialog>
+  <script src="/static/workspace.js?v=20260908-saas-1"></script>
+  <script src="/static/app.js?v=20260908-saas-1"></script>
 </body>
 </html>

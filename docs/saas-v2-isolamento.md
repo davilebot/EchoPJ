@@ -20,6 +20,10 @@ listas, creditos e pagamentos da v2 nunca devem usar o volume da aplicacao
 atual. Quando esses dados migrarem de SQLite para PostgreSQL, a v2 deve usar um
 banco ou schema operacional proprio.
 
+Na fase inicial, `saas.sqlite` guarda perfis comerciais, livro-razao de creditos,
+empresas desbloqueadas, listas e buscas salvas. O arquivo fica apenas no volume
+`/srv/echopjs-saas-v2/data`.
+
 ## Fluxo de desenvolvimento
 
 Os dois diretorios locais sao worktrees do mesmo repositorio:

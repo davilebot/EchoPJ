@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from service.auth import AuthStore
 from service.jobs import JobStore
+from service.saas import SaaSStore
 
 
 class OrganizationAPITests(unittest.TestCase):
@@ -22,6 +23,7 @@ class OrganizationAPITests(unittest.TestCase):
         with patch.dict(os.environ, {
             "POSTGRES_DSN": "postgresql://test@127.0.0.1/test",
             "AUTH_DATABASE_PATH": f"{cls.initial.name}/auth.sqlite",
+            "SAAS_DATABASE_PATH": f"{cls.initial.name}/saas.sqlite",
             "JOB_DATABASE_PATH": f"{cls.initial.name}/jobs.sqlite",
             "WEBSITE_CACHE_PATH": f"{cls.initial.name}/web.sqlite",
             "APP_USERNAME": "test", "APP_PASSWORD": "test-only-password",
@@ -38,20 +40,23 @@ class OrganizationAPITests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.auth = AuthStore(f"{self.tmp.name}/auth.sqlite")
         self.jobs = JobStore(f"{self.tmp.name}/jobs.sqlite")
+        self.saas = SaaSStore(f"{self.tmp.name}/saas.sqlite")
         self.auth.bootstrap("owner@example.com", "test-only-password")
         self.owner = self.auth.authenticate("owner@example.com", "test-only-password")
         self.org = self.auth.ensure_initial_organization()
         self.other = self.auth.create_organization(self.owner["id"], "Other")["id"]
+        self.saas.ensure_organization(self.org, unlimited=True)
+        self.saas.ensure_organization(self.other, initial_credits=2)
         self.owner_token = self.auth.create_session(self.owner["id"])[0]
         invite = self.auth.create_invitation(self.owner["id"], self.org, "member@example.com", "member")
         self.member = self.auth.accept_invitation(invite["token"], "member-password")[0]
         self.member_token = self.auth.create_session(self.member["id"])[0]
-        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "repository", MagicMock()), patch.object(self.main.job_runner, "notify")]
+        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main.job_runner, "notify")]
         for mock in self.patches: mock.start()
 
     def tearDown(self):
         for mock in reversed(self.patches): mock.stop()
-        self.auth.close(); self.jobs.close(); self.tmp.cleanup()
+        self.auth.close(); self.jobs.close(); self.saas.close(); self.tmp.cleanup()
 
     def request(self, path, method="GET", data=None, token=None, headers=None):
         parts = urlsplit(path)
@@ -143,3 +148,53 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200); self.assertIn('id="accept-form"', html)
         self.assertEqual(headers[b"referrer-policy"], b"no-referrer")
         self.assertIn(b"no-store", headers[b"cache-control"])
+
+    def test_saas_resources_are_tenant_scoped_and_credits_are_enforced(self):
+        saved_payload = {
+            "name": "Empresas de SP",
+            "filters": {"ufs": ["SP"], "registration_statuses": ["ATIVA"], "limit": 100},
+        }
+        status, saved, _ = self.request(
+            "/api/saved-searches", "POST", saved_payload, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(
+            self.request(f"/api/saved-searches/{saved['id']}", token=self.owner_token, headers={"x-organization-id": str(self.other)})[0],
+            404,
+        )
+        status, company_list, _ = self.request(
+            "/api/company-lists", "POST", {"name": "Prospects"}, self.owner_token,
+            {"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 201)
+        companies = [
+            {"cnpj": "11222333000181", "legal_name": "Empresa A"},
+            {"cnpj": "19131243000197", "legal_name": "Empresa B"},
+        ]
+        status, result, _ = self.request(
+            f"/api/company-lists/{company_list['id']}/companies", "POST", {"companies": companies},
+            self.owner_token, {"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["credits_spent"], 2)
+        billing = self.request(
+            "/api/billing/summary", token=self.owner_token,
+            headers={"x-organization-id": str(self.other)},
+        )[1]
+        self.assertEqual(billing["profile"]["credit_balance"], 0)
+        self.assertEqual(
+            self.request(f"/api/company-lists/{company_list['id']}", token=self.owner_token, headers={"x-organization-id": str(self.org)})[0],
+            404,
+        )
+
+    def test_database_schema_is_internal_only(self):
+        self.main.repository.database_schema.return_value = {"relations": []}
+        self.assertEqual(
+            self.request("/api/explorer/schema", token=self.owner_token, headers={"x-organization-id": str(self.other)})[0],
+            403,
+        )
+        self.assertEqual(
+            self.request("/api/explorer/schema", token=self.owner_token, headers={"x-organization-id": str(self.org)})[0],
+            200,
+        )

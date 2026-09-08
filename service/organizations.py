@@ -100,6 +100,24 @@ class OrganizationStoreMixin:
             self._audit(org_id, owner, "organization.migrated")
             return org_id
 
+    def configure_internal_organization(self, org_id, name):
+        """Give the SaaS owner organization its configured name once."""
+        metadata_key = f"internal_organization:{org_id}"
+        with self._org_transaction():
+            configured = self._connection.execute(
+                "SELECT 1 FROM auth_metadata WHERE key=?", (metadata_key,)
+            ).fetchone()
+            organization = self._connection.execute(
+                "SELECT id,created_by,name FROM organizations WHERE id=?", (org_id,)
+            ).fetchone()
+            if not organization:
+                raise OrganizationError("Organização interna não encontrada.", 404)
+            if not configured:
+                self._connection.execute("UPDATE organizations SET name=? WHERE id=?", (name, org_id))
+                self._connection.execute("INSERT INTO auth_metadata(key,value) VALUES(?,?)", (metadata_key, name))
+                self._audit(org_id, organization["created_by"], "organization.internal_configured", name)
+            return dict(self._connection.execute("SELECT * FROM organizations WHERE id=?", (org_id,)).fetchone())
+
     def organizations_for_user(self, user_id):
         with self._lock:
             return [dict(r) for r in self._connection.execute(

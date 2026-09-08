@@ -14,6 +14,13 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   document.querySelector("#mobile-organizations-link").textContent = org.name;
   document.querySelector("#mobile-organizations-link").title = "Organizações e equipe";
   document.querySelector("#account-link").href = `/account?organization=${org.id}`;
+  const creditIndicator = document.querySelector("#credit-indicator strong");
+  if (creditIndicator) creditIndicator.textContent = org.billing?.unlimited_credits
+    ? "Ilimitados"
+    : `${Number(org.billing?.credit_balance || 0).toLocaleString("pt-BR")} disponíveis`;
+  document.querySelectorAll("[data-internal-only]").forEach((element) => {
+    element.classList.toggle("hidden", !org.billing?.is_internal);
+  });
   const url = new URL(location.href); url.searchParams.set("organization", org.id); history.replaceState(null, "", url);
   return { user: data.user, organization: org };
 }).catch((error) => {

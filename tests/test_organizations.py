@@ -35,6 +35,13 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual(len(self.store.organizations_for_user(self.owner)), 1)
         self.assertIsNotNone(self.store.authenticate("owner@example.com", "test-password-long"))
 
+    def test_internal_organization_name_is_configured_only_once(self):
+        configured = self.store.configure_internal_organization(self.org, "EchoHub")
+        self.assertEqual(configured["name"], "EchoHub")
+        self.store.rename_organization(self.owner, self.org, "EchoHub Operações")
+        configured_again = self.store.configure_internal_organization(self.org, "EchoHub")
+        self.assertEqual(configured_again["name"], "EchoHub Operações")
+
     def test_admin_can_create_and_member_cannot(self):
         member = self.invite_user()
         second = self.store.create_organization(self.owner, "Segunda")

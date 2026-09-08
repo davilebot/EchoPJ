@@ -1,7 +1,8 @@
 from datetime import date
 from decimal import Decimal
+import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -311,3 +312,62 @@ class CompanySearchRequest(BaseModel):
         if self.cnae_scope == "any" and self.cnae and len(self.cnae) != 7:
             raise ValueError("para incluir CNAEs secundarios, informe o codigo completo de 7 digitos")
         return self
+
+
+class SavedSearchRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    filters: CompanySearchRequest
+    result_count: int | None = Field(default=None, ge=0, le=10000)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Informe um nome para a busca.")
+        return value
+
+
+class SavedSearchRunRequest(BaseModel):
+    result_count: int = Field(ge=0, le=10000)
+
+
+class CompanyListRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("Informe um nome para a lista.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, value: str) -> str:
+        return " ".join(value.split())
+
+
+class CompanyListItemsRequest(BaseModel):
+    companies: list[dict[str, Any]] = Field(min_length=1, max_length=500)
+
+    @field_validator("companies")
+    @classmethod
+    def clean_companies(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        cleaned: list[dict[str, Any]] = []
+        total_bytes = 0
+        for company in value:
+            normalized = digits(str(company.get("cnpj", "")))
+            if not valid_cnpj(normalized):
+                raise ValueError("Todas as empresas precisam ter um CNPJ válido.")
+            snapshot = {**company, "cnpj": normalized}
+            encoded = json.dumps(snapshot, ensure_ascii=False, default=str).encode("utf-8")
+            total_bytes += len(encoded)
+            if len(encoded) > 200_000:
+                raise ValueError("Os dados de uma empresa excedem o limite permitido.")
+            cleaned.append(snapshot)
+        if total_bytes > 5_000_000:
+            raise ValueError("A seleção excede o limite de 5 MB. Salve em partes menores.")
+        return cleaned

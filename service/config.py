@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_username: str = ""
     app_password: str = ""
     auth_database_path: str = "/data/auth.sqlite"
+    saas_database_path: str = "/data/saas.sqlite"
     auth_session_days: int = 30
     app_public_url: str = "https://plataforma-receita-matcher.ztnbow.easypanel.host"
     smtp_host: str = ""
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
     max_batch_size: int = 200
     max_job_size: int = 10000
     job_database_path: str = "/data/jobs.sqlite"
+    saas_trial_credits: int = 100
+    saas_internal_organization_id: int = 1
+    saas_internal_organization_name: str = "EchoHub"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
