@@ -29,7 +29,7 @@ services:
     networks:
       easypanel:
         aliases:
-          - echopjs_saas_v2_app
+          - echopjs-saas_v2_app
       radar_backend: {}
       egress: {}
 

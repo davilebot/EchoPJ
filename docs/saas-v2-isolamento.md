@@ -12,7 +12,7 @@ versoes podem rodar no mesmo VPS e consultar o mesmo PostgreSQL da Receita.
 | Imagem | `plataforma-receita-matcher:*` | `echopjs-saas:*` |
 | Segredos | `/etc/easypanel/secrets/plataforma-receita/app.env` | `/etc/easypanel/secrets/echopjs-saas-v2/app.env` |
 | Dados operacionais | `/srv/plataforma-receita/data` | `/srv/echopjs-saas-v2/data` |
-| URL | URL atual | URL nova, inicialmente de homologacao |
+| URL | URL atual | `https://echopjs-saas-v2.ztnbow.easypanel.host` |
 | Receita Federal | PostgreSQL compartilhado, somente leitura | O mesmo PostgreSQL, somente leitura |
 
 O compartilhamento termina no banco da Receita. Contas, sessoes, jobs, cache,
@@ -42,7 +42,7 @@ implantacao tomada apenas depois da homologacao.
 
 ## Implantacao da v2 no EasyPanel
 
-1. Crie um projeto ou Compose chamado `echopjs-saas-v2`.
+1. Use o projeto EasyPanel `echopjs-saas` e o Compose `v2`.
 2. Cadastre um arquivo de segredos separado usando `saas-v2.env.example` como
    referencia e configure nele a nova `APP_PUBLIC_URL`.
 3. Reutilize em `POSTGRES_DSN` a credencial somente leitura da Receita.
@@ -55,7 +55,8 @@ implantacao tomada apenas depois da homologacao.
    ```
 
 6. Defina `SAAS_IMAGE_TAG=<commit>` ao renderizar `compose.saas-v2.yml`.
-7. Associe apenas a nova URL ao servico `echopjs_saas_v2_app`.
+7. Associe `https://echopjs-saas-v2.ztnbow.easypanel.host` ao servico
+   `echopjs-saas_v2_app` na porta `8000`.
 8. Execute o smoke test na nova URL e confirme que a URL atual continua servindo
    a imagem anterior.
 
