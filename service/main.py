@@ -27,6 +27,8 @@ from .models import (
     PasswordResetRequest,
     SignupRequest,
     SignupVerificationRequest,
+    BillingProfileUpdateRequest,
+    CreditAdjustmentRequest,
     OrganizationRequest,
     MemberRoleRequest,
     InvitationRequest,
@@ -128,7 +130,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -188,6 +190,11 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
         unlimited=org["id"] == settings.saas_internal_organization_id,
         initial_credits=settings.saas_trial_credits,
     )
+    if billing["subscription_status"] == "suspended":
+        raise HTTPException(
+            status_code=403,
+            detail="O acesso desta organização está suspenso. Fale com o suporte da EchoHub.",
+        )
     return {
         **user,
         "organization_id": org["id"],
@@ -199,6 +206,12 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
 def require_internal_organization(user: dict = Depends(require_organization)) -> dict:
     if not user["billing"]["is_internal"]:
         raise HTTPException(status_code=403, detail="Recurso disponível somente para a equipe interna.")
+    return user
+
+
+def require_internal_admin(user: dict = Depends(require_organization)) -> dict:
+    if not user["billing"]["is_internal"] or user["organization_role"] != "admin":
+        raise HTTPException(status_code=403, detail="Acesso disponível somente para administradores da EchoHub.")
     return user
 
 
@@ -256,6 +269,11 @@ def signup_page(request: Request) -> Response:
 @app.get("/verify-email")
 def verify_email_page() -> Response:
     return FileResponse(static_dir / "verify-email.html")
+
+
+@app.get("/admin")
+def admin_page(request: Request) -> Response:
+    return page_response(request, "admin.html", next_path="/admin")
 
 
 @app.get("/account")
@@ -549,6 +567,77 @@ def dashboard(user: dict = Depends(require_organization)) -> dict:
     summary["recent_jobs"] = jobs
     summary["active_jobs"] = job_store.active_job_count(organization_id=user["organization_id"])
     return summary
+
+
+@app.get("/api/admin/overview")
+def admin_overview(
+    query: str = Query("", max_length=120),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    catalog = auth_store.admin_organization_catalog(query, limit=limit, offset=offset)
+    for organization in catalog["organizations"]:
+        organization["billing"] = saas_store.ensure_organization(
+            organization["id"],
+            unlimited=organization["id"] == settings.saas_internal_organization_id,
+            initial_credits=settings.saas_trial_credits,
+        )
+        organization["unlocked_companies"] = saas_store.billing_summary(
+            organization["id"], ledger_limit=0
+        )["unlocked_companies"]
+    catalog["metrics"] = saas_store.admin_metrics()
+    return catalog
+
+
+@app.get("/api/admin/organizations/{organization_id}")
+def admin_organization_detail(
+    organization_id: int,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    organization = auth_store.admin_organization(organization_id)
+    organization["billing"] = saas_store.ensure_organization(
+        organization_id,
+        unlimited=organization_id == settings.saas_internal_organization_id,
+        initial_credits=settings.saas_trial_credits,
+    )
+    organization["commercial"] = saas_store.billing_summary(organization_id, ledger_limit=50)
+    return organization
+
+
+@app.patch("/api/admin/organizations/{organization_id}/billing")
+def update_admin_billing(
+    organization_id: int,
+    payload: BillingProfileUpdateRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    auth_store.admin_organization(organization_id)
+    if organization_id == settings.saas_internal_organization_id and (
+        payload.plan_code != "internal" or not payload.unlimited_credits or payload.subscription_status != "active"
+    ):
+        raise HTTPException(status_code=409, detail="O plano interno da EchoHub precisa permanecer ativo e ilimitado.")
+    return saas_store.update_billing_profile(
+        organization_id,
+        plan_code=payload.plan_code,
+        subscription_status=payload.subscription_status,
+        unlimited_credits=payload.unlimited_credits,
+        actor_id=user["id"],
+    )
+
+
+@app.post("/api/admin/organizations/{organization_id}/credits")
+def adjust_admin_credits(
+    organization_id: int,
+    payload: CreditAdjustmentRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    auth_store.admin_organization(organization_id)
+    return saas_store.adjust_credits(
+        organization_id,
+        payload.amount,
+        description=payload.description,
+        actor_id=user["id"],
+    )
 
 
 @app.post("/api/credits/estimate")

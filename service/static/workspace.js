@@ -21,6 +21,10 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   document.querySelectorAll("[data-internal-only]").forEach((element) => {
     element.classList.toggle("hidden", !org.billing?.is_internal);
   });
+  document.querySelectorAll("[data-internal-admin]").forEach((element) => {
+    element.classList.toggle("hidden", !org.billing?.is_internal || org.role !== "admin");
+    if (element.id === "admin-link") element.href = `/admin?organization=${org.id}`;
+  });
   const url = new URL(location.href); url.searchParams.set("organization", org.id); history.replaceState(null, "", url);
   return { user: data.user, organization: org };
 }).catch((error) => {

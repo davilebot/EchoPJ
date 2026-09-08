@@ -125,6 +125,64 @@ class OrganizationStoreMixin:
                 (user_id,),
             ).fetchall()]
 
+    def admin_organization_catalog(self, query="", *, limit=50, offset=0):
+        """Return a bounded cross-tenant catalog after the caller has passed admin authorization."""
+        normalized = " ".join(str(query).split()).casefold()
+        where = ""
+        parameters = []
+        if normalized:
+            pattern = f"%{normalized}%"
+            where = """WHERE lower(o.name) LIKE ? OR EXISTS (
+                SELECT 1 FROM memberships search_membership
+                JOIN users search_user ON search_user.id=search_membership.user_id
+                WHERE search_membership.organization_id=o.id
+                  AND lower(search_user.identifier) LIKE ?
+            )"""
+            parameters.extend((pattern, pattern))
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+        with self._lock:
+            total = self._connection.execute(
+                f"SELECT count(*) FROM organizations o {where}",
+                parameters,
+            ).fetchone()[0]
+            organizations = [dict(row) for row in self._connection.execute(
+                f"""SELECT o.id,o.name,o.created_at,owner.identifier AS owner_email,
+                    (SELECT count(*) FROM memberships m WHERE m.organization_id=o.id) AS member_count,
+                    (SELECT count(*) FROM memberships m WHERE m.organization_id=o.id AND m.role='admin') AS admin_count
+                    FROM organizations o
+                    JOIN users owner ON owner.id=o.created_by
+                    {where}
+                    ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?""",
+                (*parameters, limit, offset),
+            ).fetchall()]
+            user_count = self._connection.execute("SELECT count(*) FROM users").fetchone()[0]
+            pending_signups = self._connection.execute(
+                "SELECT count(*) FROM pending_signups WHERE used_at IS NULL AND expires_at>?",
+                (now_iso(),),
+            ).fetchone()[0]
+        return {
+            "organizations": organizations,
+            "total": total,
+            "user_count": user_count,
+            "pending_signups": pending_signups,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def admin_organization(self, organization_id):
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT o.id,o.name,o.created_at,owner.identifier AS owner_email,
+                   (SELECT count(*) FROM memberships m WHERE m.organization_id=o.id) AS member_count,
+                   (SELECT count(*) FROM memberships m WHERE m.organization_id=o.id AND m.role='admin') AS admin_count
+                   FROM organizations o JOIN users owner ON owner.id=o.created_by WHERE o.id=?""",
+                (organization_id,),
+            ).fetchone()
+        if not row:
+            raise OrganizationError("Organização não encontrada.", 404)
+        return dict(row)
+
     def _membership(self, user_id, org_id, *, admin=False):
         row = self._connection.execute(
             "SELECT o.*,m.role FROM organizations o JOIN memberships m ON m.organization_id=o.id WHERE o.id=? AND m.user_id=?",

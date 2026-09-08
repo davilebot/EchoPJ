@@ -74,6 +74,11 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('downloadCsvResponse("/api/exports/cnpj-lookup"', script)
         self.assertNotIn("downloadCompleteCompanyCsv", script)
 
+    def test_internal_admin_entry_is_role_gated(self):
+        workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("data-internal-admin", self.html)
+        self.assertIn('org.role !== "admin"', workspace)
+
 
 if __name__ == "__main__":
     unittest.main()

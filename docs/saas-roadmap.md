@@ -38,7 +38,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - webhooks assinados, idempotentes e auditáveis;
 - renovação, inadimplência, cancelamento e reativação;
 - notas e recibos fornecidos pelo provedor;
-- painel interno para consultar organizações, planos, pagamentos e concessões;
+- [x] painel interno para consultar organizações, planos e concessões manuais;
+- pagamentos e eventos de cobrança no painel após a integração do provedor;
 - migração dos dados operacionais para PostgreSQL próprio antes de escalar.
 
 ## Entrega 3 — aquisição e ativação

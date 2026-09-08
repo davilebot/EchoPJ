@@ -92,6 +92,37 @@ class AccountUpdateRequest(BaseModel):
         return normalized
 
 
+class BillingProfileUpdateRequest(BaseModel):
+    plan_code: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9][a-z0-9_-]*$")
+    subscription_status: Literal["trialing", "active", "past_due", "canceled", "suspended"]
+    unlimited_credits: bool = False
+
+    @field_validator("plan_code", mode="before")
+    @classmethod
+    def normalize_plan(cls, value: str) -> str:
+        return value.strip().casefold()
+
+
+class CreditAdjustmentRequest(BaseModel):
+    amount: int = Field(ge=-1_000_000, le=1_000_000)
+    description: str = Field(min_length=3, max_length=200)
+
+    @field_validator("amount")
+    @classmethod
+    def nonzero_amount(cls, value: int) -> int:
+        if value == 0:
+            raise ValueError("Informe uma quantidade diferente de zero.")
+        return value
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if len(value) < 3:
+            raise ValueError("Explique o motivo do ajuste.")
+        return value
+
+
 class MatchInput(BaseModel):
     local_id: str = Field(min_length=1, max_length=200)
     name: str = Field(min_length=1, max_length=300)

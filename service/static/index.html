@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260908-saas-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260908-admin-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -45,6 +45,7 @@
         <span class="nav-section-label nav-section-secondary">Operação e conta</span>
         <button class="tab-button" data-tab="history" data-view-title="Processamentos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Processamentos</span></button>
         <button class="tab-button" data-tab="billing" data-view-title="Plano e créditos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg><span>Plano e créditos</span></button>
+        <a id="admin-link" class="tab-button hidden" data-internal-admin href="/admin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="M9 12h6M12 9v6"/></svg><span>Administração</span></a>
         <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" data-internal-only type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
       </nav>
       <div class="sidebar-footer">
@@ -233,7 +234,7 @@
       <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Criar lista</button></div>
     </form>
   </dialog>
-  <script src="/static/workspace.js?v=20260908-saas-2"></script>
+  <script src="/static/workspace.js?v=20260908-admin-1"></script>
   <script src="/static/app.js?v=20260908-saas-2"></script>
 </body>
 </html>

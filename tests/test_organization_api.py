@@ -150,6 +150,65 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(self.saas.billing_summary(organization_id)["profile"]["credit_balance"], self.main.settings.saas_trial_credits)
         self.assertEqual(self.request("/api/auth/signup/verify", "POST", {"token": token})[0], 404)
 
+    def test_internal_admin_can_manage_commercial_profiles(self):
+        headers = {"x-organization-id": str(self.org)}
+        status, overview, _ = self.request(
+            "/api/admin/overview", token=self.owner_token, headers=headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(overview["total"], 2)
+        self.assertEqual(overview["user_count"], 2)
+        self.assertTrue(any(item["id"] == self.other for item in overview["organizations"]))
+
+        status, profile, _ = self.request(
+            f"/api/admin/organizations/{self.other}/billing", "PATCH",
+            {"plan_code": "growth", "subscription_status": "active", "unlimited_credits": False},
+            self.owner_token, headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(profile["plan_code"], "growth")
+        status, adjusted, _ = self.request(
+            f"/api/admin/organizations/{self.other}/credits", "POST",
+            {"amount": 8, "description": "Crédito comercial"}, self.owner_token, headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(adjusted["credit_balance"], 10)
+        self.assertEqual(
+            self.request(
+                f"/api/admin/organizations/{self.org}/billing", "PATCH",
+                {"plan_code": "trial", "subscription_status": "active", "unlimited_credits": False},
+                self.owner_token, headers,
+            )[0],
+            409,
+        )
+
+    def test_internal_member_cannot_access_saas_administration(self):
+        self.assertEqual(
+            self.request(
+                "/api/admin/overview", token=self.member_token,
+                headers={"x-organization-id": str(self.org)},
+            )[0],
+            403,
+        )
+
+    def test_suspended_customer_workspace_is_blocked(self):
+        self.saas.update_billing_profile(
+            self.other, plan_code="growth", subscription_status="suspended", unlimited_credits=False,
+        )
+        status, payload, _ = self.request(
+            "/api/dashboard", token=self.owner_token,
+            headers={"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("suspenso", payload["detail"])
+        self.assertEqual(
+            self.request(
+                "/api/admin/overview", token=self.owner_token,
+                headers={"x-organization-id": str(self.org)},
+            )[0],
+            200,
+        )
+
     def test_tenant_history_and_export_enforced_for_owner_of_both_orgs(self):
         job = self.jobs.create_job("private.csv", [], active_only=True, check_website=False, organization_id=self.org)
         status, data, _ = self.request("/api/jobs", token=self.owner_token, headers={"x-organization-id": str(self.other)})
@@ -201,6 +260,8 @@ class OrganizationAPITests(unittest.TestCase):
     def test_admin_pages_and_membership_free_invite_page(self):
         self.assertEqual(self.request("/organizations")[0], 303)
         self.assertEqual(self.request("/organizations", token=self.owner_token)[0], 200)
+        self.assertEqual(self.request("/admin")[0], 303)
+        self.assertEqual(self.request("/admin", token=self.owner_token)[0], 200)
         status, html, headers = self.request("/invite")
         self.assertEqual(status, 200); self.assertIn('id="accept-form"', html)
         self.assertEqual(headers[b"referrer-policy"], b"no-referrer")

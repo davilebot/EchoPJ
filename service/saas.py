@@ -382,6 +382,110 @@ class SaaSStore:
             ).fetchone()
         return self._profile(row)
 
+    def admin_metrics(self) -> dict[str, int]:
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT count(*) AS configured_organizations,
+                   sum(CASE WHEN subscription_status IN ('active','trialing') THEN 1 ELSE 0 END) AS active_organizations,
+                   coalesce(sum(CASE WHEN unlimited_credits=0 THEN credit_balance ELSE 0 END),0) AS credits_available
+                   FROM organization_profiles"""
+            ).fetchone()
+            unlocked = self._connection.execute(
+                "SELECT count(*) FROM company_unlocks"
+            ).fetchone()[0]
+        return {
+            "configured_organizations": row["configured_organizations"],
+            "active_organizations": row["active_organizations"] or 0,
+            "credits_available": row["credits_available"],
+            "unlocked_companies": unlocked,
+        }
+
+    def update_billing_profile(
+        self,
+        organization_id: int,
+        *,
+        plan_code: str,
+        subscription_status: str,
+        unlimited_credits: bool,
+        actor_id: int | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        with self._transaction():
+            current = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+            if not current:
+                raise SaaSError("Organização não encontrada.", 404)
+            changed = (
+                current["plan_code"] != plan_code
+                or current["subscription_status"] != subscription_status
+                or bool(current["unlimited_credits"]) != bool(unlimited_credits)
+            )
+            self._connection.execute(
+                """UPDATE organization_profiles
+                   SET plan_code=?,subscription_status=?,unlimited_credits=?,updated_at=?
+                   WHERE organization_id=?""",
+                (plan_code, subscription_status, int(unlimited_credits), now, organization_id),
+            )
+            if changed:
+                self._insert_ledger(
+                    organization_id,
+                    delta=0,
+                    balance_after=current["credit_balance"],
+                    kind="billing_profile_update",
+                    description=f"Plano {plan_code} · status {subscription_status}",
+                    idempotency_key=f"billing-admin:{uuid.uuid4()}",
+                    actor_id=actor_id,
+                )
+            row = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+        return self._profile(row)
+
+    def adjust_credits(
+        self,
+        organization_id: int,
+        amount: int,
+        *,
+        description: str,
+        actor_id: int,
+    ) -> dict[str, Any]:
+        if not amount:
+            raise SaaSError("Informe uma quantidade diferente de zero.", 422)
+        now = utc_now()
+        with self._transaction():
+            profile = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+            if not profile:
+                raise SaaSError("Organização não encontrada.", 404)
+            if profile["unlimited_credits"]:
+                raise SaaSError("Organizações com créditos ilimitados não possuem saldo ajustável.", 409)
+            balance = profile["credit_balance"] + amount
+            if balance < 0:
+                raise SaaSError("O ajuste deixaria o saldo de créditos negativo.", 409)
+            self._connection.execute(
+                "UPDATE organization_profiles SET credit_balance=?,updated_at=? WHERE organization_id=?",
+                (balance, now, organization_id),
+            )
+            self._insert_ledger(
+                organization_id,
+                delta=amount,
+                balance_after=balance,
+                kind="manual_adjustment",
+                description=description,
+                idempotency_key=f"manual:{uuid.uuid4()}",
+                actor_id=actor_id,
+            )
+            row = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+        return self._profile(row)
+
     @staticmethod
     def _saved_search(row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)

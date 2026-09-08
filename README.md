@@ -93,6 +93,10 @@ estão em [`.env.example`](.env.example).
   e-mail. Ele permanece fechado por padrão; para abrir, configure SMTP e defina
   `SAAS_SELF_SIGNUP_ENABLED=true`. O link expira conforme
   `AUTH_SIGNUP_VERIFICATION_HOURS` e a nova organização recebe `SAAS_TRIAL_CREDITS`.
+- Administradores da organização interna EchoHub acessam `/admin` para localizar
+  empresas clientes, alterar plano e status, conceder ou descontar créditos e
+  consultar o histórico de movimentações. A EchoHub permanece protegida como
+  organização interna ativa com créditos ilimitados.
 
 ### Validação
 

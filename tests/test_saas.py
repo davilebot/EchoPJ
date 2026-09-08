@@ -131,6 +131,36 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 409)
         self.assertEqual(self.store.billing_summary(12)["profile"]["credit_balance"], 0)
 
+    def test_admin_can_update_profile_and_adjust_credits_with_ledger(self):
+        self.store.ensure_organization(13, initial_credits=10)
+        profile = self.store.update_billing_profile(
+            13, plan_code="growth", subscription_status="past_due", unlimited_credits=False,
+        )
+        self.assertEqual((profile["plan_code"], profile["subscription_status"]), ("growth", "past_due"))
+        adjusted = self.store.adjust_credits(13, 25, description="Ajuste comercial", actor_id=7)
+        self.assertEqual(adjusted["credit_balance"], 35)
+        summary = self.store.billing_summary(13)
+        self.assertEqual(summary["ledger"][0]["kind"], "manual_adjustment")
+        self.assertEqual(summary["ledger"][0]["delta"], 25)
+        with self.assertRaises(SaaSError):
+            self.store.adjust_credits(13, -36, description="Ajuste inválido", actor_id=7)
+        self.assertEqual(self.store.billing_summary(13)["profile"]["credit_balance"], 35)
+
+    def test_unlimited_profile_rejects_manual_balance_adjustment(self):
+        self.store.ensure_organization(14, unlimited=True)
+        with self.assertRaises(SaaSError) as raised:
+            self.store.adjust_credits(14, 10, description="Não aplicável", actor_id=7)
+        self.assertEqual(raised.exception.status, 409)
+
+    def test_admin_metrics_summarize_commercial_operation(self):
+        self.store.ensure_organization(15, initial_credits=4)
+        self.store.ensure_organization(16, initial_credits=6)
+        self.store.update_billing_profile(16, plan_code="trial", subscription_status="suspended", unlimited_credits=False)
+        metrics = self.store.admin_metrics()
+        self.assertEqual(metrics["configured_organizations"], 2)
+        self.assertEqual(metrics["active_organizations"], 1)
+        self.assertEqual(metrics["credits_available"], 10)
+
 
 if __name__ == "__main__":
     unittest.main()
