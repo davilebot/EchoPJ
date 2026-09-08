@@ -1786,4 +1786,9 @@ bulkCnpjResult.addEventListener("click", (event) => {
   explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-switchTab("overview");
+const requestedInitialTab = new URLSearchParams(location.search).get("tab");
+const initialTab = Array.from(document.querySelectorAll(".tab-button[data-tab]"))
+  .some((button) => button.dataset.tab === requestedInitialTab)
+  ? requestedInitialTab
+  : "overview";
+switchTab(initialTab);

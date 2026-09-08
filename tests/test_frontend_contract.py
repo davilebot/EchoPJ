@@ -121,6 +121,24 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".search-template-grid", styles)
         self.assertIn(".list-template-grid", styles)
 
+    def test_help_center_is_contextual_searchable_and_workspace_aware(self):
+        html = (STATIC_DIR / "help.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "help.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "help.css").read_text(encoding="utf-8")
+        workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn('id="help-search"', html)
+        self.assertIn('id="copy-diagnostic"', html)
+        self.assertGreaterEqual(html.count('class="help-topic"'), 6)
+        self.assertIn("X-Organization-Id", script)
+        self.assertIn("data-platform-tab", script)
+        self.assertIn(".quick-help-grid", styles)
+        self.assertIn('document.querySelector("#help-link").href', workspace)
+
+    def test_platform_accepts_safe_deep_links_to_known_tabs(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('new URLSearchParams(location.search).get("tab")', script)
+        self.assertIn('button.dataset.tab === requestedInitialTab', script)
+
 
 if __name__ == "__main__":
     unittest.main()

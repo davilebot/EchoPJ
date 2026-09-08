@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0d0d10">
+  <meta name="description" content="Central de Ajuda do EchoPJs.">
+  <title>Ajuda e suporte — EchoPJs</title>
+  <link rel="stylesheet" href="/static/auth.css?v=20260908-help-1">
+  <link rel="stylesheet" href="/static/help.css?v=20260908-help-1">
+</head>
+<body>
+  <a class="help-skip" href="#help-content">Ir para o conteúdo</a>
+  <main class="help-shell" id="help-content">
+    <header class="help-header">
+      <div class="auth-brand"><img src="/static/assets/echo-wordmark-light.png" alt="Echo"><span>PJs</span></div>
+      <nav aria-label="Atalhos da conta">
+        <a id="help-organizations" href="/organizations">Equipe</a>
+        <a id="help-account" href="/account">Minha conta</a>
+        <a id="help-back" class="help-back" href="/">Voltar à plataforma</a>
+      </nav>
+    </header>
+
+    <section class="help-hero" aria-labelledby="help-title">
+      <div>
+        <span class="eyebrow">CENTRAL DE AJUDA</span>
+        <h1 id="help-title">Como podemos ajudar?</h1>
+        <p>Encontre um caminho rápido para pesquisar, organizar e exportar empresas no EchoPJs.</p>
+      </div>
+      <div id="workspace-pill" class="workspace-pill" aria-live="polite"><span></span><div><small>Workspace atual</small><strong>Carregando…</strong></div></div>
+      <label class="help-search" for="help-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+        <span class="sr-only">Buscar na Central de Ajuda</span>
+        <input id="help-search" type="search" autocomplete="off" placeholder="Busque por créditos, listas, CNPJ, equipe…">
+        <kbd>/</kbd>
+      </label>
+      <p id="help-search-status" class="help-search-status" aria-live="polite"></p>
+    </section>
+
+    <section class="quick-help" aria-labelledby="quick-help-title">
+      <div class="help-section-heading"><div><span class="eyebrow">COMECE POR AQUI</span><h2 id="quick-help-title">O que você quer fazer?</h2></div><p>Abra a ferramenta certa já no seu workspace.</p></div>
+      <div class="quick-help-grid">
+        <a data-platform-tab="search" href="/?tab=search"><span class="quick-icon">⌁</span><strong>Encontrar empresas</strong><small>Filtre a base por perfil, local e atividade.</small><b>Abrir busca →</b></a>
+        <a data-platform-tab="batch" href="/?tab=batch"><span class="quick-icon">#</span><strong>Consultar CNPJs</strong><small>Consulte um CNPJ ou uma lista exata.</small><b>Abrir consulta →</b></a>
+        <a data-platform-tab="consulta" href="/?tab=consulta"><span class="quick-icon">◎</span><strong>Identificar CNPJ</strong><small>Use nome e endereço para encontrar candidatos.</small><b>Abrir identificação →</b></a>
+        <a data-platform-tab="lists" href="/?tab=lists"><span class="quick-icon">≡</span><strong>Organizar empresas</strong><small>Crie listas compartilhadas com sua equipe.</small><b>Abrir listas →</b></a>
+        <a data-platform-tab="billing" href="/?tab=billing"><span class="quick-icon">◫</span><strong>Entender créditos</strong><small>Veja saldo, consumo e empresas desbloqueadas.</small><b>Ver créditos →</b></a>
+      </div>
+    </section>
+
+    <div id="help-results" class="help-layout">
+      <aside class="help-topic-nav" aria-label="Tópicos de ajuda">
+        <span>GUIAS</span>
+        <a href="#primeiros-passos">Primeiros passos</a>
+        <a href="#buscar-empresas">Buscar empresas</a>
+        <a href="#listas-buscas">Listas e buscas salvas</a>
+        <a href="#creditos">Créditos e exportações</a>
+        <a href="#equipe">Equipe e acesso</a>
+        <a href="#duvidas">Dúvidas frequentes</a>
+      </aside>
+
+      <div class="help-topics">
+        <section id="primeiros-passos" class="help-topic" data-help-search="primeiros passos começar configurar workspace organização busca lista equipe convite">
+          <span class="topic-number">01</span><div><p class="topic-kicker">PRIMEIROS PASSOS</p><h2>Do primeiro acesso à primeira lista</h2><p>Use esta sequência para chegar a um resultado útil sem configurar nada técnico.</p>
+          <ol class="step-list">
+            <li><span>1</span><div><strong>Escolha o workspace</strong><p>Confirme a organização no topo da plataforma. Saldo, listas e histórico pertencem a ela.</p></div></li>
+            <li><span>2</span><div><strong>Monte o segmento</strong><p>Abra “Busca com filtros”, escolha um modelo e ajuste os critérios para o seu público.</p></div></li>
+            <li><span>3</span><div><strong>Revise antes de desbloquear</strong><p>A prévia da busca é gratuita. Selecione somente as empresas que fazem sentido.</p></div></li>
+            <li><span>4</span><div><strong>Salve ou exporte</strong><p>Guarde as empresas em uma lista da equipe ou gere o CSV para usar fora da plataforma.</p></div></li>
+          </ol></div>
+        </section>
+
+        <section id="buscar-empresas" class="help-topic" data-help-search="buscar empresas filtros cnae região uf município cep situação porte capital abertura sócios simples mei matriz filial telefone email cnpj lote identificar match csv">
+          <span class="topic-number">02</span><div><p class="topic-kicker">BUSCAR EMPRESAS</p><h2>Três caminhos, conforme o dado que você já tem</h2>
+          <div class="guide-grid">
+            <article><strong>Busca com filtros</strong><p>Para criar segmentos por CNAE, localização, porte, situação, capital, data de abertura e outros dados disponíveis na base.</p></article>
+            <article><strong>Consultar CNPJs</strong><p>Para abrir o cadastro de um CNPJ conhecido ou consultar milhares de números em lote, preservando a ordem enviada.</p></article>
+            <article><strong>Identificar CNPJ</strong><p>Para encontrar candidatos usando nome, endereço, município, UF, CEP e site. Resultados incertos continuam marcados para revisão.</p></article>
+          </div>
+          <div class="help-tip"><strong>Dica</strong><p>Comece com poucos filtros, confira a prévia e refine. Uma busca muito restrita pode esconder empresas válidas.</p></div></div>
+        </section>
+
+        <section id="listas-buscas" class="help-topic" data-help-search="listas empresas salvar busca critérios filtros campanha prospecção qualificação acompanhamento compartilhar equipe atualizar executar novamente">
+          <span class="topic-number">03</span><div><p class="topic-kicker">LISTAS E BUSCAS SALVAS</p><h2>Guarde empresas e reutilize critérios</h2>
+          <div class="comparison-grid"><article><span>LISTA</span><strong>Salva as empresas escolhidas</strong><p>Use para campanhas, territórios e etapas comerciais. Todos no mesmo workspace veem a lista.</p></article><article><span>BUSCA SALVA</span><strong>Salva os critérios do filtro</strong><p>Execute novamente depois para consultar a versão atual da base com os mesmos critérios.</p></article></div>
+          <p class="topic-note">Apagar uma empresa da lista não remove o desbloqueio já feito pela organização.</p></div>
+        </section>
+
+        <section id="creditos" class="help-topic" data-help-search="créditos saldo cobrança consumo desbloquear exportar csv salvar lista gratuito prévia ilimitado echohub reembolso">
+          <span class="topic-number">04</span><div><p class="topic-kicker">CRÉDITOS E EXPORTAÇÕES</p><h2>Um crédito por empresa, uma única vez</h2>
+          <div class="credit-flow"><article><span>1</span><strong>Pesquise e visualize</strong><small>Sem consumo</small></article><i>→</i><article><span>2</span><strong>Salve ou exporte</strong><small>Desbloqueia o CNPJ</small></article><i>→</i><article><span>3</span><strong>Reutilize a empresa</strong><small>Sem nova cobrança</small></article></div>
+          <ul class="plain-list"><li>A plataforma mostra a estimativa antes de uma ação que usa créditos.</li><li>O mesmo CNPJ pode entrar em várias listas e exportações da organização sem novo consumo.</li><li>O saldo e o histórico são compartilhados pela equipe do workspace.</li><li>A organização EchoHub possui créditos ilimitados.</li></ul></div>
+        </section>
+
+        <section id="equipe" class="help-topic" data-help-search="equipe organização workspace convite administrador membro permissão senha email acesso remover usuário">
+          <span class="topic-number">05</span><div><p class="topic-kicker">EQUIPE E ACESSO</p><h2>Cada pessoa entra com a própria conta</h2>
+          <div class="guide-grid two"><article><strong>Administrador</strong><p>Consulta e exporta dados, cria organizações e gerencia pessoas, convites e permissões.</p></article><article><strong>Membro</strong><p>Consulta, organiza e exporta empresas, sem alterar a equipe.</p></article></div>
+          <p class="topic-note">Seu e-mail e sua senha são os mesmos em todas as organizações às quais você pertence. Cada aba mantém o workspace selecionado.</p></div>
+        </section>
+
+        <section id="duvidas" class="help-topic" data-help-search="dúvidas frequentes erro senha login resultado vazio processamento demora exportação crédito csv atualizado dados receita receita federal">
+          <span class="topic-number">06</span><div><p class="topic-kicker">DÚVIDAS FREQUENTES</p><h2>Respostas rápidas</h2>
+          <div class="faq-list">
+            <details><summary>Minha busca não retornou empresas. O que faço?</summary><p>Remova primeiro os filtros mais específicos e tente novamente. Confira também se os dados complementares usados pelo filtro estão disponíveis na versão atual da base.</p></details>
+            <details><summary>O processamento continua se eu fechar a aba?</summary><p>Sim. Consultas em lote entram na fila e continuam no servidor. Volte a “Processamentos” para acompanhar ou baixar o resultado.</p></details>
+            <details><summary>Por que o resultado pede revisão?</summary><p>A identificação por nome e endereço só confirma quando há evidências suficientes. Candidatos ambíguos ficam visíveis para revisão em vez de receber um CNPJ inventado.</p></details>
+            <details><summary>Esqueci minha senha. Como recupero?</summary><p>Use “Esqueci minha senha” na tela de entrada. Quando o envio de e-mail estiver ativo, você receberá um link temporário e de uso único.</p></details>
+            <details><summary>Os dados pertencem a quem?</summary><p>Listas, buscas, histórico e desbloqueios pertencem à organização selecionada. A base cadastral consultada usa dados públicos da Receita Federal.</p></details>
+          </div></div>
+        </section>
+        <div id="help-empty" class="help-empty hidden"><strong>Nenhum guia encontrado</strong><p>Tente um termo mais curto, como “créditos”, “CNPJ”, “listas” ou “equipe”.</p><button id="clear-help-search" type="button">Limpar busca</button></div>
+      </div>
+    </div>
+
+    <section class="support-card" aria-labelledby="support-title">
+      <div><span class="eyebrow">PRECISA DE SUPORTE?</span><h2 id="support-title">Leve o contexto certo para a equipe</h2><p>Copie um diagnóstico curto do seu workspace e envie junto com a descrição do problema e uma captura da tela.</p></div>
+      <div class="diagnostic-card"><dl><div><dt>Organização</dt><dd id="diagnostic-organization">Carregando…</dd></div><div><dt>Plano</dt><dd id="diagnostic-plan">—</dd></div><div><dt>Créditos</dt><dd id="diagnostic-credits">—</dd></div><div><dt>Base</dt><dd id="diagnostic-dataset">—</dd></div></dl><button id="copy-diagnostic" type="button">Copiar diagnóstico</button><p id="copy-status" role="status"></p></div>
+    </section>
+  </main>
+  <script src="/static/help.js?v=20260908-help-1"></script>
+</body>
+</html>

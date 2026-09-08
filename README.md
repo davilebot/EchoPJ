@@ -104,6 +104,9 @@ estão em [`.env.example`](.env.example).
 - O construtor de listas oferece segmentos iniciais que respeitam os dados
   disponíveis na versão atual da Receita. A biblioteca também sugere modelos
   editáveis para prospecção prioritária, qualificação e acompanhamento.
+- “Ajuda e suporte” reúne guias pesquisáveis, atalhos que abrem a ferramenta no
+  workspace atual e um diagnóstico copiável com organização, plano, saldo e versão
+  da base. O diagnóstico não inclui senha, sessão, filtros ou empresas pesquisadas.
 
 ### Validação
 

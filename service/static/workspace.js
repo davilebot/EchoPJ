@@ -29,6 +29,8 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   document.querySelector("#mobile-organizations-link").textContent = org.name;
   document.querySelector("#mobile-organizations-link").title = "Organizações e equipe";
   document.querySelector("#account-link").href = `/account?organization=${org.id}`;
+  document.querySelector("#help-link").href = `/help?organization=${org.id}`;
+  document.querySelector("#topbar-help-link").href = `/help?organization=${org.id}`;
   const creditIndicator = document.querySelector("#credit-indicator strong");
   if (creditIndicator) creditIndicator.textContent = org.billing?.unlimited_credits
     ? "Ilimitados"

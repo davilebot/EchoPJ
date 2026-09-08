@@ -52,7 +52,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] medição do funil de cadastro, ativação, entrada em plano comercial e uso recorrente;
 - [x] notificações internas, individuais e sem duplicação para saldo baixo e conclusão de processamento;
 - avisos de renovação por e-mail após a integração do provedor de cobrança;
-- ajuda contextual e central de suporte.
+- [x] ajuda contextual pesquisável, atalhos por tarefa e diagnóstico seguro do workspace para suporte.
 
 ## Entrega 4 — produto comercial maduro
 
