@@ -1,0 +1,16 @@
+[Unit]
+Description=Backup consistente do EchoPJs SaaS v2
+After=local-fs.target
+ConditionPathExists=/srv/echopjs-saas-v2/data/auth.sqlite
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/echopjs-saas-v2/backup_v2.py --source-dir /srv/echopjs-saas-v2/data --destination-dir /srv/echopjs-saas-v2/backups --retention-count 56
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/echopjs-saas-v2/data
+ReadWritePaths=/srv/echopjs-saas-v2/backups
+

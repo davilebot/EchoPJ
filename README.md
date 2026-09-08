@@ -112,6 +112,9 @@ estão em [`.env.example`](.env.example).
 - Operações pesadas possuem limite por organização, arquivos excessivos são recusados
   antes do processamento e cada workspace tem um teto de jobs simultâneos. Os valores
   podem ser ajustados por ambiente sem alterar os planos comerciais.
+- Os bancos operacionais da v2 possuem backup SQLite consistente e verificável,
+  com retenção automática e procedimento de recuperação documentado em
+  `docs/saas-v2-backup.md`.
 
 ### Validação
 

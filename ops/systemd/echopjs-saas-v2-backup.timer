@@ -1,0 +1,11 @@
+[Unit]
+Description=Backup do EchoPJs SaaS v2 a cada seis horas
+
+[Timer]
+OnCalendar=*-*-* 00/6:17:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=echopjs-saas-v2-backup.service
+
+[Install]
+WantedBy=timers.target
