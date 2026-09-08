@@ -86,6 +86,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("pending_invitation_count", script)
         self.assertIn(".onboarding-steps", styles)
 
+    def test_workspace_fetches_are_scoped_to_selected_organization(self):
+        workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
+        self.assertIn("window.fetch = function workspaceScopedFetch", workspace)
+        self.assertIn('headers.set("X-Organization-Id", activeWorkspaceOrganization)', workspace)
+        self.assertIn("activeWorkspaceOrganization = String(org.id)", workspace)
+
 
 if __name__ == "__main__":
     unittest.main()

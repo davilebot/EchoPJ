@@ -1,4 +1,18 @@
 const workspaceFetch = window.fetch.bind(window);
+const requestedWorkspaceOrganization = new URLSearchParams(location.search).get("organization");
+let activeWorkspaceOrganization = /^\d+$/.test(requestedWorkspaceOrganization || "") ? requestedWorkspaceOrganization : null;
+
+window.fetch = function workspaceScopedFetch(input, options = {}) {
+  const target = new URL(typeof input === "string" || input instanceof URL ? input : input.url, location.origin);
+  if (activeWorkspaceOrganization && target.origin === location.origin && target.pathname.startsWith("/api/")) {
+    const sourceHeaders = options.headers || (typeof Request !== "undefined" && input instanceof Request ? input.headers : undefined);
+    const headers = new Headers(sourceHeaders);
+    if (!headers.has("X-Organization-Id")) headers.set("X-Organization-Id", activeWorkspaceOrganization);
+    return workspaceFetch(input, { ...options, headers });
+  }
+  return workspaceFetch(input, options);
+};
+
 window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response) => {
   if (response.status === 401) { location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`); return null; }
   if (!response.ok) throw new Error("Não foi possível carregar suas organizações. Atualize a página.");
@@ -6,6 +20,7 @@ window.echoWorkspace = workspaceFetch("/api/organizations").then(async (response
   const requested = new URLSearchParams(location.search).get("organization");
   const org = requested ? data.organizations.find((item) => String(item.id) === requested) : data.organizations[0];
   if (!org) { location.replace("/organizations"); return null; }
+  activeWorkspaceOrganization = String(org.id);
   const select = document.querySelector("#workspace-organization");
   select.replaceChildren(...data.organizations.map((item) => { const option = document.createElement("option"); option.value = item.id; option.textContent = item.name; return option; }));
   select.value = org.id; select.disabled = false;
