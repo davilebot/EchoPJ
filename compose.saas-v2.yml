@@ -1,0 +1,45 @@
+name: echopjs-saas-v2
+
+services:
+  app:
+    image: echopjs-saas:${SAAS_IMAGE_TAG:?Defina SAAS_IMAGE_TAG com a imagem da versao SaaS}
+    pull_policy: never
+    restart: unless-stopped
+    env_file:
+      - /etc/easypanel/secrets/echopjs-saas-v2/app.env
+    volumes:
+      - /srv/echopjs-saas-v2/data:/data
+    expose:
+      - "8000"
+    mem_limit: 1g
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      easypanel:
+        aliases:
+          - echopjs_saas_v2_app
+      radar_backend: {}
+      egress: {}
+
+networks:
+  easypanel:
+    external: true
+    name: easypanel
+  radar_backend:
+    external: true
+    name: radar-receita_plataforma_backend
+  egress:
+    external: true
+    name: radar-receita_plataforma_egress

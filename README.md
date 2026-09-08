@@ -1,5 +1,10 @@
 # Plataforma Receita — Matcher de CNPJ
 
+> **Desenvolvimento do EchoPJs SaaS:** esta worktree usa a branch `saas-v2` e
+> possui implantacao separada. A aplicacao atual continua na branch `main`.
+> Consulte [o guia de isolamento da v2](docs/saas-v2-isolamento.md) antes de
+> configurar o EasyPanel ou compartilhar volumes e segredos.
+
 Aplicação independente para encontrar e validar CNPJs na base aberta da Receita Federal. O serviço compartilha a base oficial já existente no VPS, mas tem código, interface, autenticação, cache e implantação próprios. O Radar de Concessionárias não é alterado.
 
 Aplicação publicada: `https://plataforma-receita-matcher.ztnbow.easypanel.host/`
