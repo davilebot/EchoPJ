@@ -26,7 +26,7 @@ def sha256(path: Path) -> str:
 
 
 def integrity(path: Path) -> str:
-    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    connection = sqlite3.connect(f"file:{path}?mode=ro&immutable=1", uri=True)
     try:
         return connection.execute("PRAGMA integrity_check").fetchone()[0]
     finally:
@@ -39,12 +39,18 @@ def backup_database(source: Path, destination: Path) -> dict:
     try:
         source_connection.backup(destination_connection)
         destination_connection.commit()
+        destination_connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        journal_mode = destination_connection.execute("PRAGMA journal_mode=DELETE").fetchone()[0]
+        if str(journal_mode).casefold() != "delete":
+            raise RuntimeError(f"could not normalize journal mode for {source.name}")
         result = destination_connection.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":
             raise RuntimeError(f"integrity_check failed for {source.name}: {result}")
     finally:
         destination_connection.close()
         source_connection.close()
+    for suffix in ("-wal", "-shm"):
+        destination.with_name(destination.name + suffix).unlink(missing_ok=True)
     destination.chmod(0o600)
     return {"name": source.name, "size": destination.stat().st_size, "sha256": sha256(destination)}
 

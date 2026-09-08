@@ -30,6 +30,7 @@ class BackupV2Tests(unittest.TestCase):
         backup = Path(result["backup"])
         self.assertEqual(result["verified"], list(CRITICAL_DATABASES))
         self.assertFalse(any(path.name.endswith(".partial") for path in self.destination.iterdir()))
+        self.assertFalse(any(path.name.endswith(("-wal", "-shm")) for path in backup.iterdir()))
         manifest = json.loads((backup / "manifest.json").read_text())
         self.assertEqual([item["name"] for item in manifest["files"]], list(CRITICAL_DATABASES))
         self.assertEqual(verify_backup(backup)["status"], "ok")
