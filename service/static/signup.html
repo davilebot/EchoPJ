@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#111114">
+  <title>Criar conta — EchoPJs</title>
+  <link rel="stylesheet" href="/static/auth.css?v=20260908-signup-1">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="auth-card account-card" aria-labelledby="signup-title">
+      <div class="auth-brand"><img src="/static/assets/echo-wordmark-light.png" alt="Echo"><span>PJs</span></div>
+      <div class="auth-heading">
+        <span class="eyebrow">COMECE SEU WORKSPACE</span>
+        <h1 id="signup-title">Crie a conta da sua empresa.</h1>
+        <p>Você será o administrador e poderá convidar sua equipe depois da confirmação do e-mail.</p>
+      </div>
+      <form id="signup-form">
+        <label>Nome da empresa
+          <input id="signup-company" name="organization" autocomplete="organization" maxlength="120" required autofocus placeholder="Ex.: Acme Comercial">
+        </label>
+        <label>E-mail profissional
+          <input id="signup-email" name="email" type="email" autocomplete="email" maxlength="254" required placeholder="voce@empresa.com.br">
+        </label>
+        <div class="password-grid">
+          <label>Senha
+            <input id="signup-password" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+          </label>
+          <label>Confirmar senha
+            <input id="signup-confirmation" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required>
+          </label>
+        </div>
+        <label class="checkbox-label"><input id="show-signup-password" type="checkbox">Mostrar senha</label>
+        <p id="signup-message" class="auth-message hidden" role="alert"></p>
+        <button id="signup-submit" type="submit">Criar conta</button>
+      </form>
+      <p class="auth-footnote">Enviaremos um link para confirmar que o e-mail pertence a você. A conta só será criada depois dessa confirmação.</p>
+      <p><a class="text-link" href="/login">Já tenho conta</a></p>
+    </section>
+  </main>
+  <script src="/static/signup.js?v=20260908-signup-1"></script>
+</body>
+</html>

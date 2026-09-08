@@ -35,6 +35,23 @@ class OrganizationRequest(BaseModel):
         return value
 
 
+class SignupRequest(OrganizationRequest):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=1024)
+
+    @field_validator("email")
+    @classmethod
+    def clean_email(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", value):
+            raise ValueError("Informe um e-mail válido.")
+        return value
+
+
+class SignupVerificationRequest(BaseModel):
+    token: str = Field(min_length=32, max_length=128)
+
+
 class MemberRoleRequest(BaseModel):
     role: Literal["admin", "member"]
 

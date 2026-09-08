@@ -89,6 +89,10 @@ estão em [`.env.example`](.env.example).
 - “Esqueci minha senha” envia um link de uso único, armazenado somente como hash,
   com validade padrão de 30 minutos (`AUTH_PASSWORD_RESET_MINUTES`). A troca invalida
   todas as sessões anteriores e a solicitação nunca revela se o e-mail possui conta.
+- O cadastro público cria a conta e a organização somente depois da confirmação do
+  e-mail. Ele permanece fechado por padrão; para abrir, configure SMTP e defina
+  `SAAS_SELF_SIGNUP_ENABLED=true`. O link expira conforme
+  `AUTH_SIGNUP_VERIFICATION_HOURS` e a nova organização recebe `SAAS_TRIAL_CREDITS`.
 
 ### Validação
 

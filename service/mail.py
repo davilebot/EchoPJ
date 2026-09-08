@@ -53,3 +53,17 @@ def send_password_reset(settings, *, email, link, valid_minutes):
         "Se você não pediu esta alteração, ignore esta mensagem."
     )
     return _send_message(settings, message)
+
+
+def send_signup_verification(settings, *, email, link, valid_hours):
+    message = EmailMessage()
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message["Subject"] = "Confirme seu cadastro no EchoPJs"
+    message.set_content(
+        "Seu workspace no EchoPJs está quase pronto.\n\n"
+        f"Confirme seu e-mail e crie a organização neste link:\n{link}\n\n"
+        f"O link vale por {valid_hours} horas e só pode ser usado uma vez. "
+        "Se você não iniciou este cadastro, ignore esta mensagem."
+    )
+    return _send_message(settings, message)

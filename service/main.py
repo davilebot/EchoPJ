@@ -25,6 +25,8 @@ from .models import (
     LoginRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    SignupRequest,
+    SignupVerificationRequest,
     OrganizationRequest,
     MemberRoleRequest,
     InvitationRequest,
@@ -41,7 +43,7 @@ from .search import SearchCapabilityUnavailable
 from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
-from .mail import mail_available, send_invitation, send_password_reset
+from .mail import mail_available, send_invitation, send_password_reset, send_signup_verification
 from .saas import SaaSError, SaaSStore
 
 
@@ -80,6 +82,7 @@ login_rate_limiter = LoginRateLimiter()
 invitation_rate_limiter = LoginRateLimiter(attempts=20, window_seconds=3600)
 password_reset_request_rate_limiter = LoginRateLimiter(attempts=5, window_seconds=3600)
 password_reset_confirm_rate_limiter = LoginRateLimiter(attempts=10, window_seconds=15 * 60)
+signup_rate_limiter = LoginRateLimiter(attempts=5, window_seconds=3600)
 SESSION_COOKIE = "echopjs_session"
 
 
@@ -125,7 +128,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -242,6 +245,19 @@ def reset_password_page() -> Response:
     return FileResponse(static_dir / "reset-password.html")
 
 
+@app.get("/signup")
+def signup_page(request: Request) -> Response:
+    user, _ = authenticate_request(request)
+    if user:
+        return RedirectResponse("/", status_code=303)
+    return FileResponse(static_dir / "signup.html")
+
+
+@app.get("/verify-email")
+def verify_email_page() -> Response:
+    return FileResponse(static_dir / "verify-email.html")
+
+
 @app.get("/account")
 def account_page(request: Request) -> Response:
     return page_response(request, "account.html", next_path="/account")
@@ -264,6 +280,7 @@ def auth_status(request: Request) -> dict:
         "authenticated": bool(user),
         "identifier": user["identifier"] if user else None,
         "password_reset_available": mail_available(settings),
+        "signup_available": settings.saas_self_signup_enabled and mail_available(settings),
     }
 
 
@@ -340,6 +357,51 @@ def confirm_password_reset(payload: PasswordResetConfirmRequest, request: Reques
     password_reset_confirm_rate_limiter.succeeded(token_key)
     token, expires_at = auth_store.create_session(updated["id"])
     response = JSONResponse({"reset": True, "identifier": updated["identifier"]})
+    set_session_cookie(response, token, expires_at)
+    return response
+
+
+@app.post("/api/auth/signup", status_code=202)
+def signup(payload: SignupRequest, request: Request, background_tasks: BackgroundTasks) -> dict:
+    if not settings.saas_self_signup_enabled or not mail_available(settings):
+        raise HTTPException(status_code=503, detail="O cadastro público ainda não está disponível.")
+    client = request.client.host if request.client else "unknown"
+    now = monotonic()
+    ip_key = f"signup:ip:{client}"
+    email_key = f"signup:email:{payload.email}"
+    if not (signup_rate_limiter.allowed(ip_key, now) and signup_rate_limiter.allowed(email_key, now)):
+        raise HTTPException(status_code=429, detail="Muitas tentativas de cadastro. Aguarde e tente novamente.")
+    signup_rate_limiter.failed(ip_key, now)
+    signup_rate_limiter.failed(email_key, now)
+    pending = auth_store.create_signup(
+        payload.email,
+        payload.password,
+        payload.name,
+        valid_hours=settings.auth_signup_verification_hours,
+    )
+    link = f"{settings.app_public_url.rstrip('/')}/verify-email#token={pending['token']}"
+    background_tasks.add_task(
+        send_signup_verification,
+        settings,
+        email=pending["identifier"],
+        link=link,
+        valid_hours=settings.auth_signup_verification_hours,
+    )
+    return {"accepted": True, "email": pending["identifier"]}
+
+
+@app.post("/api/auth/signup/verify")
+def verify_signup(payload: SignupVerificationRequest) -> Response:
+    completed = auth_store.complete_signup(payload.token)
+    if not completed:
+        raise HTTPException(status_code=404, detail="Este link é inválido, expirou ou já foi utilizado.")
+    user, organization_id = completed
+    saas_store.ensure_organization(
+        organization_id,
+        initial_credits=settings.saas_trial_credits,
+    )
+    token, expires_at = auth_store.create_session(user["id"])
+    response = JSONResponse({"verified": True, "organization_id": organization_id})
     set_session_cookie(response, token, expires_at)
     return response
 

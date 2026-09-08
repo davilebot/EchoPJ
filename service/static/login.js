@@ -2,6 +2,11 @@ const form = document.querySelector("#login-form");
 const message = document.querySelector("#login-message");
 const submitButton = document.querySelector("#login-submit");
 
+fetch("/api/auth/status").then((response) => response.json()).then((status) => {
+  document.querySelector("#signup-prompt").classList.toggle("hidden", !status.signup_available);
+  document.querySelector("#invite-prompt").classList.toggle("hidden", status.signup_available);
+}).catch(() => {});
+
 function safeNextPath() {
   const requested = new URLSearchParams(window.location.search).get("next") || "/";
   const target = new URL(requested, window.location.origin);

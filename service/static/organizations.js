@@ -57,7 +57,7 @@ async function loadTeam() {
     $("#invitations-list").append(item);
   }
   if (!data.invitations.length) $("#invitations-list").append(textElement("p", "Nenhum convite criado ainda.", "muted"));
-  const auditNames = { "organization.migrated": "Organização inicial criada", "organization.created": "Organização criada", "organization.renamed": "Organização renomeada", "member.removed": "Membro removido", "member.role_changed": "Permissão alterada", "invitation.created": "Convite criado", "invitation.revoked": "Convite cancelado", "invitation.accepted": "Convite aceito" };
+  const auditNames = { "organization.migrated": "Organização inicial criada", "organization.created": "Organização criada", "organization.signup": "Organização criada por cadastro", "organization.renamed": "Organização renomeada", "member.removed": "Membro removido", "member.role_changed": "Permissão alterada", "invitation.created": "Convite criado", "invitation.revoked": "Convite cancelado", "invitation.accepted": "Convite aceito" };
   $("#audit-list").replaceChildren(...data.audit.map((event) => row(auditNames[event.action] || event.action, `${event.actor} · ${new Date(event.created_at).toLocaleString("pt-BR")}${event.target ? " · " + event.target : ""}`)));
 }
 async function loadOrganizations() {

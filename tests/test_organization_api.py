@@ -121,6 +121,35 @@ class OrganizationAPITests(unittest.TestCase):
             404,
         )
 
+    def test_verified_signup_creates_trial_workspace_and_session(self):
+        with (
+            patch.object(self.main.settings, "saas_self_signup_enabled", True),
+            patch.object(self.main, "mail_available", return_value=True),
+            patch.object(self.main, "send_signup_verification") as sender,
+        ):
+            status, signup_status, _ = self.request("/api/auth/status")
+            self.assertEqual(status, 200)
+            self.assertTrue(signup_status["signup_available"])
+            status, pending, _ = self.request(
+                "/api/auth/signup", "POST",
+                {"name": "Nova Empresa", "email": "new@example.com", "password": "secure-password"},
+            )
+            self.assertEqual(status, 202)
+            self.assertEqual(pending["email"], "new@example.com")
+            sender.assert_called_once()
+            link = sender.call_args.kwargs["link"]
+            token = urlsplit(link).fragment.removeprefix("token=")
+
+        status, verified, headers = self.request(
+            "/api/auth/signup/verify", "POST", {"token": token},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b"set-cookie", headers)
+        organization_id = verified["organization_id"]
+        self.assertEqual(self.auth.authenticate("new@example.com", "secure-password")["identifier"], "new@example.com")
+        self.assertEqual(self.saas.billing_summary(organization_id)["profile"]["credit_balance"], self.main.settings.saas_trial_credits)
+        self.assertEqual(self.request("/api/auth/signup/verify", "POST", {"token": token})[0], 404)
+
     def test_tenant_history_and_export_enforced_for_owner_of_both_orgs(self):
         job = self.jobs.create_job("private.csv", [], active_only=True, check_website=False, organization_id=self.org)
         status, data, _ = self.request("/api/jobs", token=self.owner_token, headers={"x-organization-id": str(self.other)})

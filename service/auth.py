@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .organizations import OrganizationStoreMixin
+from .organizations import OrganizationError, OrganizationStoreMixin
 
 
 PASSWORD_ITERATIONS = 600_000
@@ -73,6 +73,19 @@ class AuthStore(OrganizationStoreMixin):
             );
             CREATE INDEX IF NOT EXISTS idx_password_resets_user
               ON password_reset_tokens(user_id, expires_at);
+            CREATE TABLE IF NOT EXISTS pending_signups (
+              token_hash TEXT PRIMARY KEY,
+              identifier TEXT NOT NULL COLLATE NOCASE,
+              organization_name TEXT NOT NULL,
+              password_hash BLOB NOT NULL,
+              password_salt BLOB NOT NULL,
+              password_iterations INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              expires_at TEXT NOT NULL,
+              used_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_pending_signups_email
+              ON pending_signups(identifier, expires_at);
         """)
         self._connection.commit()
         self._initialize_organizations()
@@ -247,6 +260,93 @@ class AuthStore(OrganizationStoreMixin):
             self._connection.execute("DELETE FROM sessions WHERE user_id=?", (reset["user_id"],))
             updated = self._connection.execute("SELECT * FROM users WHERE id=?", (reset["user_id"],)).fetchone()
         return self._public_user(updated)
+
+    def create_signup(
+        self,
+        identifier: str,
+        password: str,
+        organization_name: str,
+        *,
+        valid_hours: int = 24,
+    ) -> dict[str, Any]:
+        normalized = normalize_identifier(identifier)
+        if "@" not in normalized:
+            raise OrganizationError("Informe um e-mail válido.", 422)
+        if not 8 <= len(password) <= 1024:
+            raise OrganizationError("Escolha uma senha de pelo menos 8 caracteres.", 422)
+        organization_name = " ".join(organization_name.split())
+        if not organization_name:
+            raise OrganizationError("Informe o nome da empresa.", 422)
+        created_at = utc_now()
+        token = secrets.token_urlsafe(32)
+        salt = secrets.token_bytes(16)
+        with self._org_transaction():
+            if self._connection.execute(
+                "SELECT 1 FROM users WHERE identifier=? COLLATE NOCASE",
+                (normalized,),
+            ).fetchone():
+                raise OrganizationError("Este e-mail já possui uma conta. Entre ou recupere sua senha.", 409)
+            self._connection.execute(
+                "DELETE FROM pending_signups WHERE expires_at<=?",
+                (isoformat(created_at),),
+            )
+            self._connection.execute(
+                "UPDATE pending_signups SET used_at=? WHERE identifier=? COLLATE NOCASE AND used_at IS NULL",
+                (isoformat(created_at), normalized),
+            )
+            expires_at = created_at + timedelta(hours=max(1, valid_hours))
+            self._connection.execute(
+                """INSERT INTO pending_signups(
+                     token_hash,identifier,organization_name,password_hash,password_salt,
+                     password_iterations,created_at,expires_at
+                   ) VALUES(?,?,?,?,?,?,?,?)""",
+                (
+                    token_digest(token), normalized, organization_name,
+                    password_digest(password, salt), salt, PASSWORD_ITERATIONS,
+                    isoformat(created_at), isoformat(expires_at),
+                ),
+            )
+        return {"token": token, "identifier": normalized, "expires_at": isoformat(expires_at)}
+
+    def complete_signup(self, token: str) -> tuple[dict[str, Any], int] | None:
+        completed_at = utc_now()
+        with self._org_transaction():
+            signup = self._connection.execute(
+                """SELECT * FROM pending_signups
+                   WHERE token_hash=? AND used_at IS NULL AND expires_at>?""",
+                (token_digest(token), isoformat(completed_at)),
+            ).fetchone()
+            if not signup:
+                return None
+            if self._connection.execute(
+                "SELECT 1 FROM users WHERE identifier=? COLLATE NOCASE",
+                (signup["identifier"],),
+            ).fetchone():
+                raise OrganizationError("Este e-mail já possui uma conta. Entre para continuar.", 409)
+            user_id = self._connection.execute(
+                """INSERT INTO users(
+                     identifier,password_hash,password_salt,password_iterations,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?)""",
+                (
+                    signup["identifier"], signup["password_hash"], signup["password_salt"],
+                    signup["password_iterations"], isoformat(completed_at), isoformat(completed_at),
+                ),
+            ).lastrowid
+            organization_id = self._connection.execute(
+                "INSERT INTO organizations(name,created_by,created_at) VALUES(?,?,?)",
+                (signup["organization_name"], user_id, isoformat(completed_at)),
+            ).lastrowid
+            self._connection.execute(
+                "INSERT INTO memberships VALUES(?,?,'admin',?)",
+                (organization_id, user_id, isoformat(completed_at)),
+            )
+            self._connection.execute(
+                "UPDATE pending_signups SET used_at=? WHERE identifier=? COLLATE NOCASE AND used_at IS NULL",
+                (isoformat(completed_at), signup["identifier"]),
+            )
+            self._audit(organization_id, user_id, "organization.signup")
+            user = self._connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        return self._public_user(user), organization_id
 
     def update_account(
         self,

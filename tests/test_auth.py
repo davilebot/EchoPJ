@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from service.auth import AuthStore, LoginRateLimiter
-from service.models import AccountUpdateRequest, PasswordResetConfirmRequest
+from service.models import AccountUpdateRequest, PasswordResetConfirmRequest, SignupRequest
 
 
 class AuthStoreTests(unittest.TestCase):
@@ -114,6 +114,40 @@ class AuthStoreTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             PasswordResetConfirmRequest(token="x" * 40, new_password="curta")
 
+    def test_verified_signup_creates_owner_and_organization_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.sqlite"
+            store = AuthStore(str(path))
+            pending = store.create_signup(
+                "NEW@Example.com", "secure-password", "  Empresa   Nova  ", valid_hours=24,
+            )
+            connection = sqlite3.connect(path)
+            stored = connection.execute(
+                "SELECT token_hash,password_hash,organization_name FROM pending_signups"
+            ).fetchone()
+            connection.close()
+            self.assertNotEqual(stored[0], pending["token"])
+            self.assertNotIn(b"secure-password", stored[1])
+            self.assertEqual(stored[2], "Empresa Nova")
+
+            user, organization_id = store.complete_signup(pending["token"])
+            self.assertEqual(user["identifier"], "new@example.com")
+            self.assertEqual(store.organization_for_user(user["id"], organization_id)["role"], "admin")
+            self.assertIsNotNone(store.authenticate("new@example.com", "secure-password"))
+            self.assertIsNone(store.complete_signup(pending["token"]))
+            store.close()
+
+    def test_signup_model_validates_email_password_and_company(self):
+        valid = SignupRequest(name="Empresa", email="OWNER@Example.com", password="secure-password")
+        self.assertEqual(valid.email, "owner@example.com")
+        for payload in (
+            {"name": "", "email": "owner@example.com", "password": "secure-password"},
+            {"name": "Empresa", "email": "invalid", "password": "secure-password"},
+            {"name": "Empresa", "email": "owner@example.com", "password": "short"},
+        ):
+            with self.assertRaises(ValidationError):
+                SignupRequest(**payload)
+
 
 class AuthFrontendTests(unittest.TestCase):
     def test_login_and_account_pages_have_expected_controls(self):
@@ -123,6 +157,8 @@ class AuthFrontendTests(unittest.TestCase):
         index = (static_dir / "index.html").read_text(encoding="utf-8")
         forgot = (static_dir / "forgot-password.html").read_text(encoding="utf-8")
         reset = (static_dir / "reset-password.html").read_text(encoding="utf-8")
+        signup = (static_dir / "signup.html").read_text(encoding="utf-8")
+        verify = (static_dir / "verify-email.html").read_text(encoding="utf-8")
         self.assertIn('id="login-form"', login)
         self.assertIn('autocomplete="current-password"', login)
         self.assertIn('href="/forgot-password"', login)
@@ -130,6 +166,9 @@ class AuthFrontendTests(unittest.TestCase):
         self.assertIn('autocomplete="email"', forgot)
         self.assertIn('id="reset-form"', reset)
         self.assertEqual(reset.count('autocomplete="new-password"'), 2)
+        self.assertIn('id="signup-form"', signup)
+        self.assertEqual(signup.count('autocomplete="new-password"'), 2)
+        self.assertIn('id="verify-message"', verify)
         self.assertIn('id="account-form"', account)
         self.assertIn('autocomplete="new-password"', account)
         self.assertIn('id="logout-button"', account)
