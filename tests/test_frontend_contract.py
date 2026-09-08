@@ -37,6 +37,7 @@ class FrontendContractTests(unittest.TestCase):
             "schema-catalog", "relation-preview", "theme-toggle",
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
+            "notification-toggle", "notification-panel", "notification-list", "notification-badge",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -91,6 +92,12 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("window.fetch = function workspaceScopedFetch", workspace)
         self.assertIn('headers.set("X-Organization-Id", activeWorkspaceOrganization)', workspace)
         self.assertIn("activeWorkspaceOrganization = String(org.id)", workspace)
+
+    def test_notification_center_is_user_and_workspace_aware(self):
+        script = (STATIC_DIR / "notifications.js").read_text(encoding="utf-8")
+        self.assertIn('fetch("/api/notifications")', script)
+        self.assertIn("/api/notifications/read-all", script)
+        self.assertIn("data-notification-id", script)
 
 
 if __name__ == "__main__":

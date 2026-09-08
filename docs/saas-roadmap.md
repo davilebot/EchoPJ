@@ -50,7 +50,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] onboarding contextual para salvar a primeira busca, criar lista e convidar a equipe;
 - exemplos de segmentos e modelos de listas;
 - medição do funil de cadastro, ativação, compra e retenção;
-- notificações de saldo baixo, renovação e conclusão de processamento;
+- [x] notificações internas, individuais e sem duplicação para saldo baixo e conclusão de processamento;
+- avisos de renovação por e-mail após a integração do provedor de cobrança;
 - ajuda contextual e central de suporte.
 
 ## Entrega 4 — produto comercial maduro

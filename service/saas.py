@@ -100,6 +100,29 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_company_list_items_org_added
                 ON company_list_items(organization_id, added_at DESC);
+            CREATE TABLE IF NOT EXISTS notifications (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                title TEXT NOT NULL,
+                message TEXT NOT NULL,
+                action_tab TEXT,
+                deduplication_key TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                read_at TEXT,
+                UNIQUE(organization_id, user_id, deduplication_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_notifications_user_created
+                ON notifications(organization_id, user_id, created_at DESC);
+            CREATE TABLE IF NOT EXISTS notification_states (
+                organization_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                state_key TEXT NOT NULL,
+                state_value TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(organization_id, user_id, state_key)
+            );
         """)
         self._connection.commit()
 
@@ -485,6 +508,128 @@ class SaaSStore:
                 (organization_id,),
             ).fetchone()
         return self._profile(row)
+
+    def _insert_notification(
+        self,
+        organization_id: int,
+        user_id: int,
+        *,
+        kind: str,
+        title: str,
+        message: str,
+        action_tab: str | None,
+        deduplication_key: str,
+    ) -> None:
+        self._connection.execute(
+            """INSERT OR IGNORE INTO notifications(
+                 id,organization_id,user_id,kind,title,message,action_tab,
+                 deduplication_key,created_at
+               ) VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), organization_id, user_id, kind,
+                title[:120], message[:500], action_tab, deduplication_key, utc_now(),
+            ),
+        )
+
+    def sync_notifications(
+        self,
+        organization_id: int,
+        user_id: int,
+        *,
+        jobs: list[dict[str, Any]],
+        low_credit_threshold: int = 20,
+    ) -> None:
+        """Materialize deterministic alerts from current operational state."""
+        threshold = max(0, int(low_credit_threshold))
+        with self._transaction():
+            for job in jobs:
+                if job.get("status") not in {"completed", "completed_with_errors"}:
+                    continue
+                warning = job["status"] == "completed_with_errors"
+                self._insert_notification(
+                    organization_id,
+                    user_id,
+                    kind="job_warning" if warning else "job_completed",
+                    title="Processamento concluído com avisos" if warning else "Processamento concluído",
+                    message=f"{str(job.get('filename') or 'Arquivo')[:180]} · {int(job.get('processed') or 0)} linhas processadas.",
+                    action_tab="history",
+                    deduplication_key=f"job-finished:{job['id']}",
+                )
+
+            profile = self._connection.execute(
+                "SELECT * FROM organization_profiles WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()
+            if not profile:
+                raise SaaSError("Configuração comercial da organização não encontrada.", 404)
+            state_key = "low-credit-episode"
+            state = self._connection.execute(
+                """SELECT state_value FROM notification_states
+                   WHERE organization_id=? AND user_id=? AND state_key=?""",
+                (organization_id, user_id, state_key),
+            ).fetchone()
+            low_balance = not profile["unlimited_credits"] and profile["credit_balance"] <= threshold
+            if low_balance and not state:
+                episode = str(uuid.uuid4())
+                now = utc_now()
+                self._connection.execute(
+                    "INSERT INTO notification_states VALUES(?,?,?,?,?)",
+                    (organization_id, user_id, state_key, episode, now),
+                )
+                self._insert_notification(
+                    organization_id,
+                    user_id,
+                    kind="low_credit",
+                    title="Créditos perto do fim",
+                    message=f"A organização tem {profile['credit_balance']} créditos disponíveis.",
+                    action_tab="billing",
+                    deduplication_key=f"low-credit:{episode}",
+                )
+            elif not low_balance and state:
+                self._connection.execute(
+                    "DELETE FROM notification_states WHERE organization_id=? AND user_id=? AND state_key=?",
+                    (organization_id, user_id, state_key),
+                )
+
+    def list_notifications(
+        self,
+        organization_id: int,
+        user_id: int,
+        *,
+        limit: int = 30,
+    ) -> dict[str, Any]:
+        limit = max(1, min(int(limit), 100))
+        with self._lock:
+            rows = [dict(row) for row in self._connection.execute(
+                """SELECT id,kind,title,message,action_tab,created_at,read_at
+                   FROM notifications WHERE organization_id=? AND user_id=?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (organization_id, user_id, limit),
+            ).fetchall()]
+            unread = self._connection.execute(
+                """SELECT count(*) FROM notifications
+                   WHERE organization_id=? AND user_id=? AND read_at IS NULL""",
+                (organization_id, user_id),
+            ).fetchone()[0]
+        return {"notifications": rows, "unread_count": unread}
+
+    def mark_notification_read(self, organization_id: int, user_id: int, notification_id: str) -> bool:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """UPDATE notifications SET read_at=COALESCE(read_at,?)
+                   WHERE id=? AND organization_id=? AND user_id=?""",
+                (utc_now(), notification_id, organization_id, user_id),
+            )
+        return bool(cursor.rowcount)
+
+    def mark_all_notifications_read(self, organization_id: int, user_id: int) -> int:
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """UPDATE notifications SET read_at=?
+                   WHERE organization_id=? AND user_id=? AND read_at IS NULL""",
+                (utc_now(), organization_id, user_id),
+            )
+        return cursor.rowcount
 
     @staticmethod
     def _saved_search(row: sqlite3.Row) -> dict[str, Any]:

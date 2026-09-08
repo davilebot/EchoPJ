@@ -352,6 +352,38 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(dashboard["organization_id"], self.other)
         self.assertEqual(dashboard["onboarding"], {"member_count": 1, "pending_invitation_count": 0})
 
+    def test_notifications_are_scoped_and_can_be_marked_read(self):
+        job = self.jobs.create_job(
+            "concluido.csv", [], active_only=True, check_website=False,
+            organization_id=self.other, created_by=self.owner["id"],
+        )
+        self.jobs.finish_if_complete(job["id"])
+        headers = {"x-organization-id": str(self.other)}
+        status, data, _ = self.request("/api/notifications", token=self.owner_token, headers=headers)
+        self.assertEqual(status, 200)
+        self.assertEqual({item["kind"] for item in data["notifications"]}, {"job_completed", "low_credit"})
+        notification_id = data["notifications"][0]["id"]
+        self.assertEqual(
+            self.request(
+                f"/api/notifications/{notification_id}/read", "POST", token=self.member_token,
+                headers={"x-organization-id": str(self.org)},
+            )[0],
+            404,
+        )
+        self.assertEqual(
+            self.request(
+                f"/api/notifications/{notification_id}/read", "POST", token=self.owner_token,
+                headers=headers,
+            )[0],
+            200,
+        )
+        status, marked, _ = self.request(
+            "/api/notifications/read-all", "POST", token=self.owner_token, headers=headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(marked["updated"], 1)
+        self.assertEqual(self.request("/api/notifications", token=self.owner_token, headers=headers)[1]["unread_count"], 0)
+
     def test_database_schema_is_internal_only(self):
         self.main.repository.database_schema.return_value = {"relations": []}
         self.assertEqual(

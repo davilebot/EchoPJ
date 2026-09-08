@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260908-onboarding-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260908-notifications-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -59,6 +59,13 @@
         <div class="breadcrumbs" aria-label="Localização atual"><span>EchoPJs</span><i aria-hidden="true">/</i><strong id="current-view">Visão geral</strong></div>
         <div class="topbar-actions">
           <a id="mobile-organizations-link" class="mobile-organizations" href="/organizations">Organizações e equipe</a>
+          <div class="notification-center">
+            <button id="notification-toggle" class="icon-button" type="button" aria-label="Abrir notificações" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span id="notification-badge" class="notification-badge hidden">0</span></button>
+            <section id="notification-panel" class="notification-panel hidden" aria-label="Notificações">
+              <div class="notification-head"><div><strong>Notificações</strong><small id="notification-summary">Atualizações do workspace</small></div><button id="notification-read-all" class="notification-read-all" type="button">Marcar todas como lidas</button></div>
+              <div id="notification-list" class="notification-list"><div class="notification-empty">Carregando…</div></div>
+            </section>
+          </div>
           <button id="credit-indicator" class="credit-indicator" data-switch-tab="billing" type="button"><span>Créditos</span><strong>Carregando…</strong></button>
           <span class="secure-label"><span aria-hidden="true"></span>Base oficial</span>
           <a id="account-link" class="secure-label" href="/account"><span aria-hidden="true"></span>Minha conta</a>
@@ -236,5 +243,6 @@
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
   <script src="/static/app.js?v=20260908-onboarding-1"></script>
+  <script src="/static/notifications.js?v=20260908-notifications-1"></script>
 </body>
 </html>

@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     max_job_size: int = 10000
     job_database_path: str = "/data/jobs.sqlite"
     saas_trial_credits: int = 100
+    saas_low_credit_threshold: int = 20
     saas_self_signup_enabled: bool = False
     saas_internal_organization_id: int = 1
     saas_internal_organization_name: str = "EchoHub"

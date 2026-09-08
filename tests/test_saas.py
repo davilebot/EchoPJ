@@ -161,6 +161,31 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(metrics["active_organizations"], 1)
         self.assertEqual(metrics["credits_available"], 10)
 
+    def test_notifications_are_user_scoped_idempotent_and_episode_based(self):
+        self.store.ensure_organization(17, initial_credits=5)
+        jobs = [{"id": "job-1", "filename": "clientes.csv", "status": "completed", "processed": 12}]
+        self.store.sync_notifications(17, 21, jobs=jobs, low_credit_threshold=10)
+        first = self.store.list_notifications(17, 21)
+        self.assertEqual(first["unread_count"], 2)
+        self.assertEqual({item["kind"] for item in first["notifications"]}, {"job_completed", "low_credit"})
+
+        self.store.sync_notifications(17, 21, jobs=jobs, low_credit_threshold=10)
+        self.assertEqual(len(self.store.list_notifications(17, 21)["notifications"]), 2)
+        self.assertEqual(self.store.list_notifications(17, 22)["notifications"], [])
+
+        notification_id = first["notifications"][0]["id"]
+        self.assertTrue(self.store.mark_notification_read(17, 21, notification_id))
+        self.assertFalse(self.store.mark_notification_read(17, 22, notification_id))
+        self.assertEqual(self.store.mark_all_notifications_read(17, 21), 1)
+        self.assertEqual(self.store.list_notifications(17, 21)["unread_count"], 0)
+
+        self.store.grant_credits(17, 20, description="Recarga", idempotency_key="payment:notification")
+        self.store.sync_notifications(17, 21, jobs=[], low_credit_threshold=10)
+        self.store.adjust_credits(17, -20, description="Novo ciclo de consumo", actor_id=21)
+        self.store.sync_notifications(17, 21, jobs=[], low_credit_threshold=10)
+        notices = self.store.list_notifications(17, 21)["notifications"]
+        self.assertEqual(sum(item["kind"] == "low_credit" for item in notices), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

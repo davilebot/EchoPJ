@@ -592,6 +592,31 @@ def admin_overview(
     return catalog
 
 
+@app.get("/api/notifications")
+def notifications(user: dict = Depends(require_organization)) -> dict:
+    jobs = job_store.list_jobs(limit=50, organization_id=user["organization_id"])
+    saas_store.sync_notifications(
+        user["organization_id"],
+        user["id"],
+        jobs=jobs,
+        low_credit_threshold=settings.saas_low_credit_threshold,
+    )
+    return saas_store.list_notifications(user["organization_id"], user["id"])
+
+
+@app.post("/api/notifications/read-all")
+def read_all_notifications(user: dict = Depends(require_organization)) -> dict:
+    updated = saas_store.mark_all_notifications_read(user["organization_id"], user["id"])
+    return {"updated": updated}
+
+
+@app.post("/api/notifications/{notification_id}/read")
+def read_notification(notification_id: str, user: dict = Depends(require_organization)) -> dict:
+    if not saas_store.mark_notification_read(user["organization_id"], user["id"], notification_id):
+        raise HTTPException(status_code=404, detail="Notificação não encontrada.")
+    return {"read": True}
+
+
 @app.get("/api/admin/organizations/{organization_id}")
 def admin_organization_detail(
     organization_id: int,
