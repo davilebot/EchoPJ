@@ -48,7 +48,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] recuperação segura de senha por link temporário e uso único;
 - [x] cadastro verificado por e-mail, protegido por ativação operacional;
 - [x] onboarding contextual para salvar a primeira busca, criar lista e convidar a equipe;
-- exemplos de segmentos e modelos de listas;
+- [x] exemplos de segmentos e modelos editáveis de listas;
 - [x] medição do funil de cadastro, ativação, entrada em plano comercial e uso recorrente;
 - [x] notificações internas, individuais e sem duplicação para saldo baixo e conclusão de processamento;
 - avisos de renovação por e-mail após a integração do provedor de cobrança;

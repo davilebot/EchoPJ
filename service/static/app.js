@@ -70,6 +70,7 @@ const createListDialog = document.querySelector("#create-list-dialog");
 let batchSourceRows = [];
 let historyPoll = null;
 let searchCapabilitiesLoaded = false;
+let searchCapabilities = {};
 let searchCnaeOptionsLoaded = false;
 let municipalityOptionsRequest = 0;
 let explorerSchemaLoaded = false;
@@ -94,6 +95,43 @@ const ufNames = {
   ES: "Espírito Santo", GO: "Goiás", MA: "Maranhão", MT: "Mato Grosso", MS: "Mato Grosso do Sul", MG: "Minas Gerais",
   PA: "Pará", PB: "Paraíba", PR: "Paraná", PE: "Pernambuco", PI: "Piauí", RJ: "Rio de Janeiro", RN: "Rio Grande do Norte",
   RS: "Rio Grande do Sul", RO: "Rondônia", RR: "Roraima", SC: "Santa Catarina", SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
+};
+
+const searchTemplates = {
+  "smb-contact": {
+    name: "PMEs com contato",
+    filters: {
+      registration_statuses: ["ATIVA"],
+      company_sizes: ["MICRO EMPRESA", "EMPRESA DE PEQUENO PORTE"],
+      has_email: true,
+      has_phone: true,
+      limit: 500,
+    },
+  },
+  "expanding-headquarters": {
+    name: "Matrizes em expansão",
+    filters: {
+      registration_statuses: ["ATIVA"],
+      branch_type: "1",
+      active_branch_count_min: 2,
+      limit: 500,
+    },
+  },
+  "simples-contact": {
+    name: "Simples com contato",
+    filters: {
+      registration_statuses: ["ATIVA"],
+      simples: true,
+      has_phone: true,
+      limit: 500,
+    },
+  },
+};
+
+const listTemplates = {
+  priority: { name: "Prospecção prioritária", description: "Empresas aprovadas para contato imediato pela equipe comercial." },
+  research: { name: "Em qualificação", description: "Empresas que ainda precisam de pesquisa ou validação antes do contato." },
+  nurture: { name: "Acompanhar depois", description: "Contas para retomar em outro momento ou manter em acompanhamento." },
 };
 
 function createMultiPicker(root, emptyLabel) {
@@ -593,11 +631,12 @@ function optionalNumber(value) {
 }
 
 async function loadSearchCapabilities() {
-  if (searchCapabilitiesLoaded) return;
+  if (searchCapabilitiesLoaded) return searchCapabilities;
   try {
     const response = await fetch("/api/search/capabilities");
     if (!response.ok) throw new Error("Não foi possível verificar os filtros disponíveis");
     const data = await response.json();
+    searchCapabilities = data.filters;
     document.querySelectorAll("[data-capability]").forEach((field) => {
       field.disabled = !data.filters[field.dataset.capability];
     });
@@ -613,8 +652,10 @@ async function loadSearchCapabilities() {
       document.querySelector("#complementary-note").textContent = "Os grupos já concluídos estão liberados. Os demais serão habilitados automaticamente quando terminarem.";
     }
     searchCapabilitiesLoaded = true;
+    return searchCapabilities;
   } catch (error) {
     document.querySelector("#complementary-note").textContent = error.message;
+    return searchCapabilities;
   }
 }
 
@@ -1335,10 +1376,8 @@ function setInputValue(selector, value) {
   if (input) input.value = value ?? "";
 }
 
-async function applySavedSearch(saved) {
-  switchTab("search");
+async function applySearchFilters(filters) {
   await Promise.all([loadSearchCapabilities(), loadCnaeOptions()]);
-  const filters = saved.filters;
   cnaePicker.setSelected(filters.cnaes || []);
   statusPicker.setSelected(filters.registration_statuses || []);
   sizePicker.setSelected(filters.company_sizes || []);
@@ -1365,6 +1404,12 @@ async function applySavedSearch(saved) {
   setInputValue("#search-branches-min", filters.active_branch_count_min);
   setInputValue("#search-branches-max", filters.active_branch_count_max);
   setInputValue("#search-limit", filters.limit || 500);
+}
+
+async function applySavedSearch(saved) {
+  switchTab("search");
+  const filters = saved.filters;
+  await applySearchFilters(filters);
   activeSavedSearchId = saved.id;
   activeSavedSearchFilters = JSON.stringify(filters);
   const guidance = document.querySelector(".filter-guidance");
@@ -1372,6 +1417,51 @@ async function applySavedSearch(saved) {
   companySearchForm.scrollIntoView({ behavior: "smooth", block: "start" });
   showToast(`Critérios de “${saved.name}” carregados.`);
 }
+
+function supportedTemplateFilters(template) {
+  const filters = { ...template.filters };
+  if (!searchCapabilities.establishment_details) {
+    delete filters.branch_type;
+    delete filters.has_email;
+    delete filters.has_phone;
+  }
+  if (!searchCapabilities.branch_counts) {
+    delete filters.active_branch_count_min;
+    delete filters.active_branch_count_max;
+  }
+  if (!searchCapabilities.simples_mei) {
+    delete filters.simples;
+    delete filters.mei;
+  }
+  return filters;
+}
+
+async function applySearchTemplate(templateKey) {
+  const template = searchTemplates[templateKey];
+  if (!template) return;
+  await loadSearchCapabilities();
+  await applySearchFilters(supportedTemplateFilters(template));
+  activeSavedSearchId = null;
+  activeSavedSearchFilters = null;
+  companySearchResult.classList.add("hidden");
+  const guidance = document.querySelector(".filter-guidance");
+  guidance.innerHTML = `<span aria-hidden="true"></span>Modelo aplicado: ${escapeHtml(template.name)}`;
+  document.querySelector(".filter-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  showToast(`Modelo “${template.name}” aplicado. Ajuste CNAE ou localização e faça a busca.`);
+}
+
+document.querySelector("#search-templates").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-search-template]");
+  if (!button) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  try { await applySearchTemplate(button.dataset.searchTemplate); }
+  catch (error) { showToast(error.message); }
+  finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+  }
+});
 
 async function deleteSavedSearch(searchId) {
   const response = await fetch(`/api/saved-searches/${searchId}`, { method: "DELETE" });
@@ -1382,6 +1472,13 @@ async function deleteSavedSearch(searchId) {
   }
   await loadSavedSearches();
   showToast("Busca excluída.");
+}
+
+function listTemplateMarkup() {
+  return Object.entries(listTemplates).map(([key, template]) => `
+    <button class="list-template" type="button" data-list-template="${key}">
+      <span><strong>${escapeHtml(template.name)}</strong><small>${escapeHtml(template.description)}</small></span><b aria-hidden="true">+</b>
+    </button>`).join("");
 }
 
 async function loadCompanyLists() {
@@ -1396,7 +1493,7 @@ async function loadCompanyLists() {
       <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></div>
       <div class="resource-card-body"><span class="resource-meta">Atualizada ${formatDate(item.updated_at)}</span><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description || "Lista compartilhada com sua organização.")}</p><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></div>
       <div class="resource-card-actions"><button type="button" data-open-list="${item.id}">Abrir lista</button></div>
-    </article>`).join("") : `<div class="empty-state resource-empty"><strong>Nenhuma lista criada.</strong><p>Crie uma lista para organizar empresas encontradas pela equipe.</p><button type="button" data-open-create-list>Criar primeira lista</button></div>`;
+    </article>`).join("") : `<div class="empty-state resource-empty template-empty"><span class="eyebrow">MODELOS DE LISTA</span><strong>Como sua equipe quer organizar as empresas?</strong><p>Escolha um modelo para preencher nome e objetivo, ou comece com uma lista em branco.</p><div class="list-template-grid">${listTemplateMarkup()}</div><button class="secondary" type="button" data-open-create-list>Criar lista em branco</button></div>`;
     listsLoading.classList.add("hidden");
     listsGrid.classList.remove("hidden");
     return data.lists;
@@ -1463,10 +1560,16 @@ async function removeCompanyFromList(listId, cnpj) {
   showToast("Empresa removida da lista. O desbloqueio continua disponível para a organização.");
 }
 
-function openCreateListDialog() {
+function openCreateListDialog(templateKey = null) {
   document.querySelector("#create-list-form").reset();
+  const template = listTemplates[templateKey];
+  if (template) {
+    document.querySelector("#create-list-name").value = template.name;
+    document.querySelector("#create-list-description").value = template.description;
+  }
   setDialogFeedback(document.querySelector("#create-list-feedback"));
   createListDialog.showModal();
+  document.querySelector("#create-list-name").focus();
 }
 
 document.querySelector("#save-current-search").addEventListener("click", () => {
@@ -1536,7 +1639,7 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
   showToast(`${result.added.toLocaleString("pt-BR")} empresa${result.added === 1 ? "" : "s"} adicionada${result.added === 1 ? "" : "s"} à lista.`);
 });
 
-document.querySelector("#create-list-button").addEventListener("click", openCreateListDialog);
+document.querySelector("#create-list-button").addEventListener("click", () => openCreateListDialog());
 document.querySelector("#create-list-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const feedback = document.querySelector("#create-list-feedback");
@@ -1594,6 +1697,8 @@ savedSearchesGrid.addEventListener("click", async (event) => {
 listsGrid.addEventListener("click", (event) => {
   const createButton = event.target.closest("[data-open-create-list]");
   if (createButton) openCreateListDialog();
+  const templateButton = event.target.closest("[data-list-template]");
+  if (templateButton) openCreateListDialog(templateButton.dataset.listTemplate);
   const openButton = event.target.closest("[data-open-list]");
   if (openButton) loadCompanyListDetail(openButton.dataset.openList);
 });

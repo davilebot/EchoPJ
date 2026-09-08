@@ -101,6 +101,9 @@ estão em [`.env.example`](.env.example).
   dias distintos e atividade nos últimos 30 dias. Eventos de produto guardam
   apenas o tipo da ação, identificadores técnicos e contagens; filtros e dados
   completos das empresas pesquisadas não são copiados para a telemetria.
+- O construtor de listas oferece segmentos iniciais que respeitam os dados
+  disponíveis na versão atual da Receita. A biblioteca também sugere modelos
+  editáveis para prospecção prioritária, qualificação e acompanhamento.
 
 ### Validação
 

@@ -38,6 +38,7 @@ class FrontendContractTests(unittest.TestCase):
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
+            "search-templates",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -108,6 +109,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("last_activity_at", script)
         self.assertIn("renderFunnel(data.funnel)", script)
         self.assertIn(".admin-funnel-stages", styles)
+
+    def test_search_and_list_templates_start_from_editable_examples(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertEqual(self.html.count("data-search-template="), 3)
+        self.assertIn("supportedTemplateFilters", script)
+        self.assertIn("applySearchTemplate", script)
+        self.assertIn("listTemplates", script)
+        self.assertIn("data-list-template", script)
+        self.assertIn(".search-template-grid", styles)
+        self.assertIn(".list-template-grid", styles)
 
 
 if __name__ == "__main__":
