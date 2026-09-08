@@ -52,6 +52,18 @@ class OrganizationTests(unittest.TestCase):
         with self.assertRaises(OrganizationError): self.store.organization_team(member["id"], self.org)
         with self.assertRaises(OrganizationError): self.store.create_invitation(member["id"], self.org, "other@example.com", "admin")
 
+    def test_activation_summary_counts_members_and_pending_invitations(self):
+        self.assertEqual(
+            self.store.organization_activation_summary(self.org),
+            {"member_count": 1, "pending_invitation_count": 0},
+        )
+        invite = self.store.create_invitation(self.owner, self.org, "new@example.com", "member")
+        self.assertEqual(self.store.organization_activation_summary(self.org)["pending_invitation_count"], 1)
+        self.store.accept_invitation(invite["token"], "test-password-long")
+        summary = self.store.organization_activation_summary(self.org)
+        self.assertEqual(summary["member_count"], 2)
+        self.assertEqual(summary["pending_invitation_count"], 0)
+
     def test_invite_is_email_bound_one_time_and_only_hash_is_stored(self):
         invite = self.store.create_invitation(self.owner, self.org, "New@Example.com", "member")
         self.assertEqual(self.store.invitation_preview(invite["token"])["email"], "new@example.com")

@@ -79,6 +79,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-internal-admin", self.html)
         self.assertIn('org.role !== "admin"', workspace)
 
+    def test_dashboard_contains_contextual_onboarding(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("Prepare seu workspace", script)
+        self.assertIn("pending_invitation_count", script)
+        self.assertIn(".onboarding-steps", styles)
+
 
 if __name__ == "__main__":
     unittest.main()

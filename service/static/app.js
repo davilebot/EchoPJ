@@ -1244,10 +1244,20 @@ async function loadSaaSOverview() {
     if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar o workspace."));
     const data = await response.json();
     updateCreditIndicator(data.profile);
+    const onboardingSteps = [
+      { complete: data.saved_search_count > 0, title: "Salve seu primeiro segmento", description: "Monte os filtros e guarde os critérios para repetir a busca.", tab: "search", action: "Criar busca" },
+      { complete: data.list_count > 0, title: "Organize empresas em uma lista", description: "Separe campanhas, territórios ou prioridades da equipe.", tab: "lists", action: "Criar lista" },
+      { complete: data.onboarding.member_count > 1 || data.onboarding.pending_invitation_count > 0, title: "Convide alguém da equipe", description: "Cada pessoa acessa com senha própria e permissões controladas.", href: `/organizations?organization=${data.organization_id}`, action: "Convidar pessoa" },
+    ];
+    const completedOnboarding = onboardingSteps.filter((step) => step.complete).length;
+    const onboarding = completedOnboarding === onboardingSteps.length ? "" : `<section class="onboarding-card section-card">
+      <div class="onboarding-heading"><div><span class="eyebrow">PRIMEIROS PASSOS</span><h2>Prepare seu workspace</h2><p>Conclua o essencial para sua equipe começar com contexto e organização.</p></div><div class="onboarding-progress"><strong>${completedOnboarding} de ${onboardingSteps.length}</strong><span><i style="width:${Math.round(completedOnboarding / onboardingSteps.length * 100)}%"></i></span></div></div>
+      <div class="onboarding-steps">${onboardingSteps.map((step, index) => `<article class="onboarding-step ${step.complete ? "complete" : ""}"><span class="onboarding-number">${step.complete ? "✓" : index + 1}</span><div><strong>${escapeHtml(step.title)}</strong><small>${escapeHtml(step.description)}</small></div>${step.complete ? `<span class="onboarding-done">Concluído</span>` : step.href ? `<a href="${step.href}">${escapeHtml(step.action)}</a>` : `<button type="button" data-switch-tab="${step.tab}">${escapeHtml(step.action)}</button>`}</article>`).join("")}</div>
+    </section>`;
     const recentLists = data.recent_lists.length ? data.recent_lists.map((item) => `<button class="workspace-row" type="button" data-dashboard-list="${item.id}"><span><strong>${escapeHtml(item.name)}</strong><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma lista ainda</span><button type="button" data-switch-tab="search">Encontrar empresas</button></div>`;
     const recentSearches = data.recent_searches.length ? data.recent_searches.map((saved) => `<button class="workspace-row" type="button" data-dashboard-search="${saved.id}"><span><strong>${escapeHtml(saved.name)}</strong><small>${escapeHtml(filtersDescription(saved.filters))}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma busca salva</span><button type="button" data-switch-tab="search">Criar uma busca</button></div>`;
     saasOverview.dataset.searches = JSON.stringify(data.recent_searches);
-    saasOverview.innerHTML = `<div class="workspace-metrics">
+    saasOverview.innerHTML = `${onboarding}<div class="workspace-metrics">
       <button type="button" data-switch-tab="billing"><span>Créditos</span><strong>${data.profile.unlimited_credits ? "Ilimitados" : Number(data.profile.credit_balance).toLocaleString("pt-BR")}</strong><small>${data.profile.unlimited_credits ? "Plano interno EchoHub" : "Saldo compartilhado"}</small></button>
       <button type="button" data-switch-tab="lists"><span>Empresas desbloqueadas</span><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><small>Disponíveis sem nova cobrança</small></button>
       <button type="button" data-switch-tab="lists"><span>Listas</span><strong>${Number(data.list_count).toLocaleString("pt-BR")}</strong><small>Organizadas pela equipe</small></button>
@@ -1274,7 +1284,7 @@ async function loadBillingSummary() {
     const planName = profile.plan_code === "internal" ? "EchoHub interno" : profile.plan_code === "trial" ? "Avaliação" : profile.plan_code;
     const ledger = data.ledger.length ? data.ledger.map((entry) => `<tr>
       <td>${formatDate(entry.created_at)}</td><td>${escapeHtml(entry.description)}</td>
-      <td class="ledger-value ${entry.delta > 0 ? "positive" : "negative"}">${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}</td>
+      <td class="ledger-value ${entry.delta > 0 ? "positive" : entry.delta < 0 ? "negative" : ""}">${entry.delta === 0 ? "—" : `${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}`}</td>
     </tr>`).join("") : `<tr><td colspan="3">Nenhuma movimentação de créditos.</td></tr>`;
     billingSummary.innerHTML = `<div class="billing-hero section-card">
       <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva ou exporta uma empresa."}</p></div>

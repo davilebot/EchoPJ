@@ -125,6 +125,22 @@ class OrganizationStoreMixin:
                 (user_id,),
             ).fetchall()]
 
+    def organization_activation_summary(self, organization_id):
+        with self._lock:
+            member_count = self._connection.execute(
+                "SELECT count(*) FROM memberships WHERE organization_id=?",
+                (organization_id,),
+            ).fetchone()[0]
+            pending_invitation_count = self._connection.execute(
+                """SELECT count(*) FROM invitations
+                   WHERE organization_id=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?""",
+                (organization_id, now_iso()),
+            ).fetchone()[0]
+        return {
+            "member_count": member_count,
+            "pending_invitation_count": pending_invitation_count,
+        }
+
     def admin_organization_catalog(self, query="", *, limit=50, offset=0):
         """Return a bounded cross-tenant catalog after the caller has passed admin authorization."""
         normalized = " ".join(str(query).split()).casefold()

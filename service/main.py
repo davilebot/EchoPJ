@@ -566,6 +566,8 @@ def dashboard(user: dict = Depends(require_organization)) -> dict:
     jobs = job_store.list_jobs(limit=5, organization_id=user["organization_id"])
     summary["recent_jobs"] = jobs
     summary["active_jobs"] = job_store.active_job_count(organization_id=user["organization_id"])
+    summary["organization_id"] = user["organization_id"]
+    summary["onboarding"] = auth_store.organization_activation_summary(user["organization_id"])
     return summary
 
 

@@ -349,6 +349,8 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(dashboard["unlocked_companies"], 1)
         self.assertEqual(dashboard["active_jobs"], 1)
         self.assertEqual(dashboard["recent_lists"][0]["name"], "Prospects")
+        self.assertEqual(dashboard["organization_id"], self.other)
+        self.assertEqual(dashboard["onboarding"], {"member_count": 1, "pending_invitation_count": 0})
 
     def test_database_schema_is_internal_only(self):
         self.main.repository.database_schema.return_value = {"relations": []}
