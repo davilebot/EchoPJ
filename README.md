@@ -116,6 +116,9 @@ estão em [`.env.example`](.env.example).
   aceitação, o painel sinaliza a transferência pendente e permite entregar a
   responsabilidade ao cliente diretamente. O catálogo mostra cada etapa e também
   encontra pilotos pelo e-mail convidado, mesmo antes do aceite.
+- Se o link do piloto expirar ou se perder, o acompanhamento permite emitir outro.
+  O convite anterior é revogado e somente o novo link, válido por sete dias,
+  concede acesso ao responsável indicado.
 - O painel interno mede cadastro, ativação, entrada em plano comercial, uso em
   dias distintos e atividade nos últimos 30 dias. Eventos de produto guardam
   apenas o tipo da ação, identificadores técnicos e contagens; filtros e dados

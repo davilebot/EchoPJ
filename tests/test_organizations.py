@@ -73,12 +73,20 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual(waiting["responsible_email"], "cliente@example.com")
         found = self.store.admin_organization_catalog("cliente@example.com")
         self.assertEqual((found["total"], found["organizations"][0]["id"]), (1, organization["id"]))
-        customer, _ = self.store.accept_invitation(invitation["token"], "customer-password-long")
+        replacement = self.store.reissue_provisioned_owner_invitation(self.owner, organization["id"])
+        with self.assertRaises(OrganizationError):
+            self.store.invitation_preview(invitation["token"])
+        self.assertEqual(replacement["email"], "cliente@example.com")
+        customer, _ = self.store.accept_invitation(replacement["token"], "customer-password-long")
         accepted = self.store.admin_organization(organization["id"])["provisioning"]
         self.assertEqual(accepted["status"], "transfer_pending")
         self.assertEqual(accepted["responsible_user_id"], customer["id"])
         self.store.transfer_organization_ownership(self.owner, organization["id"], customer["id"])
         self.assertEqual(self.store.admin_organization(organization["id"])["provisioning"]["status"], "delivered")
+        with self.assertRaises(OrganizationError):
+            self.store.reissue_provisioned_owner_invitation(self.owner, organization["id"])
+        with self.assertRaises(OrganizationError):
+            self.store.reissue_provisioned_owner_invitation(self.owner, self.org)
         with self.assertRaises(OrganizationError):
             self.store.provision_customer_workspace(self.owner, "Inválido", "owner@example.com")
 

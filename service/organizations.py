@@ -431,6 +431,58 @@ class OrganizationStoreMixin:
             },
         }
 
+    def reissue_provisioned_owner_invitation(self, actor_id, org_id):
+        token = secrets.token_urlsafe(32)
+        created = datetime.now(timezone.utc)
+        expires = (created + timedelta(days=7)).isoformat()
+        with self._org_transaction():
+            marker = self._connection.execute(
+                """SELECT target FROM organization_audit
+                   WHERE organization_id=? AND action='organization.provisioned'
+                   ORDER BY id DESC LIMIT 1""",
+                (org_id,),
+            ).fetchone()
+            organization = self._connection.execute(
+                """SELECT o.id,o.name,o.created_by,o.created_at,owner.identifier AS owner_email
+                   FROM organizations o JOIN users owner ON owner.id=o.created_by WHERE o.id=?""",
+                (org_id,),
+            ).fetchone()
+            if not marker or not organization:
+                raise OrganizationError("Esta organização não pertence ao fluxo guiado de piloto.", 409)
+            provisioning = self._admin_provisioning(dict(organization))
+            if provisioning["status"] in {"transfer_pending", "delivered"}:
+                raise OrganizationError("O responsável já aceitou o acesso; conclua ou revise a transferência.", 409)
+            owner = self._connection.execute(
+                "SELECT role FROM memberships WHERE organization_id=? AND user_id=?",
+                (org_id, organization["created_by"]),
+            ).fetchone()
+            if not owner or owner["role"] != "admin":
+                raise OrganizationError("O piloto está sem um responsável apto a emitir o convite.", 409)
+            email = marker["target"].strip().casefold()
+            self._connection.execute(
+                """UPDATE invitations SET revoked_at=? WHERE organization_id=? AND email=? COLLATE NOCASE
+                   AND accepted_at IS NULL AND revoked_at IS NULL""",
+                (created.isoformat(), org_id, email),
+            )
+            invite_id = self._connection.execute(
+                """INSERT INTO invitations(
+                     organization_id,email,role,token_hash,created_by,created_at,expires_at
+                   ) VALUES(?,?,'admin',?,?,?,?)""",
+                (
+                    org_id, email, invitation_hash(token), organization["created_by"],
+                    created.isoformat(), expires,
+                ),
+            ).lastrowid
+            self._audit(org_id, actor_id, "invitation.created", email)
+        return {
+            "id": invite_id,
+            "email": email,
+            "role": "admin",
+            "organization_name": organization["name"],
+            "expires_at": expires,
+            "token": token,
+        }
+
     def rename_organization(self, actor_id, org_id, name):
         with self._org_transaction():
             self._membership(actor_id, org_id, admin=True)

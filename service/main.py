@@ -47,6 +47,7 @@ from .models import (
     OrganizationRequest,
     MemberRoleRequest,
     InvitationRequest,
+    InvitationDeliveryRequest,
     InvitationTokenRequest,
     InvitationAcceptRequest,
     CompanyListRequest,
@@ -1409,6 +1410,35 @@ def provision_customer_workspace(
             "next_step": "Depois que o cliente aceitar, transfira a responsabilidade na área Organizações e equipe.",
         },
     }
+
+
+@app.post("/api/admin/organizations/{organization_id}/pilot-invitation", status_code=201)
+def reissue_customer_pilot_invitation(
+    organization_id: int,
+    payload: InvitationDeliveryRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    key = f"pilot-invitation:{user['id']}"
+    if not invitation_rate_limiter.allowed(key, monotonic()):
+        raise HTTPException(status_code=429, detail="Limite temporário de convites atingido. Tente mais tarde.")
+    invitation = auth_store.reissue_provisioned_owner_invitation(user["id"], organization_id)
+    invitation_rate_limiter.failed(key, monotonic())
+    link = f"{settings.app_public_url.rstrip('/')}/invite#token={invitation.pop('token')}"
+    delivery = send_invitation(
+        settings,
+        email=invitation["email"],
+        organization_name=invitation["organization_name"],
+        link=link,
+    ) if payload.send_email else "manual"
+    saas_store.record_product_event(
+        organization_id,
+        user["id"],
+        "team.pilot_invitation_reissued",
+        subject_type="invitation",
+        subject_id=str(invitation["id"]),
+        deduplication_key=f"team.pilot_invitation_reissued:{invitation['id']}",
+    )
+    return {**invitation, "link": link, "delivery": delivery}
 
 
 @app.get("/api/notifications")

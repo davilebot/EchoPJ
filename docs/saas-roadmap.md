@@ -43,6 +43,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] painel interno para consultar organizações, planos e concessões manuais;
 - [x] fluxo interno único para criar um piloto, conceder créditos e gerar o convite do responsável;
 - [x] acompanhamento do piloto do convite à entrega, com busca pelo e-mail pendente e transferência direta ao responsável;
+- [x] renovação segura do convite do piloto, com invalidação imediata do link anterior e novo prazo de sete dias;
 - [x] checklist interno de lançamento baseado na configuração real de produto, aquisição, cobrança e operação;
 - [x] pedidos e eventos de cobrança no painel interno, prontos para receber a integração ativada;
 - [x] editor de catálogo comercial com rascunho, validação e publicação versionada pelo painel interno;

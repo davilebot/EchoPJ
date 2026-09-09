@@ -87,6 +87,10 @@ class InvitationRequest(MemberRoleRequest):
         return value
 
 
+class InvitationDeliveryRequest(BaseModel):
+    send_email: bool = False
+
+
 class InvitationTokenRequest(BaseModel):
     token: str = Field(min_length=32, max_length=128)
 

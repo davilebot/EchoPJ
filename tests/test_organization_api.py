@@ -539,7 +539,20 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(overview["organizations"][0]["provisioning"]["status"], "waiting_acceptance")
-        token = pilot["invitation"]["link"].split("#token=")[1]
+        original_token = pilot["invitation"]["link"].split("#token=")[1]
+        self.assertEqual(self.request(
+            f"/api/admin/organizations/{organization_id}/pilot-invitation", "POST",
+            {"send_email": False}, self.member_token, internal_headers,
+        )[0], 403)
+        status, replacement, _ = self.request(
+            f"/api/admin/organizations/{organization_id}/pilot-invitation", "POST",
+            {"send_email": False}, self.owner_token, internal_headers,
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(replacement["delivery"], "manual")
+        self.assertNotIn("token", replacement)
+        self.assertEqual(self.request("/api/invitations/preview", "POST", {"token": original_token})[0], 404)
+        token = replacement["link"].split("#token=")[1]
         preview = self.request("/api/invitations/preview", "POST", {"token": token})[1]
         self.assertEqual(preview["organization_name"], "Cliente Piloto")
         acceptance = {
@@ -568,6 +581,10 @@ class OrganizationAPITests(unittest.TestCase):
         )[1]
         self.assertEqual(detail["owner_email"], "cliente.piloto@example.com")
         self.assertEqual(detail["provisioning"]["status"], "delivered")
+        self.assertEqual(self.request(
+            f"/api/admin/organizations/{organization_id}/pilot-invitation", "POST",
+            {"send_email": False}, self.owner_token, internal_headers,
+        )[0], 409)
 
     def test_jobs_created_are_bound_to_actor_and_org(self):
         payload = {"filename": "test.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}], "check_website": False}

@@ -209,6 +209,9 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-provisioning-facts strong { margin-top: 5px; font-size: 10px; }
 .admin-provisioning-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
 .admin-provisioning-actions .secondary-button { display: grid; min-height: 42px; place-items: center; text-decoration: none; }
+.admin-pilot-invitation-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-top: 13px; padding-top: 13px; border-top: 1px solid var(--border); }
+.admin-pilot-invitation-result button { min-height: 42px; }
+.admin-pilot-invitation-result small { grid-column: 1 / -1; color: var(--muted); }
 .pilot-waiting_acceptance { color: var(--warning); background: rgba(146, 64, 14, .28); }
 .pilot-transfer_pending, .pilot-action_needed, .pilot-invitation_action_needed { color: #7dd3fc; background: rgba(3, 105, 161, .22); }
 .pilot-delivered, .pilot-active, .pilot-internal { color: var(--success); background: rgba(22, 101, 52, .22); }
@@ -300,6 +303,8 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-form-grid, .admin-detail-metrics { grid-template-columns: 1fr; }
   .admin-provisioning-header, .admin-provisioning-actions { align-items: stretch; flex-direction: column; }
   .admin-provisioning-facts { grid-template-columns: 1fr; }
+  .admin-pilot-invitation-result { grid-template-columns: 1fr; }
+  .admin-pilot-invitation-result small { grid-column: auto; }
   .admin-customer-actions { grid-template-columns: 1fr; }
   .admin-offer-grid, .admin-catalog-form-actions { grid-template-columns: 1fr; }
   .admin-offer-grid .wide, .admin-offer-grid .full { grid-column: auto; }

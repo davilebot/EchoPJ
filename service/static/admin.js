@@ -346,6 +346,7 @@ function renderOrganizationDetail(data) {
   const provisioningCard = document.querySelector("#admin-provisioning");
   provisioningCard.classList.toggle("hidden", provisioning.kind !== "pilot");
   if (provisioning.kind === "pilot") {
+    document.querySelector("#admin-pilot-invitation-result").classList.add("hidden");
     document.querySelector("#admin-provisioning-status").className = `admin-stage pilot-${provisioning.status}`;
     document.querySelector("#admin-provisioning-status").textContent = provisioning.label;
     document.querySelector("#admin-provisioning-detail").textContent = provisioning.detail;
@@ -359,6 +360,11 @@ function renderOrganizationDetail(data) {
     const transfer = document.querySelector("#admin-transfer-responsibility");
     transfer.classList.toggle("hidden", provisioning.status !== "transfer_pending" || !provisioning.responsible_user_id);
     transfer.dataset.userId = provisioning.responsible_user_id || "";
+    const renew = document.querySelector("#admin-renew-pilot-invitation");
+    const canRenew = ["waiting_acceptance", "invitation_action_needed", "action_needed"].includes(provisioning.status);
+    renew.classList.toggle("hidden", !canRenew);
+    renew.dataset.status = provisioning.status;
+    renew.textContent = provisioning.status === "waiting_acceptance" ? "Gerar novo link" : "Renovar convite";
     document.querySelector("#admin-open-team").href = `/organizations?organization=${encodeURIComponent(data.id)}`;
   }
   const subscription = data.commercial.subscription;
@@ -398,9 +404,7 @@ function openCustomerDialog() {
   document.querySelector("#admin-customer-name").focus();
 }
 
-async function copyCustomerInvitation() {
-  const input = document.querySelector("#admin-customer-link");
-  const button = document.querySelector("#admin-customer-copy");
+async function copyInputValue(input, button, successLabel, defaultLabel) {
   try {
     await navigator.clipboard.writeText(input.value);
   } catch (_) {
@@ -408,8 +412,17 @@ async function copyCustomerInvitation() {
     input.select();
     document.execCommand("copy");
   }
-  button.textContent = "Convite copiado";
-  window.setTimeout(() => { button.textContent = "Copiar convite"; }, 1800);
+  button.textContent = successLabel;
+  window.setTimeout(() => { button.textContent = defaultLabel; }, 1800);
+}
+
+async function copyCustomerInvitation() {
+  return copyInputValue(
+    document.querySelector("#admin-customer-link"),
+    document.querySelector("#admin-customer-copy"),
+    "Convite copiado",
+    "Copiar convite",
+  );
 }
 
 document.querySelector("#admin-create-customer").addEventListener("click", openCustomerDialog);
@@ -533,6 +546,33 @@ document.querySelector("#admin-privacy-filter").addEventListener("submit", (even
 document.querySelector("#admin-privacy-requests").addEventListener("click", (event) => { const button = event.target.closest("[data-privacy-request-id]"); if (button) openPrivacyRequest(button.dataset.privacyRequestId); });
 document.querySelector("#admin-privacy-close").addEventListener("click", () => adminPrivacyDialog.close());
 adminPrivacyDialog.addEventListener("click", (event) => { if (event.target === adminPrivacyDialog) adminPrivacyDialog.close(); });
+
+document.querySelector("#admin-copy-pilot-invitation").addEventListener("click", () => copyInputValue(
+  document.querySelector("#admin-pilot-invitation-link"),
+  document.querySelector("#admin-copy-pilot-invitation"),
+  "Convite copiado",
+  "Copiar novo convite",
+));
+
+document.querySelector("#admin-renew-pilot-invitation").addEventListener("click", async (event) => {
+  if (event.currentTarget.dataset.status === "waiting_acceptance" && !window.confirm("Gerar um novo link? O convite anterior deixará de funcionar.")) return;
+  const message = document.querySelector("#admin-dialog-message");
+  message.classList.add("hidden");
+  event.currentTarget.disabled = true;
+  try {
+    const invitation = await adminFetch(`/api/admin/organizations/${selectedOrganizationId}/pilot-invitation`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ send_email: false }),
+    });
+    renderOrganizationDetail(await adminFetch(`/api/admin/organizations/${selectedOrganizationId}`));
+    document.querySelector("#admin-pilot-invitation-link").value = invitation.link;
+    document.querySelector("#admin-pilot-invitation-expiry").textContent = `Use este novo link até ${formatDate(invitation.expires_at)}. Ele só aparece agora.`;
+    document.querySelector("#admin-copy-pilot-invitation").textContent = "Copiar novo convite";
+    document.querySelector("#admin-pilot-invitation-result").classList.remove("hidden");
+    notify("Novo convite gerado; o link anterior foi invalidado.", message, true);
+    await loadOrganizations();
+  } catch (error) { notify(error.message, message); }
+  finally { event.currentTarget.disabled = false; }
+});
 
 document.querySelector("#admin-transfer-responsibility").addEventListener("click", async (event) => {
   const message = document.querySelector("#admin-dialog-message");
