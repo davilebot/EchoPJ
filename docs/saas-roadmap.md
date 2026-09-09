@@ -63,7 +63,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] observabilidade interna com prontidão por componente, latência, erros, identificador de requisição e idade do backup;
 - cópia criptografada fora do VPS e alertas externos para o canal operacional escolhido;
 - [x] metas iniciais de disponibilidade, latência, erro e recuperação documentadas;
-- testes de carga com base representativa e processo de atendimento;
+- [x] processo de atendimento dentro do produto, com chamado por organização, histórico, prioridade, fila interna e notificação de resposta;
+- testes de carga com base representativa;
 - domínio comercial, páginas institucionais e documentação para clientes.
 
 ## Decisões pendentes

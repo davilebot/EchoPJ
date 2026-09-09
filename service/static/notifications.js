@@ -66,6 +66,11 @@ notificationList.addEventListener("click", async (event) => {
     const tab = item.dataset.notificationTab;
     notificationPanel.classList.add("hidden");
     notificationToggle.setAttribute("aria-expanded", "false");
+    if (tab === "support") {
+      const organization = new URLSearchParams(location.search).get("organization");
+      location.assign(`/help${organization ? `?organization=${encodeURIComponent(organization)}` : ""}`);
+      return;
+    }
     if (tab) document.querySelector(`.tab-button[data-tab="${CSS.escape(tab)}"]`)?.click();
     await loadNotifications({ quiet: true });
   } catch (_) {}

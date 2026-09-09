@@ -269,6 +269,58 @@ class SaaSStoreTests(unittest.TestCase):
         notices = self.store.list_notifications(17, 21)["notifications"]
         self.assertEqual(sum(item["kind"] == "low_credit" for item in notices), 2)
 
+    def test_support_tickets_are_tenant_scoped_threaded_and_prioritized(self):
+        self.store.ensure_organization(30)
+        self.store.ensure_organization(31)
+        ticket = self.store.create_support_ticket(
+            30, 41,
+            requester_identifier="cliente@example.com",
+            category="technical",
+            priority="high",
+            subject="Exportação não conclui",
+            message="A exportação fica carregando depois que seleciono as empresas.",
+            diagnostic={"request_id": "req-123", "dataset_version": "2026-08"},
+        )
+        self.assertEqual(ticket["status"], "open")
+        self.assertEqual(self.store.list_support_tickets(31), [])
+        self.assertIsNone(self.store.support_ticket_detail(31, ticket["id"]))
+        detail = self.store.support_ticket_detail(30, ticket["id"])
+        self.assertEqual(detail["messages"][0]["author_kind"], "customer")
+        self.assertNotIn("diagnostic_json", detail)
+
+        updated = self.store.update_support_ticket(
+            ticket["id"], status="in_progress", priority="urgent", actor_id=99,
+        )
+        self.assertEqual((updated["status"], updated["priority"]), ("in_progress", "urgent"))
+        answered = self.store.reply_support_ticket(
+            30, ticket["id"], 99, author_kind="support",
+            message="Recebemos o chamado e estamos verificando a exportação.",
+        )
+        self.assertEqual(answered["messages"][-1]["author_kind"], "support")
+        self.assertEqual(self.store.list_notifications(30, 41)["notifications"][0]["kind"], "support_reply")
+        queue = self.store.admin_support_tickets(status="in_progress")
+        self.assertEqual(queue["tickets"][0]["id"], ticket["id"])
+        self.assertEqual(queue["counts"]["in_progress"], 1)
+
+    def test_customer_reply_reopens_completed_support_ticket(self):
+        self.store.ensure_organization(32)
+        ticket = self.store.create_support_ticket(
+            32, 51,
+            requester_identifier="cliente@example.com",
+            category="question",
+            priority="normal",
+            subject="Como salvar o segmento",
+            message="Quero repetir os mesmos filtros na próxima semana.",
+            diagnostic={},
+        )
+        self.store.update_support_ticket(ticket["id"], status="resolved", priority="low", actor_id=99)
+        reopened = self.store.reply_support_ticket(
+            32, ticket["id"], 51, author_kind="customer",
+            message="Ainda preciso de ajuda para encontrar o botão.",
+        )
+        self.assertEqual(reopened["status"], "open")
+        self.assertEqual(len(reopened["messages"]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

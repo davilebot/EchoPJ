@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#0d0d10">
   <meta name="description" content="Central de Ajuda do EchoPJs.">
   <title>Ajuda e suporte — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260908-help-1">
-  <link rel="stylesheet" href="/static/help.css?v=20260908-help-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-support-1">
+  <link rel="stylesheet" href="/static/help.css?v=20260909-support-1">
 </head>
 <body>
   <a class="help-skip" href="#help-content">Ir para o conteúdo</a>
@@ -113,10 +113,31 @@
     </div>
 
     <section class="support-card" aria-labelledby="support-title">
-      <div><span class="eyebrow">PRECISA DE SUPORTE?</span><h2 id="support-title">Leve o contexto certo para a equipe</h2><p>Copie um diagnóstico curto do seu workspace e envie junto com a descrição do problema e uma captura da tela.</p></div>
-      <div class="diagnostic-card"><dl><div><dt>Organização</dt><dd id="diagnostic-organization">Carregando…</dd></div><div><dt>Plano</dt><dd id="diagnostic-plan">—</dd></div><div><dt>Créditos</dt><dd id="diagnostic-credits">—</dd></div><div><dt>Base</dt><dd id="diagnostic-dataset">—</dd></div></dl><button id="copy-diagnostic" type="button">Copiar diagnóstico</button><p id="copy-status" role="status"></p></div>
+      <div class="support-intro"><span class="eyebrow">SUPORTE DENTRO DO PRODUTO</span><h2 id="support-title">Conte o que aconteceu.</h2><p>O chamado chega à equipe com o contexto técnico do seu workspace. Você acompanha as respostas por aqui.</p>
+        <form id="support-form" class="support-form">
+          <div class="support-form-row"><label>Assunto<select id="support-category" required><option value="technical">Problema técnico</option><option value="question">Dúvida de uso</option><option value="billing">Plano ou cobrança</option><option value="suggestion">Sugestão</option></select></label><label>Prioridade<select id="support-priority" required><option value="normal">Normal</option><option value="high">Alta — trabalho bloqueado</option></select></label></div>
+          <label>Título<input id="support-subject" minlength="5" maxlength="120" required placeholder="Ex.: Não consigo exportar uma lista"></label>
+          <label>Descrição<textarea id="support-message" minlength="10" maxlength="4000" rows="5" required placeholder="Explique o que você tentou, o que esperava e o que apareceu na tela."></textarea><small><span id="support-message-count">0</span>/4.000 caracteres</small></label>
+          <button id="support-submit" type="submit">Abrir chamado</button>
+          <p id="support-feedback" class="support-feedback" role="status"></p>
+        </form>
+      </div>
+      <div class="diagnostic-card"><div class="diagnostic-heading"><strong>Contexto anexado</strong><span>Sem senhas ou dados pesquisados</span></div><dl><div><dt>Organização</dt><dd id="diagnostic-organization">Carregando…</dd></div><div><dt>Plano</dt><dd id="diagnostic-plan">—</dd></div><div><dt>Créditos</dt><dd id="diagnostic-credits">—</dd></div><div><dt>Base</dt><dd id="diagnostic-dataset">—</dd></div></dl><button id="copy-diagnostic" class="secondary-support" type="button">Copiar diagnóstico</button><p id="copy-status" role="status"></p></div>
+    </section>
+
+    <section class="support-history" aria-labelledby="support-history-title">
+      <div class="help-section-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><h2 id="support-history-title">Chamados do workspace</h2></div><button id="refresh-support" class="support-refresh" type="button">Atualizar</button></div>
+      <div id="support-tickets" class="support-ticket-grid"><div class="support-empty">Carregando chamados…</div></div>
     </section>
   </main>
-  <script src="/static/help.js?v=20260908-help-1"></script>
+
+  <dialog id="support-dialog" class="support-dialog">
+    <section class="support-dialog-card" aria-labelledby="support-dialog-title">
+      <div class="support-dialog-header"><div><span id="support-dialog-reference" class="eyebrow">CHAMADO</span><h2 id="support-dialog-title">Carregando…</h2><p id="support-dialog-meta"></p></div><button id="support-dialog-close" type="button" aria-label="Fechar">×</button></div>
+      <div id="support-thread" class="support-thread"></div>
+      <form id="support-reply-form" class="support-reply-form"><label>Responder<textarea id="support-reply" minlength="2" maxlength="4000" rows="4" required placeholder="Escreva uma atualização para a equipe de suporte."></textarea></label><button type="submit">Enviar resposta</button><p id="support-reply-feedback" role="status"></p></form>
+    </section>
+  </dialog>
+  <script src="/static/help.js?v=20260909-support-1"></script>
 </body>
 </html>

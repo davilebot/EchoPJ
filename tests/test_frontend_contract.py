@@ -99,6 +99,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('fetch("/api/notifications")', script)
         self.assertIn("/api/notifications/read-all", script)
         self.assertIn("data-notification-id", script)
+        self.assertIn('tab === "support"', script)
 
     def test_internal_admin_shows_product_funnel_and_customer_activity(self):
         html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
@@ -150,6 +151,21 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-platform-tab", script)
         self.assertIn(".quick-help-grid", styles)
         self.assertIn('document.querySelector("#help-link").href', workspace)
+
+    def test_support_center_has_customer_thread_and_internal_queue(self):
+        help_html = (STATIC_DIR / "help.html").read_text(encoding="utf-8")
+        help_script = (STATIC_DIR / "help.js").read_text(encoding="utf-8")
+        help_styles = (STATIC_DIR / "help.css").read_text(encoding="utf-8")
+        admin_html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        admin_script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
+        self.assertIn('id="support-form"', help_html)
+        self.assertIn('id="support-tickets"', help_html)
+        self.assertIn('id="support-dialog"', help_html)
+        self.assertIn('api("/api/support/tickets"', help_script)
+        self.assertIn("support-message", help_styles)
+        self.assertIn('id="admin-support-tickets"', admin_html)
+        self.assertIn('id="admin-support-dialog"', admin_html)
+        self.assertIn("/api/admin/support/tickets", admin_script)
 
     def test_platform_accepts_safe_deep_links_to_known_tabs(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

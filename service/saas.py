@@ -182,6 +182,36 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_billing_webhook_received
                 ON billing_webhook_events(received_at DESC);
+            CREATE TABLE IF NOT EXISTS support_tickets (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                opened_by INTEGER NOT NULL,
+                requester_identifier TEXT NOT NULL,
+                category TEXT NOT NULL CHECK(category IN ('question','technical','billing','suggestion')),
+                priority TEXT NOT NULL CHECK(priority IN ('low','normal','high','urgent')),
+                status TEXT NOT NULL CHECK(status IN ('open','in_progress','waiting_customer','resolved','closed')),
+                subject TEXT NOT NULL,
+                diagnostic_json TEXT NOT NULL DEFAULT '{}',
+                assigned_to INTEGER,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_message_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_support_tickets_org_updated
+                ON support_tickets(organization_id, updated_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_support_tickets_status_updated
+                ON support_tickets(status, priority, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS support_messages (
+                id TEXT PRIMARY KEY,
+                ticket_id TEXT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+                organization_id INTEGER NOT NULL,
+                author_id INTEGER NOT NULL,
+                author_kind TEXT NOT NULL CHECK(author_kind IN ('customer','support')),
+                body TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_created
+                ON support_messages(ticket_id, created_at);
         """)
         self._connection.commit()
 
@@ -1070,6 +1100,228 @@ class SaaSStore:
                 (utc_now(), organization_id, user_id),
             )
         return cursor.rowcount
+
+    @staticmethod
+    def _support_ticket(row: sqlite3.Row) -> dict[str, Any]:
+        result = dict(row)
+        result["diagnostic"] = json.loads(result.pop("diagnostic_json") or "{}")
+        return result
+
+    def create_support_ticket(
+        self,
+        organization_id: int,
+        actor_id: int,
+        *,
+        requester_identifier: str,
+        category: str,
+        priority: str,
+        subject: str,
+        message: str,
+        diagnostic: dict[str, Any],
+    ) -> dict[str, Any]:
+        if category not in {"question", "technical", "billing", "suggestion"}:
+            raise SaaSError("Categoria de suporte inválida.", 422)
+        if priority not in {"normal", "high"}:
+            raise SaaSError("Prioridade de suporte inválida.", 422)
+        ticket_id = str(uuid.uuid4())
+        message_id = str(uuid.uuid4())
+        now = utc_now()
+        clean_subject = subject.strip()
+        clean_message = message.strip()
+        if len(clean_subject) < 5 or len(clean_subject) > 120 or len(clean_message) < 10 or len(clean_message) > 4000:
+            raise SaaSError("Revise o assunto e a descrição do chamado.", 422)
+        with self._transaction():
+            self._connection.execute(
+                """INSERT INTO support_tickets(
+                     id,organization_id,opened_by,requester_identifier,category,priority,
+                     status,subject,diagnostic_json,created_at,updated_at,last_message_at
+                   ) VALUES(?,?,?,?,?,?,'open',?,?,?,?,?)""",
+                (
+                    ticket_id, organization_id, actor_id, requester_identifier[:254],
+                    category, priority, clean_subject,
+                    json.dumps(diagnostic, ensure_ascii=False, sort_keys=True),
+                    now, now, now,
+                ),
+            )
+            self._connection.execute(
+                """INSERT INTO support_messages(
+                     id,ticket_id,organization_id,author_id,author_kind,body,created_at
+                   ) VALUES(?,?,?,?,?,?,?)""",
+                (message_id, ticket_id, organization_id, actor_id, "customer", clean_message, now),
+            )
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "support.ticket_opened",
+                subject_type="support_ticket",
+                subject_id=ticket_id,
+                metadata={"category": category, "priority": priority},
+                occurred_at=now,
+            )
+            row = self._connection.execute(
+                "SELECT * FROM support_tickets WHERE id=?", (ticket_id,)
+            ).fetchone()
+        return self._support_ticket(row)
+
+    def list_support_tickets(self, organization_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 100))
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT t.*,
+                   (SELECT count(*) FROM support_messages m WHERE m.ticket_id=t.id) AS message_count,
+                   (SELECT substr(body,1,180) FROM support_messages m WHERE m.ticket_id=t.id
+                    ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview
+                   FROM support_tickets t WHERE t.organization_id=?
+                   ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1
+                     WHEN 'waiting_customer' THEN 2 WHEN 'resolved' THEN 3 ELSE 4 END,
+                     t.updated_at DESC LIMIT ?""",
+                (organization_id, limit),
+            ).fetchall()
+        return [self._support_ticket(row) for row in rows]
+
+    def support_ticket_detail(self, organization_id: int, ticket_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM support_tickets WHERE id=? AND organization_id=?",
+                (ticket_id, organization_id),
+            ).fetchone()
+            if not row:
+                return None
+            messages = [dict(message) for message in self._connection.execute(
+                """SELECT id,author_id,author_kind,body,created_at
+                   FROM support_messages WHERE ticket_id=? AND organization_id=?
+                   ORDER BY created_at""",
+                (ticket_id, organization_id),
+            ).fetchall()]
+        result = self._support_ticket(row)
+        result["messages"] = messages
+        return result
+
+    def admin_support_ticket(self, ticket_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT organization_id FROM support_tickets WHERE id=?", (ticket_id,)
+            ).fetchone()
+        return self.support_ticket_detail(row["organization_id"], ticket_id) if row else None
+
+    def reply_support_ticket(
+        self,
+        organization_id: int,
+        ticket_id: str,
+        actor_id: int,
+        *,
+        author_kind: str,
+        message: str,
+    ) -> dict[str, Any]:
+        if author_kind not in {"customer", "support"}:
+            raise SaaSError("Autor da mensagem inválido.", 422)
+        body = message.strip()
+        if len(body) < 2 or len(body) > 4000:
+            raise SaaSError("A mensagem precisa ter entre 2 e 4.000 caracteres.", 422)
+        message_id = str(uuid.uuid4())
+        now = utc_now()
+        with self._transaction():
+            ticket = self._connection.execute(
+                "SELECT * FROM support_tickets WHERE id=? AND organization_id=?",
+                (ticket_id, organization_id),
+            ).fetchone()
+            if not ticket:
+                raise SaaSError("Chamado não encontrado.", 404)
+            status = ticket["status"]
+            if author_kind == "customer" and status in {"resolved", "closed", "waiting_customer"}:
+                status = "open"
+            elif author_kind == "support" and status == "open":
+                status = "in_progress"
+            self._connection.execute(
+                """INSERT INTO support_messages(
+                     id,ticket_id,organization_id,author_id,author_kind,body,created_at
+                   ) VALUES(?,?,?,?,?,?,?)""",
+                (message_id, ticket_id, organization_id, actor_id, author_kind, body, now),
+            )
+            self._connection.execute(
+                "UPDATE support_tickets SET status=?,updated_at=?,last_message_at=? WHERE id=?",
+                (status, now, now, ticket_id),
+            )
+            if author_kind == "support":
+                self._insert_notification(
+                    organization_id,
+                    ticket["opened_by"],
+                    kind="support_reply",
+                    title="Seu chamado recebeu uma resposta",
+                    message=f"{ticket['subject'][:180]}",
+                    action_tab="support",
+                    deduplication_key=f"support-reply:{message_id}",
+                )
+        result = self.support_ticket_detail(organization_id, ticket_id)
+        assert result is not None
+        return result
+
+    def admin_support_tickets(
+        self,
+        *,
+        status: str | None = None,
+        query: str = "",
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        if status and status not in {"open", "in_progress", "waiting_customer", "resolved", "closed"}:
+            raise SaaSError("Status de suporte inválido.", 422)
+        clauses: list[str] = []
+        params: list[Any] = []
+        if status:
+            clauses.append("t.status=?")
+            params.append(status)
+        clean_query = query.strip().casefold()
+        if clean_query:
+            clauses.append("(lower(t.subject) LIKE ? OR lower(t.requester_identifier) LIKE ? OR t.id LIKE ?)")
+            needle = f"%{clean_query}%"
+            params.extend((needle, needle, needle))
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        limit = max(1, min(int(limit), 500))
+        with self._lock:
+            rows = self._connection.execute(
+                f"""SELECT t.*,
+                    (SELECT count(*) FROM support_messages m WHERE m.ticket_id=t.id) AS message_count,
+                    (SELECT substr(body,1,180) FROM support_messages m WHERE m.ticket_id=t.id
+                     ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview
+                    FROM support_tickets t {where}
+                    ORDER BY CASE t.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1
+                      WHEN 'normal' THEN 2 ELSE 3 END,
+                      CASE t.status WHEN 'open' THEN 0 WHEN 'in_progress' THEN 1
+                      WHEN 'waiting_customer' THEN 2 WHEN 'resolved' THEN 3 ELSE 4 END,
+                      t.updated_at DESC LIMIT ?""",
+                (*params, limit),
+            ).fetchall()
+            counts = {
+                row["status"]: row["total"]
+                for row in self._connection.execute(
+                    "SELECT status,count(*) AS total FROM support_tickets GROUP BY status"
+                ).fetchall()
+            }
+        return {"tickets": [self._support_ticket(row) for row in rows], "counts": counts}
+
+    def update_support_ticket(
+        self,
+        ticket_id: str,
+        *,
+        status: str,
+        priority: str,
+        actor_id: int,
+    ) -> dict[str, Any]:
+        if status not in {"open", "in_progress", "waiting_customer", "resolved", "closed"}:
+            raise SaaSError("Status de suporte inválido.", 422)
+        if priority not in {"low", "normal", "high", "urgent"}:
+            raise SaaSError("Prioridade de suporte inválida.", 422)
+        with self._transaction():
+            cursor = self._connection.execute(
+                """UPDATE support_tickets SET status=?,priority=?,assigned_to=?,updated_at=?
+                   WHERE id=?""",
+                (status, priority, actor_id, utc_now(), ticket_id),
+            )
+            if not cursor.rowcount:
+                raise SaaSError("Chamado não encontrado.", 404)
+        result = self.admin_support_ticket(ticket_id)
+        assert result is not None
+        return result
 
     @staticmethod
     def _saved_search(row: sqlite3.Row) -> dict[str, Any]:

@@ -123,6 +123,38 @@ class CreditAdjustmentRequest(BaseModel):
         return value
 
 
+class SupportTicketRequest(BaseModel):
+    category: Literal["question", "technical", "billing", "suggestion"]
+    priority: Literal["normal", "high"] = "normal"
+    subject: str = Field(min_length=5, max_length=120)
+    message: str = Field(min_length=10, max_length=4000)
+
+    @field_validator("subject", "message")
+    @classmethod
+    def clean_support_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preencha a mensagem do chamado.")
+        return value
+
+
+class SupportMessageRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=4000)
+
+    @field_validator("message")
+    @classmethod
+    def clean_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Escreva uma mensagem.")
+        return value
+
+
+class SupportTicketAdminUpdateRequest(BaseModel):
+    status: Literal["open", "in_progress", "waiting_customer", "resolved", "closed"]
+    priority: Literal["low", "normal", "high", "urgent"]
+
+
 class BillingCheckoutRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=50, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 

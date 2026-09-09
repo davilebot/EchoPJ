@@ -3,10 +3,15 @@ const adminHeaders = adminOrganizationId ? { "X-Organization-Id": adminOrganizat
 const adminMessage = document.querySelector("#admin-message");
 const adminRows = document.querySelector("#admin-organizations");
 const adminDialog = document.querySelector("#admin-organization-dialog");
+const adminSupportDialog = document.querySelector("#admin-support-dialog");
 const pageSize = 50;
 let adminOffset = 0;
 let adminTotal = 0;
 let selectedOrganizationId = null;
+let selectedSupportTicketId = null;
+const supportStatusLabels = { open: "Aberto", in_progress: "Em atendimento", waiting_customer: "Aguardando cliente", resolved: "Resolvido", closed: "Encerrado" };
+const supportPriorityLabels = { low: "Baixa", normal: "Normal", high: "Alta", urgent: "Urgente" };
+const supportCategoryLabels = { question: "Dúvida", technical: "Técnico", billing: "Cobrança", suggestion: "Sugestão" };
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
@@ -100,6 +105,55 @@ async function loadOperations() {
   finally { button.disabled = false; }
 }
 
+function renderSupportTickets(data) {
+  const counts = data.counts || {};
+  const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  document.querySelector("#admin-support-counts").innerHTML = [
+    [total, "Total"], [counts.open || 0, "Abertos"], [counts.in_progress || 0, "Em atendimento"], [counts.waiting_customer || 0, "Aguardando cliente"],
+  ].map(([value, label]) => `<span><strong>${Number(value).toLocaleString("pt-BR")}</strong>${escapeHtml(label)}</span>`).join("");
+  const target = document.querySelector("#admin-support-tickets");
+  target.innerHTML = data.tickets.length ? data.tickets.map((ticket) => `<tr>
+    <td><strong>${formatDate(ticket.updated_at)}</strong><small>#${escapeHtml(ticket.id.slice(0, 8).toUpperCase())}</small></td>
+    <td><strong>${escapeHtml(ticket.organization_name || `Organização #${ticket.organization_id}`)}</strong><small>${escapeHtml(ticket.requester_identifier)}</small></td>
+    <td><strong>${escapeHtml(ticket.subject)}</strong><small>${escapeHtml(ticket.last_message_preview || "Sem mensagem")}</small></td>
+    <td>${escapeHtml(supportCategoryLabels[ticket.category] || ticket.category)}</td>
+    <td><span class="admin-priority priority-${escapeHtml(ticket.priority)}">${escapeHtml(supportPriorityLabels[ticket.priority] || ticket.priority)}</span></td>
+    <td><span class="admin-status status-${escapeHtml(ticket.status)}">${escapeHtml(supportStatusLabels[ticket.status] || ticket.status)}</span></td>
+    <td><button class="secondary-button admin-open" type="button" data-support-ticket-id="${escapeHtml(ticket.id)}">Abrir</button></td>
+  </tr>`).join("") : `<tr><td colspan="7"><div class="admin-empty"><strong>Nenhum chamado neste filtro.</strong><span>A fila está em dia.</span></div></td></tr>`;
+}
+
+async function loadSupportTickets() {
+  const target = document.querySelector("#admin-support-tickets");
+  const status = document.querySelector("#admin-support-status").value;
+  const query = document.querySelector("#admin-support-query").value.trim();
+  target.innerHTML = `<tr><td colspan="7">Carregando chamados…</td></tr>`;
+  try { renderSupportTickets(await adminFetch(`/api/admin/support/tickets?status=${encodeURIComponent(status)}&query=${encodeURIComponent(query)}&limit=100`)); }
+  catch (error) { target.innerHTML = ""; notify(error.message); }
+}
+
+function renderSupportTicketDetail(ticket) {
+  document.querySelector("#admin-support-reference").textContent = `CHAMADO #${ticket.id.slice(0, 8).toUpperCase()}`;
+  document.querySelector("#admin-support-dialog-title").textContent = ticket.subject;
+  document.querySelector("#admin-support-dialog-meta").textContent = `${ticket.requester_identifier} · organização #${ticket.organization_id} · aberto em ${formatDate(ticket.created_at)}`;
+  document.querySelector("#admin-support-edit-status").value = ticket.status;
+  document.querySelector("#admin-support-edit-priority").value = ticket.priority;
+  const diagnosticLabels = { request_id: "Requisição", dataset_version: "Base", plan_code: "Plano", subscription_status: "Assinatura", organization_role: "Perfil" };
+  document.querySelector("#admin-support-diagnostic").innerHTML = Object.entries(ticket.diagnostic || {}).map(([key, value]) => `<span><small>${escapeHtml(diagnosticLabels[key] || key)}</small><strong>${escapeHtml(value || "—")}</strong></span>`).join("");
+  document.querySelector("#admin-support-thread").innerHTML = ticket.messages.map((message) => `<article class="admin-support-message ${escapeHtml(message.author_kind)}"><div><strong>${message.author_kind === "support" ? "Equipe EchoHub" : "Cliente"}</strong><time>${formatDate(message.created_at)}</time></div><p>${escapeHtml(message.body).replace(/\n/g, "<br>")}</p></article>`).join("");
+  document.querySelector("#admin-support-thread").scrollTop = document.querySelector("#admin-support-thread").scrollHeight;
+}
+
+async function openSupportTicket(ticketId) {
+  selectedSupportTicketId = ticketId;
+  document.querySelector("#admin-support-message").classList.add("hidden");
+  document.querySelector("#admin-support-dialog-title").textContent = "Carregando…";
+  document.querySelector("#admin-support-thread").innerHTML = "";
+  adminSupportDialog.showModal();
+  try { renderSupportTicketDetail(await adminFetch(`/api/admin/support/tickets/${encodeURIComponent(ticketId)}`)); }
+  catch (error) { notify(error.message, document.querySelector("#admin-support-message")); }
+}
+
 function activitySummary(activity) {
   const parts = [];
   if (activity.search_count) parts.push(`${activity.search_count} busca${activity.search_count === 1 ? "" : "s"}`);
@@ -180,6 +234,10 @@ document.querySelector("#admin-next").addEventListener("click", () => { if (admi
 adminRows.addEventListener("click", (event) => { const button = event.target.closest("[data-organization-id]"); if (button) openOrganization(button.dataset.organizationId); });
 document.querySelector("#admin-dialog-close").addEventListener("click", () => adminDialog.close());
 adminDialog.addEventListener("click", (event) => { if (event.target === adminDialog) adminDialog.close(); });
+document.querySelector("#admin-support-filter").addEventListener("submit", (event) => { event.preventDefault(); loadSupportTickets(); });
+document.querySelector("#admin-support-tickets").addEventListener("click", (event) => { const button = event.target.closest("[data-support-ticket-id]"); if (button) openSupportTicket(button.dataset.supportTicketId); });
+document.querySelector("#admin-support-close").addEventListener("click", () => adminSupportDialog.close());
+adminSupportDialog.addEventListener("click", (event) => { if (event.target === adminSupportDialog) adminSupportDialog.close(); });
 
 document.querySelector("#admin-billing-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -212,6 +270,41 @@ document.querySelector("#admin-credit-form").addEventListener("submit", async (e
   } catch (error) { notify(error.message, message); }
 });
 
+document.querySelector("#admin-support-state-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = document.querySelector("#admin-support-message");
+  message.classList.add("hidden");
+  try {
+    const ticket = await adminFetch(`/api/admin/support/tickets/${encodeURIComponent(selectedSupportTicketId)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: document.querySelector("#admin-support-edit-status").value, priority: document.querySelector("#admin-support-edit-priority").value }),
+    });
+    renderSupportTicketDetail(ticket);
+    notify("Tratamento atualizado.", message, true);
+    loadSupportTickets();
+  } catch (error) { notify(error.message, message); }
+});
+
+document.querySelector("#admin-support-reply-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = document.querySelector("#admin-support-message");
+  const button = event.target.querySelector("button");
+  message.classList.add("hidden");
+  button.disabled = true;
+  try {
+    const ticket = await adminFetch(`/api/admin/support/tickets/${encodeURIComponent(selectedSupportTicketId)}/messages`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: document.querySelector("#admin-support-reply").value }),
+    });
+    event.target.reset();
+    renderSupportTicketDetail(ticket);
+    notify("Resposta enviada e notificação criada.", message, true);
+    loadSupportTickets();
+  } catch (error) { notify(error.message, message); }
+  finally { button.disabled = false; }
+});
+
 loadOrganizations();
 loadOperations();
+loadSupportTickets();
 document.querySelector("#admin-refresh-operations").addEventListener("click", loadOperations);

@@ -35,6 +35,9 @@ from .models import (
     BillingCheckoutRequest,
     BillingProfileUpdateRequest,
     CreditAdjustmentRequest,
+    SupportMessageRequest,
+    SupportTicketAdminUpdateRequest,
+    SupportTicketRequest,
     OrganizationRequest,
     MemberRoleRequest,
     InvitationRequest,
@@ -232,6 +235,10 @@ def require_auth(request: Request) -> dict:
 
 
 def require_organization(request: Request, user: dict = Depends(require_auth)) -> dict:
+    return resolve_organization_context(request, user)
+
+
+def resolve_organization_context(request: Request, user: dict, *, allow_suspended: bool = False) -> dict:
     raw = request.headers.get("X-Organization-Id") or request.query_params.get("organization_id")
     try:
         org_id = int(raw) if raw is not None else None
@@ -245,7 +252,7 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
         unlimited=org["id"] == settings.saas_internal_organization_id,
         initial_credits=settings.saas_trial_credits,
     )
-    if billing["subscription_status"] == "suspended":
+    if billing["subscription_status"] == "suspended" and not allow_suspended:
         raise HTTPException(
             status_code=403,
             detail="O acesso desta organização está suspenso. Fale com o suporte da EchoHub.",
@@ -257,6 +264,10 @@ def require_organization(request: Request, user: dict = Depends(require_auth)) -
         "organization_permissions": org["permissions"],
         "billing": billing,
     }
+
+
+def require_support_organization(request: Request, user: dict = Depends(require_auth)) -> dict:
+    return resolve_organization_context(request, user, allow_suspended=True)
 
 
 def require_internal_organization(user: dict = Depends(require_organization)) -> dict:
@@ -810,6 +821,134 @@ def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
             "provider": settings.saas_billing_provider,
         },
     }
+
+
+def support_dataset_version() -> str | None:
+    try:
+        value = repository.health_check().get("dataset_version")
+        return value if isinstance(value, str) and value else None
+    except Exception:
+        return None
+
+
+@app.get("/api/support/context")
+def support_context(user: dict = Depends(require_support_organization)) -> dict:
+    organization = auth_store.organization_for_user(user["id"], user["organization_id"])
+    return {
+        "organization": {"id": organization["id"], "name": organization["name"]},
+        "role": user["organization_role"],
+        "plan_code": user["billing"]["plan_code"],
+        "subscription_status": user["billing"]["subscription_status"],
+        "credit_balance": user["billing"]["credit_balance"],
+        "unlimited_credits": user["billing"]["unlimited_credits"],
+        "dataset_version": support_dataset_version(),
+    }
+
+
+@app.get("/api/support/tickets")
+def support_tickets(user: dict = Depends(require_support_organization)) -> dict:
+    return {"tickets": saas_store.list_support_tickets(user["organization_id"])}
+
+
+@app.post("/api/support/tickets", status_code=201)
+def create_support_ticket(
+    payload: SupportTicketRequest,
+    request: Request,
+    user: dict = Depends(require_support_organization),
+) -> dict:
+    return saas_store.create_support_ticket(
+        user["organization_id"],
+        user["id"],
+        requester_identifier=user["identifier"],
+        category=payload.category,
+        priority=payload.priority,
+        subject=payload.subject,
+        message=payload.message,
+        diagnostic={
+            "request_id": request.state.request_id,
+            "dataset_version": support_dataset_version(),
+            "plan_code": user["billing"]["plan_code"],
+            "subscription_status": user["billing"]["subscription_status"],
+            "organization_role": user["organization_role"],
+        },
+    )
+
+
+@app.get("/api/support/tickets/{ticket_id}")
+def support_ticket_detail(
+    ticket_id: str,
+    user: dict = Depends(require_support_organization),
+) -> dict:
+    ticket = saas_store.support_ticket_detail(user["organization_id"], ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+    return ticket
+
+
+@app.post("/api/support/tickets/{ticket_id}/messages")
+def reply_support_ticket(
+    ticket_id: str,
+    payload: SupportMessageRequest,
+    user: dict = Depends(require_support_organization),
+) -> dict:
+    return saas_store.reply_support_ticket(
+        user["organization_id"], ticket_id, user["id"],
+        author_kind="customer", message=payload.message,
+    )
+
+
+@app.get("/api/admin/support/tickets")
+def admin_support_tickets(
+    status: str | None = Query(None),
+    query: str = Query("", max_length=120),
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    result = saas_store.admin_support_tickets(status=status, query=query, limit=limit)
+    organization_names: dict[int, str] = {}
+    for ticket in result["tickets"]:
+        organization_id = ticket["organization_id"]
+        if organization_id not in organization_names:
+            organization_names[organization_id] = auth_store.admin_organization(organization_id)["name"]
+        ticket["organization_name"] = organization_names[organization_id]
+    return result
+
+
+@app.get("/api/admin/support/tickets/{ticket_id}")
+def admin_support_ticket_detail(
+    ticket_id: str,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    ticket = saas_store.admin_support_ticket(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+    return ticket
+
+
+@app.patch("/api/admin/support/tickets/{ticket_id}")
+def admin_update_support_ticket(
+    ticket_id: str,
+    payload: SupportTicketAdminUpdateRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    return saas_store.update_support_ticket(
+        ticket_id, status=payload.status, priority=payload.priority, actor_id=user["id"],
+    )
+
+
+@app.post("/api/admin/support/tickets/{ticket_id}/messages")
+def admin_reply_support_ticket(
+    ticket_id: str,
+    payload: SupportMessageRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    ticket = saas_store.admin_support_ticket(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Chamado não encontrado.")
+    return saas_store.reply_support_ticket(
+        ticket["organization_id"], ticket_id, user["id"],
+        author_kind="support", message=payload.message,
+    )
 
 
 @app.get("/api/dashboard")

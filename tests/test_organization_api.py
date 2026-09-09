@@ -535,6 +535,67 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertGreaterEqual(marked["updated"], 1)
         self.assertEqual(self.request("/api/notifications", token=self.owner_token, headers=headers)[1]["unread_count"], 0)
 
+    def test_support_flow_is_tenant_scoped_and_managed_by_internal_admin(self):
+        customer_headers = {"x-organization-id": str(self.other)}
+        status, context, _ = self.request("/api/support/context", token=self.owner_token, headers=customer_headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(context["organization"]["name"], "Other")
+        status, ticket, _ = self.request(
+            "/api/support/tickets", "POST",
+            {
+                "category": "technical", "priority": "high",
+                "subject": "Exportação não conclui",
+                "message": "A exportação continua carregando após selecionar as empresas.",
+            },
+            self.owner_token, customer_headers,
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(ticket["organization_id"], self.other)
+        ticket_id = ticket["id"]
+        self.assertEqual(self.request("/api/support/tickets", token=self.owner_token, headers=customer_headers)[1]["tickets"][0]["id"], ticket_id)
+        self.assertEqual(self.request("/api/support/tickets", token=self.owner_token, headers={"x-organization-id": str(self.org)})[1]["tickets"], [])
+        self.assertEqual(self.request(f"/api/support/tickets/{ticket_id}", token=self.member_token)[0], 404)
+
+        internal_headers = {"x-organization-id": str(self.org)}
+        status, queue, _ = self.request("/api/admin/support/tickets", token=self.owner_token, headers=internal_headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(queue["tickets"][0]["organization_name"], "Other")
+        status, updated, _ = self.request(
+            f"/api/admin/support/tickets/{ticket_id}", "PATCH",
+            {"status": "in_progress", "priority": "urgent"},
+            self.owner_token, internal_headers,
+        )
+        self.assertEqual((status, updated["priority"]), (200, "urgent"))
+        status, answered, _ = self.request(
+            f"/api/admin/support/tickets/{ticket_id}/messages", "POST",
+            {"message": "Estamos verificando. Envie o horário aproximado da tentativa."},
+            self.owner_token, internal_headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(answered["messages"][-1]["author_kind"], "support")
+        notices = self.request("/api/notifications", token=self.owner_token, headers=customer_headers)[1]["notifications"]
+        self.assertIn("support_reply", {item["kind"] for item in notices})
+        self.assertEqual(self.request("/api/admin/support/tickets", token=self.member_token)[0], 403)
+
+    def test_suspended_workspace_can_still_open_support_ticket(self):
+        self.saas.update_billing_profile(
+            self.other, plan_code="growth", subscription_status="suspended", unlimited_credits=False,
+        )
+        headers = {"x-organization-id": str(self.other)}
+        self.assertEqual(self.request("/api/dashboard", token=self.owner_token, headers=headers)[0], 403)
+        self.assertEqual(self.request("/api/support/context", token=self.owner_token, headers=headers)[0], 200)
+        status, ticket, _ = self.request(
+            "/api/support/tickets", "POST",
+            {
+                "category": "billing", "priority": "normal",
+                "subject": "Acesso da empresa suspenso",
+                "message": "Precisamos entender como regularizar o acesso ao workspace.",
+            },
+            self.owner_token, headers,
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(ticket["status"], "open")
+
     def test_database_schema_is_internal_only(self):
         self.main.repository.database_schema.return_value = {"relations": []}
         self.assertEqual(

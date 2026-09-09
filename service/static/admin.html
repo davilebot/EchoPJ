@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260908-operations-1">
+      <link rel="stylesheet" href="/static/auth.css?v=20260909-support-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -38,6 +38,11 @@
         <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="9">Carregando empresas…</td></tr></tbody></table></div>
         <div class="admin-pagination"><span id="admin-range">—</span><div><button id="admin-previous" class="secondary-button" type="button">Anterior</button><button id="admin-next" class="secondary-button" type="button">Próxima</button></div></div>
       </section>
+      <section class="admin-catalog admin-support-queue" aria-labelledby="admin-support-title">
+        <div class="admin-section-heading"><div><span class="eyebrow">ATENDIMENTO</span><h2 id="admin-support-title">Chamados de clientes</h2><p class="muted">Priorize bloqueios, responda com contexto e mantenha o histórico no workspace do cliente.</p></div><form id="admin-support-filter" class="admin-support-filter"><label><span class="sr-only">Status do chamado</span><select id="admin-support-status"><option value="">Todos os status</option><option value="open">Abertos</option><option value="in_progress">Em atendimento</option><option value="waiting_customer">Aguardando cliente</option><option value="resolved">Resolvidos</option><option value="closed">Encerrados</option></select></label><label><span class="sr-only">Buscar chamado</span><input id="admin-support-query" type="search" maxlength="120" placeholder="Assunto, e-mail ou código"></label><button type="submit">Filtrar</button></form></div>
+        <div id="admin-support-counts" class="admin-support-counts"><span>Carregando fila…</span></div>
+        <div class="admin-table-wrap"><table class="admin-support-table"><thead><tr><th>Atualizado</th><th>Empresa</th><th>Assunto</th><th>Categoria</th><th>Prioridade</th><th>Status</th><th></th></tr></thead><tbody id="admin-support-tickets"><tr><td colspan="7">Carregando chamados…</td></tr></tbody></table></div>
+      </section>
       <section class="admin-catalog" aria-labelledby="admin-events-title">
         <div class="admin-section-heading"><div><h2 id="admin-events-title">Eventos de cobrança</h2><p class="muted">Confirmações e exceções recebidas do provedor, sem armazenar o payload completo.</p></div></div>
         <div class="admin-table-wrap"><table><thead><tr><th>Recebido</th><th>Evento</th><th>Objeto</th><th>Processamento</th><th>Detalhe</th></tr></thead><tbody id="admin-billing-events"><tr><td colspan="5">Carregando eventos…</td></tr></tbody></table></div>
@@ -65,6 +70,17 @@
       <section class="admin-ledger"><h3>Histórico comercial</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Variação</th><th>Saldo</th></tr></thead><tbody id="admin-ledger"></tbody></table></div></section>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-operations-1"></script>
+
+  <dialog id="admin-support-dialog" class="admin-dialog admin-support-dialog">
+    <section class="admin-dialog-card" aria-labelledby="admin-support-dialog-title">
+      <div class="admin-dialog-header"><div><span id="admin-support-reference" class="eyebrow">CHAMADO</span><h2 id="admin-support-dialog-title">Carregando…</h2><p id="admin-support-dialog-meta" class="muted"></p></div><button id="admin-support-close" class="dialog-close" type="button" aria-label="Fechar">×</button></div>
+      <p id="admin-support-message" class="auth-message hidden" role="status"></p>
+      <div id="admin-support-diagnostic" class="admin-support-diagnostic"></div>
+      <div id="admin-support-thread" class="admin-support-thread"></div>
+      <form id="admin-support-state-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Atualize a posição do atendimento para manter a fila confiável.</p></div></div><div class="admin-form-grid"><label>Status<select id="admin-support-edit-status"><option value="open">Aberto</option><option value="in_progress">Em atendimento</option><option value="waiting_customer">Aguardando cliente</option><option value="resolved">Resolvido</option><option value="closed">Encerrado</option></select></label><label>Prioridade<select id="admin-support-edit-priority"><option value="low">Baixa</option><option value="normal">Normal</option><option value="high">Alta</option><option value="urgent">Urgente</option></select></label></div><button type="submit">Salvar tratamento</button></form>
+      <form id="admin-support-reply-form"><div class="admin-section-heading"><div><h3>Responder ao cliente</h3><p class="muted">A resposta aparece no histórico do workspace e gera uma notificação interna.</p></div></div><label>Mensagem<textarea id="admin-support-reply" minlength="2" maxlength="4000" rows="5" required placeholder="Escreva uma orientação clara ou peça as informações que faltam."></textarea></label><button type="submit">Enviar resposta</button></form>
+    </section>
+  </dialog>
+  <script src="/static/admin.js?v=20260909-support-1"></script>
 </body>
 </html>
