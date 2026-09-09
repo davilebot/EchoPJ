@@ -59,6 +59,43 @@ class AuthStoreTests(unittest.TestCase):
             self.assertIsNotNone(store.authenticate("admin", "senha-antiga-segura"))
             store.close()
 
+    def test_privacy_export_and_reviewed_deletion_request_never_expose_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = AuthStore(str(Path(directory) / "auth.sqlite"))
+            store.bootstrap("owner@example.com", "senha-segura-atual")
+            user = store.authenticate("owner@example.com", "senha-segura-atual")
+            organization_id = store.ensure_initial_organization()
+            store.create_session(user["id"])
+
+            self.assertIsNone(store.create_account_deletion_request(
+                user["id"], current_password="senha-incorreta", reason="Teste",
+            ))
+            created = store.create_account_deletion_request(
+                user["id"], current_password="senha-segura-atual", reason="Encerrar acesso",
+            )
+            self.assertTrue(created["created"])
+            duplicate = store.create_account_deletion_request(
+                user["id"], current_password="senha-segura-atual", reason="Outro motivo",
+            )
+            self.assertFalse(duplicate["created"])
+            self.assertEqual(duplicate["id"], created["id"])
+
+            exported = store.account_data_export(user["id"])
+            self.assertEqual(exported["memberships"][0]["organization_id"], organization_id)
+            serialized = str(exported)
+            self.assertNotIn("senha-segura-atual", serialized)
+            self.assertNotIn("password_hash", serialized)
+            self.assertNotIn("token_hash", serialized)
+
+            queue = store.admin_privacy_requests(status="requested")
+            self.assertEqual(queue[0]["identifier"], "owner@example.com")
+            reviewed = store.update_privacy_request(
+                created["id"], status="in_review", resolution_note="Validando workspace", handled_by=user["id"],
+            )
+            self.assertEqual(reviewed["status"], "in_review")
+            self.assertEqual(store.cancel_account_deletion_request(user["id"])["status"], "canceled")
+            store.close()
+
     def test_account_form_requires_email_and_eight_character_password(self):
         with self.assertRaises(ValidationError):
             AccountUpdateRequest(

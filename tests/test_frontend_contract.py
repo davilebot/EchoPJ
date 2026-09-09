@@ -191,6 +191,18 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="admin-support-dialog"', admin_html)
         self.assertIn("/api/admin/support/tickets", admin_script)
 
+    def test_account_privacy_center_exports_data_and_tracks_deletion_requests(self):
+        account = (STATIC_DIR / "account.html").read_text(encoding="utf-8")
+        account_script = (STATIC_DIR / "account.js").read_text(encoding="utf-8")
+        admin = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        admin_script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
+        self.assertIn('id="privacy-export"', account)
+        self.assertIn('id="privacy-delete"', account)
+        self.assertIn('fetch("/api/privacy/export"', account_script)
+        self.assertIn("/api/privacy/deletion-requests", account_script)
+        self.assertIn('id="admin-privacy-requests"', admin)
+        self.assertIn("/api/admin/privacy/requests", admin_script)
+
     def test_platform_accepts_safe_deep_links_to_known_tabs(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn('new URLSearchParams(location.search).get("tab")', script)

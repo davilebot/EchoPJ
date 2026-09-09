@@ -3,6 +3,7 @@ import hmac
 import secrets
 import sqlite3
 import threading
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,8 @@ from .organizations import OrganizationError, OrganizationStoreMixin
 
 
 PASSWORD_ITERATIONS = 600_000
+ACTIVE_PRIVACY_REQUEST_STATUSES = ("requested", "in_review", "waiting_user", "approved")
+PRIVACY_REQUEST_STATUSES = (*ACTIVE_PRIVACY_REQUEST_STATUSES, "canceled", "closed")
 
 
 def utc_now() -> datetime:
@@ -86,6 +89,20 @@ class AuthStore(OrganizationStoreMixin):
             );
             CREATE INDEX IF NOT EXISTS idx_pending_signups_email
               ON pending_signups(identifier, expires_at);
+            CREATE TABLE IF NOT EXISTS account_deletion_requests (
+              id TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              status TEXT NOT NULL CHECK(status IN ('requested','in_review','waiting_user','approved','canceled','closed')),
+              reason TEXT NOT NULL DEFAULT '',
+              resolution_note TEXT NOT NULL DEFAULT '',
+              requested_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              handled_by INTEGER,
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY(handled_by) REFERENCES users(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_account_deletion_status
+              ON account_deletion_requests(status, requested_at);
         """)
         self._connection.commit()
         self._initialize_organizations()
@@ -391,6 +408,167 @@ class AuthStore(OrganizationStoreMixin):
             self._connection.execute("DELETE FROM sessions WHERE user_id=?", (user_id,))
             updated = self._connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
         return self._public_user(updated)
+
+    @staticmethod
+    def _privacy_request(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "status": row["status"],
+            "reason": row["reason"],
+            "resolution_note": row["resolution_note"],
+            "requested_at": row["requested_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def verify_password(self, user_id: int, password: str) -> bool:
+        with self._lock:
+            current = self._connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+        if not current:
+            password_digest(password, b"\0" * 16)
+            return False
+        actual = password_digest(password, current["password_salt"], current["password_iterations"])
+        return hmac.compare_digest(actual, current["password_hash"])
+
+    def privacy_summary(self, user_id: int) -> dict[str, Any]:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT * FROM account_deletion_requests WHERE user_id=? ORDER BY requested_at DESC LIMIT 1",
+                (user_id,),
+            ).fetchone()
+        return {"deletion_request": self._privacy_request(row)}
+
+    def create_account_deletion_request(
+        self, user_id: int, *, current_password: str, reason: str = ""
+    ) -> dict[str, Any] | None:
+        if not self.verify_password(user_id, current_password):
+            return None
+        now = isoformat(utc_now())
+        placeholders = ",".join("?" for _ in ACTIVE_PRIVACY_REQUEST_STATUSES)
+        with self._lock, self._connection:
+            existing = self._connection.execute(
+                f"SELECT * FROM account_deletion_requests WHERE user_id=? AND status IN ({placeholders}) ORDER BY requested_at DESC LIMIT 1",
+                (user_id, *ACTIVE_PRIVACY_REQUEST_STATUSES),
+            ).fetchone()
+            if existing:
+                result = self._privacy_request(existing)
+                result["created"] = False
+                return result
+            request_id = str(uuid.uuid4())
+            self._connection.execute(
+                """INSERT INTO account_deletion_requests(
+                     id,user_id,status,reason,requested_at,updated_at
+                   ) VALUES(?,?,'requested',?,?,?)""",
+                (request_id, user_id, reason.strip(), now, now),
+            )
+            row = self._connection.execute(
+                "SELECT * FROM account_deletion_requests WHERE id=?", (request_id,)
+            ).fetchone()
+        result = self._privacy_request(row)
+        result["created"] = True
+        return result
+
+    def cancel_account_deletion_request(self, user_id: int) -> dict[str, Any] | None:
+        now = isoformat(utc_now())
+        placeholders = ",".join("?" for _ in ACTIVE_PRIVACY_REQUEST_STATUSES)
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                f"SELECT * FROM account_deletion_requests WHERE user_id=? AND status IN ({placeholders}) ORDER BY requested_at DESC LIMIT 1",
+                (user_id, *ACTIVE_PRIVACY_REQUEST_STATUSES),
+            ).fetchone()
+            if not row:
+                return None
+            self._connection.execute(
+                "UPDATE account_deletion_requests SET status='canceled',updated_at=? WHERE id=?",
+                (now, row["id"]),
+            )
+            updated = self._connection.execute(
+                "SELECT * FROM account_deletion_requests WHERE id=?", (row["id"],)
+            ).fetchone()
+        return self._privacy_request(updated)
+
+    def account_data_export(self, user_id: int) -> dict[str, Any] | None:
+        with self._lock:
+            account = self._connection.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            if not account:
+                return None
+            memberships = self._connection.execute(
+                """SELECT o.id AS organization_id,o.name,m.role,m.joined_at,o.created_at AS organization_created_at
+                   FROM memberships m JOIN organizations o ON o.id=m.organization_id
+                   WHERE m.user_id=? ORDER BY o.id""",
+                (user_id,),
+            ).fetchall()
+            sessions = self._connection.execute(
+                "SELECT created_at,expires_at,last_seen_at FROM sessions WHERE user_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+            audit = self._connection.execute(
+                "SELECT organization_id,action,created_at FROM organization_audit WHERE actor_id=? ORDER BY created_at DESC",
+                (user_id,),
+            ).fetchall()
+            requests = self._connection.execute(
+                """SELECT id,status,reason,resolution_note,requested_at,updated_at
+                   FROM account_deletion_requests WHERE user_id=? ORDER BY requested_at DESC""",
+                (user_id,),
+            ).fetchall()
+        return {
+            "account": self._public_user(account),
+            "memberships": [dict(row) for row in memberships],
+            "sessions": [dict(row) for row in sessions],
+            "organization_actions": [dict(row) for row in audit],
+            "deletion_requests": [dict(row) for row in requests],
+        }
+
+    def admin_privacy_requests(self, *, status: str = "", limit: int = 100) -> list[dict[str, Any]]:
+        if status and status not in PRIVACY_REQUEST_STATUSES:
+            raise ValueError("Status de privacidade inválido.")
+        query = """SELECT r.*,u.identifier,
+                   COALESCE(group_concat(DISTINCT o.name),'Sem workspace') AS organizations
+                   FROM account_deletion_requests r
+                   JOIN users u ON u.id=r.user_id
+                   LEFT JOIN memberships m ON m.user_id=u.id
+                   LEFT JOIN organizations o ON o.id=m.organization_id"""
+        parameters: list[Any] = []
+        if status:
+            query += " WHERE r.status=?"
+            parameters.append(status)
+        query += " GROUP BY r.id ORDER BY r.requested_at DESC LIMIT ?"
+        parameters.append(max(1, min(limit, 500)))
+        with self._lock:
+            rows = self._connection.execute(query, parameters).fetchall()
+        return [
+            {**self._privacy_request(row), "identifier": row["identifier"], "organizations": row["organizations"]}
+            for row in rows
+        ]
+
+    def update_privacy_request(
+        self, request_id: str, *, status: str, resolution_note: str, handled_by: int
+    ) -> dict[str, Any] | None:
+        if status not in PRIVACY_REQUEST_STATUSES:
+            raise ValueError("Status de privacidade inválido.")
+        now = isoformat(utc_now())
+        with self._lock, self._connection:
+            current = self._connection.execute(
+                "SELECT 1 FROM account_deletion_requests WHERE id=?", (request_id,)
+            ).fetchone()
+            if not current:
+                return None
+            self._connection.execute(
+                """UPDATE account_deletion_requests
+                   SET status=?,resolution_note=?,handled_by=?,updated_at=? WHERE id=?""",
+                (status, resolution_note.strip(), handled_by, now, request_id),
+            )
+            row = self._connection.execute(
+                """SELECT r.*,u.identifier,
+                   COALESCE(group_concat(DISTINCT o.name),'Sem workspace') AS organizations
+                   FROM account_deletion_requests r JOIN users u ON u.id=r.user_id
+                   LEFT JOIN memberships m ON m.user_id=u.id
+                   LEFT JOIN organizations o ON o.id=m.organization_id
+                   WHERE r.id=? GROUP BY r.id""",
+                (request_id,),
+            ).fetchone()
+        return {**self._privacy_request(row), "identifier": row["identifier"], "organizations": row["organizations"]}
 
 
 class LoginRateLimiter:

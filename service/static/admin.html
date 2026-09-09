@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-      <link rel="stylesheet" href="/static/auth.css?v=20260909-support-1">
+      <link rel="stylesheet" href="/static/auth.css?v=20260909-privacy-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -42,6 +42,10 @@
         <div class="admin-section-heading"><div><span class="eyebrow">ATENDIMENTO</span><h2 id="admin-support-title">Chamados de clientes</h2><p class="muted">Priorize bloqueios, responda com contexto e mantenha o histórico no workspace do cliente.</p></div><form id="admin-support-filter" class="admin-support-filter"><label><span class="sr-only">Status do chamado</span><select id="admin-support-status"><option value="">Todos os status</option><option value="open">Abertos</option><option value="in_progress">Em atendimento</option><option value="waiting_customer">Aguardando cliente</option><option value="resolved">Resolvidos</option><option value="closed">Encerrados</option></select></label><label><span class="sr-only">Buscar chamado</span><input id="admin-support-query" type="search" maxlength="120" placeholder="Assunto, e-mail ou código"></label><button type="submit">Filtrar</button></form></div>
         <div id="admin-support-counts" class="admin-support-counts"><span>Carregando fila…</span></div>
         <div class="admin-table-wrap"><table class="admin-support-table"><thead><tr><th>Atualizado</th><th>Empresa</th><th>Assunto</th><th>Categoria</th><th>Prioridade</th><th>Status</th><th></th></tr></thead><tbody id="admin-support-tickets"><tr><td colspan="7">Carregando chamados…</td></tr></tbody></table></div>
+      </section>
+      <section class="admin-catalog" aria-labelledby="admin-privacy-title">
+        <div class="admin-section-heading"><div><span class="eyebrow">PRIVACIDADE</span><h2 id="admin-privacy-title">Solicitações sobre contas</h2><p class="muted">Acompanhe pedidos de exclusão sem apagar automaticamente workspaces compartilhados.</p></div><form id="admin-privacy-filter" class="admin-support-filter"><label><span class="sr-only">Status da solicitação</span><select id="admin-privacy-status"><option value="">Todos os status</option><option value="requested">Recebidas</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovadas</option><option value="canceled">Canceladas</option><option value="closed">Encerradas</option></select></label><button type="submit">Filtrar</button></form></div>
+        <div class="admin-table-wrap"><table><thead><tr><th>Solicitada</th><th>Conta</th><th>Workspaces</th><th>Motivo</th><th>Status</th><th></th></tr></thead><tbody id="admin-privacy-requests"><tr><td colspan="6">Carregando solicitações…</td></tr></tbody></table></div>
       </section>
       <section class="admin-catalog" aria-labelledby="admin-events-title">
         <div class="admin-section-heading"><div><h2 id="admin-events-title">Eventos de cobrança</h2><p class="muted">Confirmações e exceções recebidas do provedor, sem armazenar o payload completo.</p></div></div>
@@ -81,6 +85,14 @@
       <form id="admin-support-reply-form"><div class="admin-section-heading"><div><h3>Responder ao cliente</h3><p class="muted">A resposta aparece no histórico do workspace e gera uma notificação interna.</p></div></div><label>Mensagem<textarea id="admin-support-reply" minlength="2" maxlength="4000" rows="5" required placeholder="Escreva uma orientação clara ou peça as informações que faltam."></textarea></label><button type="submit">Enviar resposta</button></form>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-support-1"></script>
+  <dialog id="admin-privacy-dialog" class="admin-dialog">
+    <section class="admin-dialog-card" aria-labelledby="admin-privacy-dialog-title">
+      <div class="admin-dialog-header"><div><span class="eyebrow">SOLICITAÇÃO DE PRIVACIDADE</span><h2 id="admin-privacy-dialog-title">Revisar pedido</h2><p id="admin-privacy-dialog-meta" class="muted"></p></div><button id="admin-privacy-close" class="dialog-close" type="button" aria-label="Fechar">×</button></div>
+      <p id="admin-privacy-message" class="auth-message hidden" role="status"></p>
+      <div id="admin-privacy-reason" class="admin-privacy-reason"></div>
+      <form id="admin-privacy-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Registre o estágio e uma orientação que também ficará visível para o titular.</p></div></div><label>Status<select id="admin-privacy-edit-status"><option value="requested">Recebida</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovada para processamento</option><option value="canceled">Cancelada</option><option value="closed">Encerrada</option></select></label><label>Nota de tratamento<textarea id="admin-privacy-note" maxlength="2000" rows="4" placeholder="Ex.: Precisamos confirmar a transferência do workspace antes da exclusão"></textarea></label><button type="submit">Salvar tratamento</button></form>
+    </section>
+  </dialog>
+  <script src="/static/admin.js?v=20260909-privacy-1"></script>
 </body>
 </html>

@@ -58,6 +58,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 - [x] perfis de administrador, membro e consulta, com bloqueio de escrita, lotes, exportação e créditos no frontend e na API;
 - [x] limites seguros de requisições pesadas, tamanho de payload e processamentos ativos por organização;
+- [x] centro de privacidade da conta com exportação autenticada, solicitação cancelável de exclusão e fila de tratamento interno;
 - termos de uso, política de privacidade, retenção e exclusão de dados;
 - [x] backups SQLite consistentes, verificados e isolados para a v2, com retenção e procedimento de recuperação;
 - [x] observabilidade interna com prontidão por componente, latência, erros, identificador de requisição e idade do backup;

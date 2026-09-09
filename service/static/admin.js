@@ -4,14 +4,18 @@ const adminMessage = document.querySelector("#admin-message");
 const adminRows = document.querySelector("#admin-organizations");
 const adminDialog = document.querySelector("#admin-organization-dialog");
 const adminSupportDialog = document.querySelector("#admin-support-dialog");
+const adminPrivacyDialog = document.querySelector("#admin-privacy-dialog");
 const pageSize = 50;
 let adminOffset = 0;
 let adminTotal = 0;
 let selectedOrganizationId = null;
 let selectedSupportTicketId = null;
+let selectedPrivacyRequestId = null;
+let privacyRequests = [];
 const supportStatusLabels = { open: "Aberto", in_progress: "Em atendimento", waiting_customer: "Aguardando cliente", resolved: "Resolvido", closed: "Encerrado" };
 const supportPriorityLabels = { low: "Baixa", normal: "Normal", high: "Alta", urgent: "Urgente" };
 const supportCategoryLabels = { question: "Dúvida", technical: "Técnico", billing: "Cobrança", suggestion: "Sugestão" };
+const privacyStatusLabels = { requested: "Recebida", in_review: "Em análise", waiting_user: "Aguardando usuário", approved: "Aprovada", canceled: "Cancelada", closed: "Encerrada" };
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
@@ -103,6 +107,40 @@ async function loadOperations() {
   try { renderOperations(await adminFetch("/api/admin/operations")); }
   catch (error) { notify(error.message); }
   finally { button.disabled = false; }
+}
+
+function renderPrivacyRequests(requests) {
+  privacyRequests = requests;
+  const target = document.querySelector("#admin-privacy-requests");
+  target.innerHTML = requests.length ? requests.map((request) => `<tr>
+    <td><strong>${formatDate(request.requested_at)}</strong><small>Atualizada ${formatDate(request.updated_at)}</small></td>
+    <td><strong>${escapeHtml(request.identifier)}</strong><small>#${escapeHtml(request.id.slice(0, 8).toUpperCase())}</small></td>
+    <td>${escapeHtml(request.organizations || "Sem workspace")}</td>
+    <td>${escapeHtml(request.reason || "Não informado")}</td>
+    <td><span class="admin-status status-${escapeHtml(request.status)}">${escapeHtml(privacyStatusLabels[request.status] || request.status)}</span></td>
+    <td><button class="secondary-button admin-open" type="button" data-privacy-request-id="${escapeHtml(request.id)}">Revisar</button></td>
+  </tr>`).join("") : `<tr><td colspan="6"><div class="admin-empty"><strong>Nenhuma solicitação neste filtro.</strong><span>Novos pedidos aparecerão aqui.</span></div></td></tr>`;
+}
+
+async function loadPrivacyRequests() {
+  const status = document.querySelector("#admin-privacy-status").value;
+  try {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    renderPrivacyRequests((await adminFetch(`/api/admin/privacy/requests${query}`)).requests || []);
+  } catch (error) { notify(error.message); }
+}
+
+function openPrivacyRequest(requestId) {
+  const request = privacyRequests.find((item) => item.id === requestId);
+  if (!request) return;
+  selectedPrivacyRequestId = request.id;
+  document.querySelector("#admin-privacy-message").classList.add("hidden");
+  document.querySelector("#admin-privacy-dialog-title").textContent = request.identifier;
+  document.querySelector("#admin-privacy-dialog-meta").textContent = `${request.organizations || "Sem workspace"} · solicitada em ${formatDate(request.requested_at)}`;
+  document.querySelector("#admin-privacy-reason").innerHTML = `<strong>Motivo informado</strong><p>${escapeHtml(request.reason || "O titular não informou um motivo.")}</p>`;
+  document.querySelector("#admin-privacy-edit-status").value = request.status;
+  document.querySelector("#admin-privacy-note").value = request.resolution_note || "";
+  adminPrivacyDialog.showModal();
 }
 
 function renderSupportTickets(data) {
@@ -238,6 +276,10 @@ document.querySelector("#admin-support-filter").addEventListener("submit", (even
 document.querySelector("#admin-support-tickets").addEventListener("click", (event) => { const button = event.target.closest("[data-support-ticket-id]"); if (button) openSupportTicket(button.dataset.supportTicketId); });
 document.querySelector("#admin-support-close").addEventListener("click", () => adminSupportDialog.close());
 adminSupportDialog.addEventListener("click", (event) => { if (event.target === adminSupportDialog) adminSupportDialog.close(); });
+document.querySelector("#admin-privacy-filter").addEventListener("submit", (event) => { event.preventDefault(); loadPrivacyRequests(); });
+document.querySelector("#admin-privacy-requests").addEventListener("click", (event) => { const button = event.target.closest("[data-privacy-request-id]"); if (button) openPrivacyRequest(button.dataset.privacyRequestId); });
+document.querySelector("#admin-privacy-close").addEventListener("click", () => adminPrivacyDialog.close());
+adminPrivacyDialog.addEventListener("click", (event) => { if (event.target === adminPrivacyDialog) adminPrivacyDialog.close(); });
 
 document.querySelector("#admin-billing-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -304,7 +346,23 @@ document.querySelector("#admin-support-reply-form").addEventListener("submit", a
   finally { button.disabled = false; }
 });
 
+document.querySelector("#admin-privacy-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = document.querySelector("#admin-privacy-message");
+  message.classList.add("hidden");
+  try {
+    const updated = await adminFetch(`/api/admin/privacy/requests/${encodeURIComponent(selectedPrivacyRequestId)}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: document.querySelector("#admin-privacy-edit-status").value, resolution_note: document.querySelector("#admin-privacy-note").value }),
+    });
+    notify("Tratamento de privacidade atualizado.", message, true);
+    await loadPrivacyRequests();
+    openPrivacyRequest(updated.id);
+  } catch (error) { notify(error.message, message); }
+});
+
 loadOrganizations();
 loadOperations();
 loadSupportTickets();
+loadPrivacyRequests();
 document.querySelector("#admin-refresh-operations").addEventListener("click", loadOperations);

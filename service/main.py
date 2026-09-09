@@ -30,6 +30,9 @@ from .models import (
     LoginRequest,
     PasswordResetConfirmRequest,
     PasswordResetRequest,
+    PrivacyAdminUpdateRequest,
+    PrivacyDeletionRequest,
+    PrivacyPasswordRequest,
     SignupRequest,
     SignupVerificationRequest,
     BillingCheckoutRequest,
@@ -602,6 +605,62 @@ def update_account(payload: AccountUpdateRequest, request: Request, user: dict =
     return response
 
 
+@app.get("/api/privacy")
+def privacy_summary(user: dict = Depends(require_auth)) -> Response:
+    return JSONResponse(
+        {
+            **auth_store.privacy_summary(user["id"]),
+            "account_export_available": True,
+            "deletion_mode": "reviewed_request",
+        },
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@app.post("/api/privacy/export")
+def export_account_data(payload: PrivacyPasswordRequest, user: dict = Depends(require_auth)) -> Response:
+    if not auth_store.verify_password(user["id"], payload.current_password):
+        raise HTTPException(status_code=401, detail="A senha atual está incorreta.")
+    exported = auth_store.account_data_export(user["id"])
+    if not exported:
+        raise HTTPException(status_code=404, detail="Conta não encontrada.")
+    body = json.dumps(
+        {
+            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "scope": "Conta, sessões, vínculos com organizações e ações administrativas do usuário.",
+            **exported,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    return Response(
+        body,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Content-Disposition": 'attachment; filename="echopjs-dados-da-conta.json"',
+        },
+    )
+
+
+@app.post("/api/privacy/deletion-requests", status_code=201)
+def create_deletion_request(payload: PrivacyDeletionRequest, user: dict = Depends(require_auth)) -> dict:
+    request = auth_store.create_account_deletion_request(
+        user["id"], current_password=payload.current_password, reason=payload.reason
+    )
+    if not request:
+        raise HTTPException(status_code=401, detail="A senha atual está incorreta.")
+    return request
+
+
+@app.delete("/api/privacy/deletion-requests/current")
+def cancel_deletion_request(user: dict = Depends(require_auth)) -> dict:
+    request = auth_store.cancel_account_deletion_request(user["id"])
+    if not request:
+        raise HTTPException(status_code=404, detail="Não existe solicitação ativa para cancelar.")
+    return request
+
+
 @app.get("/api/organizations")
 def list_organizations(user: dict = Depends(require_auth)) -> dict:
     organizations = auth_store.organizations_for_user(user["id"])
@@ -826,6 +885,36 @@ def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
             "provider": settings.saas_billing_provider,
         },
     }
+
+
+@app.get("/api/admin/privacy/requests")
+def admin_privacy_requests(
+    status: str = Query("", max_length=30),
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    try:
+        requests = auth_store.admin_privacy_requests(status=status, limit=limit)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    return {"requests": requests}
+
+
+@app.patch("/api/admin/privacy/requests/{request_id}")
+def update_admin_privacy_request(
+    request_id: str,
+    payload: PrivacyAdminUpdateRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    request = auth_store.update_privacy_request(
+        request_id,
+        status=payload.status,
+        resolution_note=payload.resolution_note,
+        handled_by=user["id"],
+    )
+    if not request:
+        raise HTTPException(status_code=404, detail="Solicitação de privacidade não encontrada.")
+    return request
 
 
 def support_dataset_version() -> str | None:

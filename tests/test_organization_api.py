@@ -97,6 +97,49 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(len(data["organizations"]), 1)
         self.assertFalse(data["can_create"])
 
+    def test_account_privacy_export_and_deletion_workflow_are_authenticated_and_auditable(self):
+        self.assertEqual(self.request("/api/privacy")[0], 401)
+        status, summary, _ = self.request("/api/privacy", token=self.owner_token)
+        self.assertEqual(status, 200)
+        self.assertIsNone(summary["deletion_request"])
+
+        self.assertEqual(self.request(
+            "/api/privacy/export", "POST", {"current_password": "wrong"}, self.owner_token,
+        )[0], 401)
+        status, exported, headers = self.request(
+            "/api/privacy/export", "POST", {"current_password": "test-only-password"}, self.owner_token,
+        )
+        self.assertEqual(status, 200)
+        self.assertIn(b"attachment", headers[b"content-disposition"])
+        self.assertEqual(exported["account"]["identifier"], "owner@example.com")
+        self.assertNotIn("password", json.dumps(exported))
+        self.assertNotIn("token", json.dumps(exported))
+
+        status, request, _ = self.request(
+            "/api/privacy/deletion-requests", "POST",
+            {"current_password": "test-only-password", "reason": "Conta sem uso"}, self.owner_token,
+        )
+        self.assertEqual(status, 201)
+        self.assertTrue(request["created"])
+        self.assertEqual(self.request("/api/admin/privacy/requests", token=self.member_token)[0], 403)
+        status, queue, _ = self.request(
+            "/api/admin/privacy/requests", token=self.owner_token,
+            headers={"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(queue["requests"][0]["id"], request["id"])
+        status, reviewed, _ = self.request(
+            f"/api/admin/privacy/requests/{request['id']}", "PATCH",
+            {"status": "in_review", "resolution_note": "Validando vínculos"}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(reviewed["status"], "in_review")
+        self.assertEqual(
+            self.request("/api/privacy/deletion-requests/current", "DELETE", token=self.owner_token)[1]["status"],
+            "canceled",
+        )
+
     def test_liveness_readiness_and_internal_operations_are_distinct(self):
         self.assertEqual(self.request("/health/live")[0:2], (200, {"status": "ok"}))
         with (

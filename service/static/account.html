@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111114">
   <title>Minha conta — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260903-org-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-privacy-1">
 </head>
 <body>
   <main class="auth-shell">
@@ -41,12 +41,23 @@
         <p id="account-message" class="auth-message hidden" role="status"></p>
         <button id="account-submit" type="submit">Salvar novo acesso</button>
       </form>
+      <section class="account-privacy" aria-labelledby="privacy-title">
+        <div class="account-privacy-heading"><span class="eyebrow">DADOS E PRIVACIDADE</span><h2 id="privacy-title">Controle os dados da sua conta</h2><p>Baixe uma cópia do seu cadastro, sessões, vínculos com organizações e ações administrativas registradas.</p></div>
+        <form id="privacy-form" class="privacy-form">
+          <label>Senha atual <small>Confirme sua identidade para exportar ou solicitar exclusão.</small><input id="privacy-password" type="password" autocomplete="current-password" required></label>
+          <label>Motivo da exclusão <small>Opcional. Ajuda a equipe a entender o pedido.</small><textarea id="privacy-reason" maxlength="1000" rows="3" placeholder="Conte por que deseja encerrar a conta"></textarea></label>
+          <div class="privacy-actions"><button id="privacy-export" class="secondary-button" type="button">Baixar meus dados</button><button id="privacy-delete" class="danger-button" type="button">Solicitar exclusão</button></div>
+          <p class="privacy-note">A solicitação passa por análise para proteger workspaces compartilhados. Nenhum dado é apagado imediatamente ao clicar.</p>
+          <p id="privacy-message" class="auth-message hidden" role="status"></p>
+        </form>
+        <div id="privacy-request-state" class="privacy-request-state hidden"><div><strong id="privacy-request-title"></strong><p id="privacy-request-detail"></p></div><button id="privacy-cancel" class="secondary-button" type="button">Cancelar solicitação</button></div>
+      </section>
       <div class="account-footer">
         <div><strong>Encerrar acesso</strong><p>Use esta opção em computadores compartilhados.</p></div>
         <button id="logout-button" class="secondary-button" type="button">Sair da conta</button>
       </div>
     </section>
   </main>
-  <script src="/static/account.js?v=20260903-org-1"></script>
+  <script src="/static/account.js?v=20260909-privacy-1"></script>
 </body>
 </html>

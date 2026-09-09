@@ -92,6 +92,29 @@ class AccountUpdateRequest(BaseModel):
         return normalized
 
 
+class PrivacyPasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+
+
+class PrivacyDeletionRequest(PrivacyPasswordRequest):
+    reason: str = Field(default="", max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def clean_reason(cls, value: str) -> str:
+        return value.strip()
+
+
+class PrivacyAdminUpdateRequest(BaseModel):
+    status: Literal["requested", "in_review", "waiting_user", "approved", "canceled", "closed"]
+    resolution_note: str = Field(default="", max_length=2000)
+
+    @field_validator("resolution_note")
+    @classmethod
+    def clean_resolution_note(cls, value: str) -> str:
+        return value.strip()
+
+
 class BillingProfileUpdateRequest(BaseModel):
     plan_code: str = Field(min_length=1, max_length=50, pattern=r"^[a-z0-9][a-z0-9_-]*$")
     subscription_status: Literal["trialing", "active", "past_due", "canceled", "suspended"]
