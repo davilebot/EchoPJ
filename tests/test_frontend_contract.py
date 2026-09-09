@@ -211,6 +211,22 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="admin-privacy-requests"', admin)
         self.assertIn("/api/admin/privacy/requests", admin_script)
 
+    def test_versioned_legal_documents_gate_signup_and_remain_accessible(self):
+        legal = (STATIC_DIR / "legal.html").read_text(encoding="utf-8")
+        legal_script = (STATIC_DIR / "legal.js").read_text(encoding="utf-8")
+        signup = (STATIC_DIR / "signup.html").read_text(encoding="utf-8")
+        signup_script = (STATIC_DIR / "signup.js").read_text(encoding="utf-8")
+        account = (STATIC_DIR / "account.html").read_text(encoding="utf-8")
+        account_script = (STATIC_DIR / "account.js").read_text(encoding="utf-8")
+        self.assertIn('id="terms-document"', legal)
+        self.assertIn('id="privacy-document"', legal)
+        self.assertIn('fetch("/api/legal/documents")', legal_script)
+        self.assertIn('id="signup-legal-consent"', signup)
+        self.assertIn("terms_version", signup_script)
+        self.assertIn("privacy_version", signup_script)
+        self.assertIn('id="legal-acceptances"', account)
+        self.assertIn('fetch("/api/legal/acceptances")', account_script)
+
     def test_platform_accepts_safe_deep_links_to_known_tabs(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn('new URLSearchParams(location.search).get("tab")', script)

@@ -93,8 +93,15 @@ estão em [`.env.example`](.env.example).
   todas as sessões anteriores e a solicitação nunca revela se o e-mail possui conta.
 - O cadastro público cria a conta e a organização somente depois da confirmação do
   e-mail. Ele permanece fechado por padrão; para abrir, configure SMTP e defina
-  `SAAS_SELF_SIGNUP_ENABLED=true`. O link expira conforme
+  `SAAS_SELF_SIGNUP_ENABLED=true`. Também é obrigatório preencher a identidade da
+  empresa operadora, contatos, retenção, vigência e versões `LEGAL_*`; sem esse
+  conjunto completo, Termos e Privacidade aparecem como rascunho e o cadastro segue
+  bloqueado. O link expira conforme
   `AUTH_SIGNUP_VERIFICATION_HOURS` e a nova organização recebe `SAAS_TRIAL_CREDITS`.
+- Os documentos públicos ficam em `/termos` e `/privacidade`. O cadastro envia as
+  versões exibidas, e a confirmação do e-mail registra os dois aceites com usuário,
+  organização e data. A área **Minha conta** mostra as versões aceitas e a exportação
+  pessoal inclui esse histórico.
 - Administradores da organização interna EchoHub acessam `/admin` para localizar
   empresas clientes, alterar plano e status, conceder ou descontar créditos e
   consultar o histórico de movimentações. A EchoHub permanece protegida como

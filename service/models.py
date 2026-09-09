@@ -38,6 +38,9 @@ class OrganizationRequest(BaseModel):
 class SignupRequest(OrganizationRequest):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=1024)
+    accept_terms: Literal[True]
+    terms_version: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    privacy_version: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
     @field_validator("email")
     @classmethod

@@ -41,6 +41,35 @@ function formatPrivacyDate(value) {
   return value ? new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
 }
 
+function renderLegalAcceptances(acceptances) {
+  const target = document.querySelector("#legal-acceptances");
+  const latest = new Map();
+  acceptances.forEach((item) => {
+    if (!latest.has(item.document_type)) latest.set(item.document_type, item);
+  });
+  const documents = [
+    ["terms", "Termos de Uso", "/termos"],
+    ["privacy", "Política de Privacidade", "/privacidade"],
+  ];
+  target.innerHTML = documents.map(([type, label, href]) => {
+    const acceptance = latest.get(type);
+    const detail = acceptance
+      ? `Versão ${acceptance.document_version} · aceita em ${formatPrivacyDate(acceptance.accepted_at)}`
+      : "Sem aceite registrado nesta conta";
+    return `<div class="legal-acceptance"><div><strong>${label}</strong><small>${detail}</small></div><a class="text-link" href="${href}" target="_blank" rel="noopener">Ler documento</a></div>`;
+  }).join("");
+}
+
+async function loadLegalAcceptances() {
+  try {
+    const response = await fetch("/api/legal/acceptances");
+    if (!response.ok) throw new Error();
+    renderLegalAcceptances((await response.json()).acceptances || []);
+  } catch (_) {
+    document.querySelector("#legal-acceptances").innerHTML = '<p class="privacy-note">Não foi possível carregar os documentos aceitos.</p>';
+  }
+}
+
 function showPrivacyMessage(text, type = "error") {
   privacyMessage.textContent = text;
   privacyMessage.dataset.type = type;
@@ -170,3 +199,4 @@ document.querySelector("#logout-button").addEventListener("click", async () => {
 
 loadAccount();
 loadPrivacy();
+loadLegalAcceptances();

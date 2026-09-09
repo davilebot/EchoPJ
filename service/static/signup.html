@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Criar conta — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260908-signup-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-legal-1">
 </head>
 <body>
   <main class="auth-shell">
@@ -33,13 +33,14 @@
           </label>
         </div>
         <label class="checkbox-label"><input id="show-signup-password" type="checkbox">Mostrar senha</label>
+        <label class="checkbox-label legal-consent"><input id="signup-legal-consent" type="checkbox" required disabled><span>Li e aceito os <a class="text-link" href="/termos" target="_blank" rel="noopener">Termos de Uso</a> e a <a class="text-link" href="/privacidade" target="_blank" rel="noopener">Política de Privacidade</a><small id="signup-legal-versions">Carregando documentos atuais…</small></span></label>
         <p id="signup-message" class="auth-message hidden" role="alert"></p>
-        <button id="signup-submit" type="submit">Criar conta</button>
+        <button id="signup-submit" type="submit" disabled>Carregando cadastro…</button>
       </form>
       <p class="auth-footnote">Enviaremos um link para confirmar que o e-mail pertence a você. A conta só será criada depois dessa confirmação.</p>
-      <p><a class="text-link" href="/login">Já tenho conta</a></p>
+      <p><a class="text-link" href="/login">Já tenho conta</a> · <a class="text-link" href="/termos">Termos</a> · <a class="text-link" href="/privacidade">Privacidade</a></p>
     </section>
   </main>
-  <script src="/static/signup.js?v=20260908-signup-1"></script>
+  <script src="/static/signup.js?v=20260909-legal-1"></script>
 </body>
 </html>

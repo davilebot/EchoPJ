@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     saas_trial_credits: int = 100
     saas_low_credit_threshold: int = 20
     saas_self_signup_enabled: bool = False
+    legal_operator_name: str = ""
+    legal_operator_document: str = ""
+    legal_operator_address: str = ""
+    legal_contact_email: str = ""
+    legal_privacy_email: str = ""
+    legal_terms_version: str = ""
+    legal_privacy_version: str = ""
+    legal_effective_date: str = ""
+    legal_retention_policy: str = ""
     saas_internal_organization_id: int = 1
     saas_internal_organization_name: str = "EchoHub"
     saas_heavy_requests_per_minute: int = 30

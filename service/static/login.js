@@ -2,7 +2,15 @@ const form = document.querySelector("#login-form");
 const message = document.querySelector("#login-message");
 const submitButton = document.querySelector("#login-submit");
 
-fetch("/api/auth/status").then((response) => response.json()).then((status) => {
+async function responsePayload(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) return response.json();
+  throw new Error(response.ok
+    ? "O servidor respondeu em um formato inesperado. Recarregue a página e tente novamente."
+    : "O acesso está temporariamente indisponível. Aguarde alguns segundos e tente novamente.");
+}
+
+fetch("/api/auth/status").then(responsePayload).then((status) => {
   document.querySelector("#signup-prompt").classList.toggle("hidden", !status.signup_available);
   document.querySelector("#invite-prompt").classList.toggle("hidden", status.signup_available);
 }).catch(() => {});
@@ -27,7 +35,7 @@ form.addEventListener("submit", async (event) => {
         password: document.querySelector("#login-password").value,
       }),
     });
-    const payload = await response.json();
+    const payload = await responsePayload(response);
     if (!response.ok) throw new Error(payload.detail || "Não foi possível entrar.");
     window.location.replace(safeNextPath());
   } catch (error) {

@@ -89,6 +89,27 @@ class AuthStore(OrganizationStoreMixin):
             );
             CREATE INDEX IF NOT EXISTS idx_pending_signups_email
               ON pending_signups(identifier, expires_at);
+            CREATE TABLE IF NOT EXISTS pending_signup_legal (
+              token_hash TEXT PRIMARY KEY,
+              terms_version TEXT NOT NULL,
+              privacy_version TEXT NOT NULL,
+              accepted_at TEXT NOT NULL,
+              FOREIGN KEY(token_hash) REFERENCES pending_signups(token_hash) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS legal_acceptances (
+              id TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              organization_id INTEGER NOT NULL,
+              document_type TEXT NOT NULL CHECK(document_type IN ('terms','privacy')),
+              document_version TEXT NOT NULL,
+              accepted_at TEXT NOT NULL,
+              source TEXT NOT NULL CHECK(source IN ('signup')),
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+              UNIQUE(user_id,organization_id,document_type,document_version,source)
+            );
+            CREATE INDEX IF NOT EXISTS idx_legal_acceptances_user
+              ON legal_acceptances(user_id, accepted_at DESC);
             CREATE TABLE IF NOT EXISTS account_deletion_requests (
               id TEXT PRIMARY KEY,
               user_id INTEGER NOT NULL,
@@ -289,6 +310,7 @@ class AuthStore(OrganizationStoreMixin):
         organization_name: str,
         *,
         valid_hours: int = 24,
+        legal_versions: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         normalized = normalize_identifier(identifier)
         if "@" not in normalized:
@@ -327,6 +349,17 @@ class AuthStore(OrganizationStoreMixin):
                     isoformat(created_at), isoformat(expires_at),
                 ),
             )
+            if legal_versions:
+                terms_version = str(legal_versions.get("terms", "")).strip()[:40]
+                privacy_version = str(legal_versions.get("privacy", "")).strip()[:40]
+                if not terms_version or not privacy_version:
+                    raise OrganizationError("As versões dos documentos jurídicos são obrigatórias.", 422)
+                self._connection.execute(
+                    """INSERT INTO pending_signup_legal(
+                         token_hash,terms_version,privacy_version,accepted_at
+                       ) VALUES(?,?,?,?)""",
+                    (token_digest(token), terms_version, privacy_version, isoformat(created_at)),
+                )
         return {"token": token, "identifier": normalized, "expires_at": isoformat(expires_at)}
 
     def complete_signup(self, token: str) -> tuple[dict[str, Any], int] | None:
@@ -344,6 +377,10 @@ class AuthStore(OrganizationStoreMixin):
                 (signup["identifier"],),
             ).fetchone():
                 raise OrganizationError("Este e-mail já possui uma conta. Entre para continuar.", 409)
+            legal = self._connection.execute(
+                "SELECT * FROM pending_signup_legal WHERE token_hash=?",
+                (signup["token_hash"],),
+            ).fetchone()
             user_id = self._connection.execute(
                 """INSERT INTO users(
                      identifier,password_hash,password_salt,password_iterations,created_at,updated_at
@@ -361,6 +398,23 @@ class AuthStore(OrganizationStoreMixin):
                 "INSERT INTO memberships VALUES(?,?,'admin',?)",
                 (organization_id, user_id, isoformat(completed_at)),
             )
+            if legal:
+                self._connection.executemany(
+                    """INSERT INTO legal_acceptances(
+                         id,user_id,organization_id,document_type,document_version,
+                         accepted_at,source
+                       ) VALUES(?,?,?,?,?,?,'signup')""",
+                    [
+                        (
+                            str(uuid.uuid4()), user_id, organization_id, "terms",
+                            legal["terms_version"], legal["accepted_at"],
+                        ),
+                        (
+                            str(uuid.uuid4()), user_id, organization_id, "privacy",
+                            legal["privacy_version"], legal["accepted_at"],
+                        ),
+                    ],
+                )
             self._connection.execute(
                 "UPDATE pending_signups SET used_at=? WHERE identifier=? COLLATE NOCASE AND used_at IS NULL",
                 (isoformat(completed_at), signup["identifier"]),
@@ -512,13 +566,28 @@ class AuthStore(OrganizationStoreMixin):
                    FROM account_deletion_requests WHERE user_id=? ORDER BY requested_at DESC""",
                 (user_id,),
             ).fetchall()
+            acceptances = self._connection.execute(
+                """SELECT organization_id,document_type,document_version,accepted_at,source
+                   FROM legal_acceptances WHERE user_id=? ORDER BY accepted_at DESC,document_type""",
+                (user_id,),
+            ).fetchall()
         return {
             "account": self._public_user(account),
             "memberships": [dict(row) for row in memberships],
             "sessions": [dict(row) for row in sessions],
             "organization_actions": [dict(row) for row in audit],
             "deletion_requests": [dict(row) for row in requests],
+            "legal_acceptances": [dict(row) for row in acceptances],
         }
+
+    def legal_acceptances(self, user_id: int) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT organization_id,document_type,document_version,accepted_at,source
+                   FROM legal_acceptances WHERE user_id=? ORDER BY accepted_at DESC,document_type""",
+                (user_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def admin_privacy_requests(self, *, status: str = "", limit: int = 100) -> list[dict[str, Any]]:
         if status and status not in PRIVACY_REQUEST_STATUSES:

@@ -157,6 +157,7 @@ class AuthStoreTests(unittest.TestCase):
             store = AuthStore(str(path))
             pending = store.create_signup(
                 "NEW@Example.com", "secure-password", "  Empresa   Nova  ", valid_hours=24,
+                legal_versions={"terms": "2026-09", "privacy": "2026-09"},
             )
             connection = sqlite3.connect(path)
             stored = connection.execute(
@@ -171,16 +172,27 @@ class AuthStoreTests(unittest.TestCase):
             self.assertEqual(user["identifier"], "new@example.com")
             self.assertEqual(store.organization_for_user(user["id"], organization_id)["role"], "admin")
             self.assertIsNotNone(store.authenticate("new@example.com", "secure-password"))
+            acceptances = store.legal_acceptances(user["id"])
+            self.assertEqual({item["document_type"] for item in acceptances}, {"terms", "privacy"})
+            self.assertTrue(all(item["document_version"] == "2026-09" for item in acceptances))
+            self.assertEqual(len(store.account_data_export(user["id"])["legal_acceptances"]), 2)
             self.assertIsNone(store.complete_signup(pending["token"]))
             store.close()
 
     def test_signup_model_validates_email_password_and_company(self):
-        valid = SignupRequest(name="Empresa", email="OWNER@Example.com", password="secure-password")
+        common = {
+            "name": "Empresa", "email": "OWNER@Example.com", "password": "secure-password",
+            "accept_terms": True, "terms_version": "2026-09", "privacy_version": "2026-09",
+        }
+        valid = SignupRequest(**common)
         self.assertEqual(valid.email, "owner@example.com")
         for payload in (
-            {"name": "", "email": "owner@example.com", "password": "secure-password"},
-            {"name": "Empresa", "email": "invalid", "password": "secure-password"},
-            {"name": "Empresa", "email": "owner@example.com", "password": "short"},
+            {**common, "name": ""},
+            {**common, "email": "invalid"},
+            {**common, "password": "short"},
+            {**common, "accept_terms": False},
+            {**common, "terms_version": "versão inválida"},
+            {key: value for key, value in common.items() if key != "privacy_version"},
         ):
             with self.assertRaises(ValidationError):
                 SignupRequest(**payload)
@@ -206,6 +218,9 @@ class AuthFrontendTests(unittest.TestCase):
         self.assertEqual(reset.count('autocomplete="new-password"'), 2)
         self.assertIn('id="signup-form"', signup)
         self.assertEqual(signup.count('autocomplete="new-password"'), 2)
+        self.assertIn('id="signup-legal-consent"', signup)
+        self.assertIn('href="/termos"', signup)
+        self.assertIn('href="/privacidade"', signup)
         self.assertIn('id="verify-message"', verify)
         self.assertIn('id="admin-organizations"', admin)
         self.assertIn('id="admin-billing-form"', admin)

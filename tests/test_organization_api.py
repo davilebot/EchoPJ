@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from service.auth import AuthStore
 from service.jobs import JobStore
+from service.legal import LegalDocuments
 from service.limits import SlidingWindowRateLimiter
 from service.payments import BillingCatalog
 from service.saas import SaaSStore
@@ -53,7 +54,14 @@ class OrganizationAPITests(unittest.TestCase):
         invite = self.auth.create_invitation(self.owner["id"], self.org, "member@example.com", "member")
         self.member = self.auth.accept_invitation(invite["token"], "member-password")[0]
         self.member_token = self.auth.create_session(self.member["id"])[0]
-        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main, "heavy_rate_limiter", SlidingWindowRateLimiter(requests=1000)), patch.object(self.main.job_runner, "notify")]
+        self.legal = LegalDocuments(
+            operator_name="Echo Teste Ltda.", operator_document="00.000.000/0001-00",
+            operator_address="Rua Teste, 100, São Paulo - SP", contact_email="contato@example.com",
+            privacy_email="privacidade@example.com", terms_version="2026-09",
+            privacy_version="2026-09", effective_date="2026-09-09",
+            retention_policy="Dados de conta são mantidos durante o contrato e pelo prazo legal aplicável.",
+        )
+        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main, "heavy_rate_limiter", SlidingWindowRateLimiter(requests=1000)), patch.object(self.main.job_runner, "notify"), patch.object(self.main, "legal_documents", self.legal)]
         for mock in self.patches: mock.start()
 
     def tearDown(self):
@@ -200,9 +208,14 @@ class OrganizationAPITests(unittest.TestCase):
             status, signup_status, _ = self.request("/api/auth/status")
             self.assertEqual(status, 200)
             self.assertTrue(signup_status["signup_available"])
+            self.assertTrue(signup_status["legal"]["configured"])
+            self.assertEqual(self.request(
+                "/api/auth/signup", "POST",
+                {"name": "Nova Empresa", "email": "new@example.com", "password": "secure-password", "accept_terms": True, "terms_version": "old", "privacy_version": "2026-09"},
+            )[0], 409)
             status, pending, _ = self.request(
                 "/api/auth/signup", "POST",
-                {"name": "Nova Empresa", "email": "new@example.com", "password": "secure-password"},
+                {"name": "Nova Empresa", "email": "new@example.com", "password": "secure-password", "accept_terms": True, "terms_version": "2026-09", "privacy_version": "2026-09"},
             )
             self.assertEqual(status, 202)
             self.assertEqual(pending["email"], "new@example.com")
@@ -217,8 +230,27 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertIn(b"set-cookie", headers)
         organization_id = verified["organization_id"]
         self.assertEqual(self.auth.authenticate("new@example.com", "secure-password")["identifier"], "new@example.com")
+        session_token = headers[b"set-cookie"].decode().split("echopjs_session=", 1)[1].split(";", 1)[0]
+        self.assertEqual(len(self.request("/api/legal/acceptances", token=session_token)[1]["acceptances"]), 2)
         self.assertEqual(self.saas.billing_summary(organization_id)["profile"]["credit_balance"], self.main.settings.saas_trial_credits)
         self.assertEqual(self.request("/api/auth/signup/verify", "POST", {"token": token})[0], 404)
+
+    def test_signup_remains_closed_until_legal_documents_are_configured(self):
+        draft = LegalDocuments("", "", "", "", "", "", "", "", "")
+        with (
+            patch.object(self.main.settings, "saas_self_signup_enabled", True),
+            patch.object(self.main, "mail_available", return_value=True),
+            patch.object(self.main, "legal_documents", draft),
+        ):
+            status, payload, _ = self.request("/api/auth/status")
+            self.assertEqual(status, 200)
+            self.assertFalse(payload["signup_available"])
+            self.assertEqual(payload["signup_blocker"], "legal")
+            self.assertFalse(self.request("/api/legal/documents")[1]["configured"])
+            self.assertEqual(self.request(
+                "/api/auth/signup", "POST",
+                {"name": "Nova Empresa", "email": "new@example.com", "password": "secure-password", "accept_terms": True, "terms_version": "2026-09", "privacy_version": "2026-09"},
+            )[0], 503)
 
     def test_internal_admin_can_manage_commercial_profiles(self):
         headers = {"x-organization-id": str(self.org)}

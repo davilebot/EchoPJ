@@ -61,6 +61,7 @@ from .organizations import OrganizationError, invitation_hash
 from .mail import mail_available, send_invitation, send_password_reset, send_signup_verification
 from .saas import SaaSError, SaaSStore
 from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
+from .legal import LegalDocuments
 from .operations import OperationsMonitor, backup_status
 
 
@@ -90,6 +91,7 @@ if legacy_organization_id:
         )
 saas_store = SaaSStore(settings.saas_database_path)
 billing_catalog = BillingCatalog(settings.saas_billing_catalog_json)
+legal_documents = LegalDocuments.from_settings(settings)
 asaas_client = AsaasClient(
     settings.asaas_api_url,
     settings.asaas_api_key,
@@ -171,7 +173,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/produto", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/billing/return"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/produto", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/termos", "/privacidade", "/billing/return"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -380,6 +382,16 @@ def product_page() -> Response:
     return FileResponse(static_dir / "product.html")
 
 
+@app.get("/termos")
+def terms_page() -> Response:
+    return FileResponse(static_dir / "legal.html")
+
+
+@app.get("/privacidade")
+def privacy_policy_page() -> Response:
+    return FileResponse(static_dir / "legal.html")
+
+
 @app.get("/billing/return")
 def billing_return(status: str = Query("pending", pattern="^(success|cancel|expired|pending)$")) -> Response:
     return RedirectResponse(f"/?tab=billing&billing_return={status}", status_code=303)
@@ -436,12 +448,33 @@ def invite_page() -> Response:
 @app.get("/api/auth/status")
 def auth_status(request: Request) -> dict:
     user, _ = authenticate_request(request)
+    mail_ready = mail_available(settings)
+    signup_available = settings.saas_self_signup_enabled and mail_ready and legal_documents.configured
+    signup_blocker = None
+    if not settings.saas_self_signup_enabled:
+        signup_blocker = "closed"
+    elif not mail_ready:
+        signup_blocker = "email"
+    elif not legal_documents.configured:
+        signup_blocker = "legal"
     return {
         "authenticated": bool(user),
         "identifier": user["identifier"] if user else None,
-        "password_reset_available": mail_available(settings),
-        "signup_available": settings.saas_self_signup_enabled and mail_available(settings),
+        "password_reset_available": mail_ready,
+        "signup_available": signup_available,
+        "signup_blocker": signup_blocker,
+        "legal": legal_documents.public(),
     }
+
+
+@app.get("/api/legal/documents")
+def public_legal_documents() -> dict:
+    return legal_documents.public()
+
+
+@app.get("/api/legal/acceptances")
+def current_legal_acceptances(user: dict = Depends(require_auth)) -> dict:
+    return {"acceptances": auth_store.legal_acceptances(user["id"])}
 
 
 @app.post("/api/auth/login")
@@ -523,8 +556,13 @@ def confirm_password_reset(payload: PasswordResetConfirmRequest, request: Reques
 
 @app.post("/api/auth/signup", status_code=202)
 def signup(payload: SignupRequest, request: Request, background_tasks: BackgroundTasks) -> dict:
-    if not settings.saas_self_signup_enabled or not mail_available(settings):
+    if not settings.saas_self_signup_enabled or not mail_available(settings) or not legal_documents.configured:
         raise HTTPException(status_code=503, detail="O cadastro público ainda não está disponível.")
+    if not legal_documents.accepts(payload.terms_version, payload.privacy_version):
+        raise HTTPException(
+            status_code=409,
+            detail="Os termos foram atualizados. Recarregue a página e revise as versões atuais.",
+        )
     client = request.client.host if request.client else "unknown"
     now = monotonic()
     ip_key = f"signup:ip:{client}"
@@ -538,6 +576,7 @@ def signup(payload: SignupRequest, request: Request, background_tasks: Backgroun
         payload.password,
         payload.name,
         valid_hours=settings.auth_signup_verification_hours,
+        legal_versions={"terms": payload.terms_version, "privacy": payload.privacy_version},
     )
     link = f"{settings.app_public_url.rstrip('/')}/verify-email#token={pending['token']}"
     background_tasks.add_task(
@@ -628,7 +667,7 @@ def export_account_data(payload: PrivacyPasswordRequest, user: dict = Depends(re
     body = json.dumps(
         {
             "exported_at": datetime.now(timezone.utc).isoformat(),
-            "scope": "Conta, sessões, vínculos com organizações e ações administrativas do usuário.",
+            "scope": "Conta, sessões, vínculos com organizações, aceites jurídicos e ações administrativas do usuário.",
             **exported,
         },
         ensure_ascii=False,
