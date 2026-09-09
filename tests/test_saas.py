@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from service.saas import SaaSError, SaaSStore
@@ -428,6 +429,53 @@ class SaaSStoreTests(unittest.TestCase):
         self.store.sync_notifications(18, 31, jobs=[], low_credit_threshold=10)
         notices = self.store.list_notifications(18, 31)["notifications"]
         self.assertEqual(sum(item["kind"] == "billing_status" for item in notices), 2)
+
+    def test_subscription_renewal_notifications_are_deduplicated_by_due_date(self):
+        self.store.ensure_organization(19, initial_credits=0)
+        order = self.store.create_billing_order(
+            19, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000, cycle="MONTHLY",
+        )
+        self.store.process_billing_event(
+            provider="asaas", event_id="evt_renewal_notice", event_type="PAYMENT_CONFIRMED",
+            payload_digest="7" * 64, external_reference=order["external_reference"],
+            provider_payment_id="pay_renewal_notice", provider_subscription_id="sub_renewal_notice",
+            amount_cents=14990, subscription_next_due_date="2026-09-16",
+        )
+
+        self.store.sync_notifications(
+            19, 32, jobs=[], low_credit_threshold=10,
+            now=datetime(2026, 9, 8, tzinfo=timezone.utc),
+        )
+        self.assertEqual(self.store.list_notifications(19, 32)["notifications"], [])
+
+        for _ in range(2):
+            self.store.sync_notifications(
+                19, 32, jobs=[], low_credit_threshold=10,
+                now=datetime(2026, 9, 9, tzinfo=timezone.utc),
+            )
+        notices = self.store.list_notifications(19, 32)["notifications"]
+        self.assertEqual(sum(item["kind"] == "billing_renewal" for item in notices), 1)
+        self.assertEqual(notices[0]["action_tab"], "billing")
+
+        self.store.sync_notifications(
+            19, 32, jobs=[], low_credit_threshold=10,
+            now=datetime(2026, 9, 16, tzinfo=timezone.utc),
+        )
+        notices = self.store.list_notifications(19, 32)["notifications"]
+        self.assertEqual(sum(item["kind"] == "billing_due" for item in notices), 1)
+
+        self.store.process_billing_event(
+            provider="asaas", event_id="evt_next_renewal", event_type="SUBSCRIPTION_UPDATED",
+            payload_digest="8" * 64, provider_subscription_id="sub_renewal_notice",
+            subscription_status="ACTIVE", subscription_next_due_date="2026-10-16",
+        )
+        self.store.sync_notifications(
+            19, 32, jobs=[], low_credit_threshold=10,
+            now=datetime(2026, 10, 9, tzinfo=timezone.utc),
+        )
+        notices = self.store.list_notifications(19, 32)["notifications"]
+        self.assertEqual(sum(item["kind"] == "billing_renewal" for item in notices), 2)
 
     def test_support_tickets_are_tenant_scoped_threaded_and_prioritized(self):
         self.store.ensure_organization(30)

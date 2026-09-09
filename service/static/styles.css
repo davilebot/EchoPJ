@@ -155,6 +155,8 @@ html[data-capability-manage-library="false"] [data-viewer-library-note] { displa
 .notification-kind.kind-job_warning { background: var(--warning); }
 .notification-kind.kind-low_credit { background: var(--danger); }
 .notification-kind.kind-billing_status { background: var(--warning); }
+.notification-kind.kind-billing_renewal { background: var(--accent-strong); }
+.notification-kind.kind-billing_due { background: var(--warning); }
 .notification-item strong, .notification-item small, .notification-item time { display: block; }
 .notification-item strong { font-size: 10px; }
 .notification-item small { margin-top: 4px; color: var(--text-secondary); font-size: 9px; line-height: 1.45; }
@@ -527,6 +529,15 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
 .danger-button { color: var(--danger) !important; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)) !important; background: var(--danger-soft) !important; }
 
 .billing-layout { display: grid; gap: 16px; }
+.billing-attention { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 13px; align-items: center; padding: 15px 17px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
+.billing-attention.warning { border-color: color-mix(in srgb, var(--warning) 42%, var(--border)); background: var(--warning-soft); }
+.billing-attention.danger { border-color: color-mix(in srgb, var(--danger) 42%, var(--border)); background: var(--danger-soft); }
+.billing-attention-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: var(--warning); background: var(--surface); font-size: 16px; font-weight: 800; }
+.billing-attention.danger .billing-attention-mark { color: var(--danger); }
+.billing-attention strong, .billing-attention p { display: block; margin: 0; }
+.billing-attention strong { font-size: 11px; }
+.billing-attention p { margin-top: 3px; color: var(--text-secondary); font-size: 9px; line-height: 1.45; }
+.billing-attention-tag { color: var(--text-secondary); font-size: 8px; font-weight: 800; letter-spacing: .08em; white-space: nowrap; }
 .billing-hero { display: flex; align-items: start; justify-content: space-between; gap: 24px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 60%, var(--surface)), var(--surface) 58%); }
 .billing-hero strong { display: block; margin: 9px 0 4px; font-family: var(--font-display); font-size: clamp(30px, 5vw, 50px); font-weight: 600; letter-spacing: -.04em; }
 .billing-hero p { max-width: 620px; margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
@@ -666,6 +677,8 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .list-detail-head, .billing-hero { flex-direction: column; }
   .billing-metrics, .workspace-metrics, .billing-offer-grid { grid-template-columns: 1fr; }
   .billing-return { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .billing-attention { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .billing-attention-tag { grid-column: 2; }
   .billing-order-list article { grid-template-columns: 1fr; }
   .billing-subscription { grid-template-columns: 1fr; align-items: start; }
   .billing-subscription-state { justify-items: start; }

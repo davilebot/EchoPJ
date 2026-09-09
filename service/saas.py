@@ -1581,9 +1581,11 @@ class SaaSStore:
         *,
         jobs: list[dict[str, Any]],
         low_credit_threshold: int = 20,
+        now: datetime | None = None,
     ) -> None:
         """Materialize deterministic alerts from current operational state."""
         threshold = max(0, int(low_credit_threshold))
+        current_day = (now or datetime.now(timezone.utc)).date()
         with self._transaction():
             for job in jobs:
                 if job.get("status") not in {"completed", "completed_with_errors"}:
@@ -1647,6 +1649,54 @@ class SaaSStore:
                        WHERE organization_id=? AND user_id=? AND state_key=?""",
                     (organization_id, user_id, billing_state_key),
                 )
+
+            subscription = self._connection.execute(
+                """SELECT provider,provider_subscription_id,plan_name,next_due_date
+                   FROM billing_subscriptions
+                   WHERE organization_id=? AND status='active' AND next_due_date IS NOT NULL
+                   ORDER BY updated_at DESC LIMIT 1""",
+                (organization_id,),
+            ).fetchone()
+            if subscription and not profile["unlimited_credits"]:
+                try:
+                    due_day = datetime.fromisoformat(
+                        str(subscription["next_due_date"]).replace("Z", "+00:00")
+                    ).date()
+                except (TypeError, ValueError):
+                    due_day = None
+                if due_day:
+                    days_until_due = (due_day - current_day).days
+                    due_label = due_day.strftime("%d/%m/%Y")
+                    subscription_key = (
+                        f"{subscription['provider']}:{subscription['provider_subscription_id']}:{due_day.isoformat()}"
+                    )
+                    if 1 <= days_until_due <= 7:
+                        interval = "amanhã" if days_until_due == 1 else f"em {days_until_due} dias"
+                        self._insert_notification(
+                            organization_id,
+                            user_id,
+                            kind="billing_renewal",
+                            title=f"Renovação {interval}",
+                            message=(
+                                f"O plano {subscription['plan_name']} renova em {due_label}. "
+                                "Confira os dados da assinatura em Plano e créditos."
+                            ),
+                            action_tab="billing",
+                            deduplication_key=f"billing-renewal:{subscription_key}",
+                        )
+                    elif days_until_due == 0:
+                        self._insert_notification(
+                            organization_id,
+                            user_id,
+                            kind="billing_due",
+                            title="Renovação prevista para hoje",
+                            message=(
+                                f"A cobrança do plano {subscription['plan_name']} vence hoje. "
+                                "A confirmação do pagamento aparecerá no histórico financeiro."
+                            ),
+                            action_tab="billing",
+                            deduplication_key=f"billing-due:{subscription_key}",
+                        )
             state_key = "low-credit-episode"
             state = self._connection.execute(
                 """SELECT state_value FROM notification_states

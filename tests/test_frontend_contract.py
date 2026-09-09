@@ -107,10 +107,15 @@ class FrontendContractTests(unittest.TestCase):
 
     def test_notification_center_is_user_and_workspace_aware(self):
         script = (STATIC_DIR / "notifications.js").read_text(encoding="utf-8")
+        app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
         self.assertIn('fetch("/api/notifications")', script)
         self.assertIn("/api/notifications/read-all", script)
         self.assertIn("data-notification-id", script)
         self.assertIn('tab.startsWith("support:")', script)
+        self.assertIn("Sua assinatura renova", app)
+        self.assertIn("billing-attention", styles)
+        self.assertIn("kind-billing_renewal", styles)
 
     def test_internal_admin_shows_product_funnel_and_customer_activity(self):
         html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
