@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -53,6 +54,7 @@ from .organizations import OrganizationError, invitation_hash
 from .mail import mail_available, send_invitation, send_password_reset, send_signup_verification
 from .saas import SaaSError, SaaSStore
 from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
+from .operations import OperationsMonitor, backup_status
 
 
 settings = get_settings()
@@ -101,6 +103,7 @@ heavy_rate_limiter = SlidingWindowRateLimiter(
     requests=settings.saas_heavy_requests_per_minute,
     window_seconds=60,
 )
+operations_monitor = OperationsMonitor()
 SESSION_COOKIE = "echopjs_session"
 
 
@@ -168,6 +171,27 @@ async def prevent_stale_application_state(request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response
+
+
+@app.middleware("http")
+async def observe_request(request: Request, call_next):
+    request_id = str(uuid.uuid4())
+    started = monotonic()
+    status_code = 500
+    operations_monitor.begin()
+    request.state.request_id = request_id
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        response.headers["X-Request-Id"] = request_id
+        response.headers["X-Response-Time-Ms"] = f"{(monotonic() - started) * 1000:.1f}"
+        return response
+    finally:
+        route = request.scope.get("route")
+        route_name = getattr(route, "path", "<unmatched>")
+        operations_monitor.finish(
+            route_name, request.method, status_code, (monotonic() - started) * 1000,
+        )
 
 
 def set_session_cookie(response: Response, token: str, expires_at: datetime) -> None:
@@ -285,6 +309,37 @@ def page_response(request: Request, filename: str, *, next_path: str) -> Respons
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "dataset_version": repository.current_version()}
+
+
+@app.get("/health/live")
+def liveness() -> dict:
+    return {"status": "ok"}
+
+
+def readiness_report() -> dict:
+    checks: dict[str, dict] = {}
+    probes = {
+        "receita_postgresql": repository.health_check,
+        "contas": auth_store.health_check,
+        "saas": saas_store.health_check,
+        "processamentos": job_store.health_check,
+    }
+    for name, probe in probes.items():
+        try:
+            result = probe()
+            checks[name] = result if isinstance(result, dict) else {"ok": bool(result)}
+        except Exception:
+            checks[name] = {"ok": False}
+    checks["worker"] = {"ok": job_runner.is_alive()}
+    ready = all(bool(component.get("ok")) for component in checks.values())
+    dataset_version = checks.get("receita_postgresql", {}).get("dataset_version")
+    return {"status": "ready" if ready else "degraded", "ready": ready, "dataset_version": dataset_version, "components": checks}
+
+
+@app.get("/health/ready")
+def readiness() -> Response:
+    report = readiness_report()
+    return JSONResponse(report, status_code=200 if report["ready"] else 503)
 
 
 @app.get("/")
@@ -741,6 +796,20 @@ def admin_billing_events(
     user: dict = Depends(require_internal_admin),
 ) -> dict:
     return {"events": saas_store.admin_billing_events(limit=limit)}
+
+
+@app.get("/api/admin/operations")
+def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
+    return {
+        "readiness": readiness_report(),
+        "traffic": operations_monitor.snapshot(),
+        "backup": backup_status(settings.saas_backup_status_path),
+        "billing": {
+            "enabled": billing_catalog_public()["enabled"],
+            "catalog_offers": len(billing_catalog.offers()),
+            "provider": settings.saas_billing_provider,
+        },
+    }
 
 
 @app.get("/api/dashboard")

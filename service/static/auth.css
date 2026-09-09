@@ -9,6 +9,7 @@
   --border: #303038;
   --danger: #ff9b92;
   --success: #70dfa0;
+  --warning: #ffd166;
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
 }
 
@@ -109,6 +110,16 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-funnel-bar { height: 4px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .08); }
 .admin-funnel-bar i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
 .admin-catalog { min-width: 0; margin-top: 30px; padding-top: 26px; border-top: 1px solid var(--border); }
+.admin-operations { margin-top: 28px; padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: linear-gradient(135deg, #17191d, #121317); }
+.admin-operations .admin-section-heading { margin-bottom: 16px; }
+.admin-operations .admin-section-heading h2 { margin: 6px 0 4px; }
+.admin-operations-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.admin-operations-grid article { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.admin-operations-grid strong, .admin-operations-grid span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-operations-grid strong { font-size: 16px; }
+.admin-operations-grid span { margin-top: 5px; color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.admin-operations-grid article[data-state="ok"] strong { color: var(--accent); }
+.admin-operations-grid article[data-state="warning"] strong { color: var(--warning); }
 .admin-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .admin-section-heading h2, .admin-section-heading h3 { margin: 0 0 5px; }
 .admin-search { display: grid; min-width: min(100%, 440px); grid-template-columns: 1fr auto; gap: 8px; }
@@ -152,6 +163,7 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-funnel-stages { grid-template-columns: repeat(2, 1fr); }
   .admin-section-heading { align-items: stretch; flex-direction: column; }
   .admin-search { min-width: 100%; }
+  .admin-operations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 520px) {
   .admin-card, .admin-dialog-card { padding: 20px; }
@@ -162,4 +174,5 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-search { grid-template-columns: 1fr; }
   .admin-pagination { align-items: stretch; flex-direction: column; }
   .admin-pagination > div { display: grid; grid-template-columns: 1fr 1fr; }
+  .admin-operations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

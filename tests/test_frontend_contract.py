@@ -123,6 +123,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="admin-billing-events"', admin)
         self.assertIn('id="admin-orders"', admin)
         self.assertIn("renderBillingEvents", admin_script)
+        self.assertIn('id="admin-operations-grid"', admin)
+        self.assertIn("renderOperations", admin_script)
+        self.assertIn('/api/admin/operations', admin_script)
 
     def test_search_and_list_templates_start_from_editable_examples(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

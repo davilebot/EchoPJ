@@ -103,6 +103,10 @@ class AuthStore(OrganizationStoreMixin):
         with self._lock:
             self._connection.close()
 
+    def health_check(self) -> bool:
+        with self._lock:
+            return self._connection.execute("SELECT 1").fetchone()[0] == 1
+
     def bootstrap(self, identifier: str, password: str) -> bool:
         """Import the legacy credential once, without ever overwriting a changed account."""
         if not identifier or not password:

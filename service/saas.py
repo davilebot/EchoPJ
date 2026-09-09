@@ -189,6 +189,10 @@ class SaaSStore:
         with self._lock:
             self._connection.close()
 
+    def health_check(self) -> bool:
+        with self._lock:
+            return self._connection.execute("SELECT 1").fetchone()[0] == 1
+
     @contextmanager
     def _transaction(self):
         with self._lock:

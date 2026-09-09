@@ -17,6 +17,14 @@ from pathlib import Path
 CRITICAL_DATABASES = ("auth.sqlite", "saas.sqlite", "jobs.sqlite")
 
 
+def write_status(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.partial")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -127,16 +135,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--destination-dir", type=Path, default=Path("/srv/echopjs-saas-v2/backups"))
     parser.add_argument("--retention-count", type=int, default=56)
     parser.add_argument("--verify", type=Path, help="Verify one existing backup and exit.")
+    parser.add_argument("--status-file", type=Path, help="Write a small atomic status file for operational checks.")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    result = verify_backup(args.verify) if args.verify else create_backup(
-        args.source_dir,
-        args.destination_dir,
-        retention_count=args.retention_count,
-    )
+    try:
+        result = verify_backup(args.verify) if args.verify else create_backup(
+            args.source_dir,
+            args.destination_dir,
+            retention_count=args.retention_count,
+        )
+    except Exception as error:
+        if args.status_file:
+            write_status(args.status_file, {
+                "status": "failed",
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "detail": str(error)[:240],
+            })
+        raise
+    if args.status_file:
+        write_status(args.status_file, {
+            "status": "ok",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "retained": result.get("retained", 0),
+        })
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
 
 

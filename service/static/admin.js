@@ -74,6 +74,32 @@ function renderBillingEvents(events) {
   target.innerHTML = events.length ? events.map((event) => `<tr><td>${formatDate(event.received_at)}</td><td><strong>${escapeHtml(event.event_type)}</strong><small>${escapeHtml(event.provider)}</small></td><td>${escapeHtml(event.object_id || "—")}</td><td><span class="admin-status status-${escapeHtml(event.processing_status)}">${escapeHtml(event.processing_status)}</span></td><td>${escapeHtml(event.detail || "Processado sem ressalvas")}</td></tr>`).join("") : `<tr><td colspan="5"><div class="admin-empty"><strong>Nenhum evento recebido.</strong><span>Os webhooks aparecerão aqui quando a cobrança for ativada.</span></div></td></tr>`;
 }
 
+function renderOperations(data) {
+  const ready = data.readiness.ready;
+  const backup = data.backup || {};
+  const windowData = data.traffic.window || {};
+  const backupLabel = backup.status === "ok" ? "Em dia" : backup.status === "stale" ? "Atrasado" : backup.status === "failed" ? "Falhou" : "Sem leitura";
+  const cards = [
+    [ready ? "Operacional" : "Atenção", "Disponibilidade", ready ? "ok" : "warning"],
+    [backupLabel, "Backup", backup.status === "ok" ? "ok" : "warning"],
+    [Number(windowData.requests || 0).toLocaleString("pt-BR"), "Requisições · 5 min", ""],
+    [`${Number(windowData.error_rate_percent || 0).toLocaleString("pt-BR")}%`, "Erros · 5 min", Number(windowData.server_errors || 0) ? "warning" : "ok"],
+    [`${Number(windowData.latency_ms?.p95 || 0).toLocaleString("pt-BR")} ms`, "Latência p95", ""],
+    [data.billing.enabled ? "Ativo" : "Preparação", "Checkout", data.billing.enabled ? "ok" : ""],
+  ];
+  document.querySelector("#admin-operations-grid").innerHTML = cards.map(([value, label, status]) => `<article data-state="${status}"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></article>`).join("");
+  const backupTime = backup.checked_at ? ` · backup ${formatDate(backup.checked_at)}` : "";
+  document.querySelector("#admin-operations-updated").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${backupTime}`;
+}
+
+async function loadOperations() {
+  const button = document.querySelector("#admin-refresh-operations");
+  button.disabled = true;
+  try { renderOperations(await adminFetch("/api/admin/operations")); }
+  catch (error) { notify(error.message); }
+  finally { button.disabled = false; }
+}
+
 function activitySummary(activity) {
   const parts = [];
   if (activity.search_count) parts.push(`${activity.search_count} busca${activity.search_count === 1 ? "" : "s"}`);
@@ -187,3 +213,5 @@ document.querySelector("#admin-credit-form").addEventListener("submit", async (e
 });
 
 loadOrganizations();
+loadOperations();
+document.querySelector("#admin-refresh-operations").addEventListener("click", loadOperations);

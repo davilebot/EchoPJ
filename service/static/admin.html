@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260908-funnel-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260908-operations-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -16,6 +16,10 @@
       <p id="admin-message" class="auth-message hidden" role="status"></p>
       <section id="admin-metrics" class="admin-metrics" aria-label="Indicadores comerciais">
         <article><strong>—</strong><span>Empresas</span></article><article><strong>—</strong><span>Usuários</span></article><article><strong>—</strong><span>Aguardando e-mail</span></article><article><strong>—</strong><span>Créditos em saldo</span></article><article><strong>—</strong><span>CNPJs desbloqueados</span></article>
+      </section>
+      <section class="admin-operations" aria-labelledby="admin-operations-title">
+        <div class="admin-section-heading"><div><span class="eyebrow">SAÚDE OPERACIONAL</span><h2 id="admin-operations-title">Plataforma agora</h2><p id="admin-operations-updated" class="muted">Carregando diagnóstico…</p></div><button id="admin-refresh-operations" class="secondary-button" type="button">Atualizar</button></div>
+        <div id="admin-operations-grid" class="admin-operations-grid"><article><strong>—</strong><span>Disponibilidade</span></article><article><strong>—</strong><span>Backup</span></article><article><strong>—</strong><span>Requisições · 5 min</span></article><article><strong>—</strong><span>Erros · 5 min</span></article><article><strong>—</strong><span>Latência p95</span></article><article><strong>—</strong><span>Checkout</span></article></div>
       </section>
       <section class="admin-funnel" aria-labelledby="admin-funnel-title">
         <div class="admin-funnel-header">

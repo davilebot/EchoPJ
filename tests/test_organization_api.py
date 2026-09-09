@@ -89,11 +89,36 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"Secure", headers[b"set-cookie"])
         self.assertIn(b"HttpOnly", headers[b"set-cookie"])
+        self.assertIn(b"x-request-id", headers)
+        self.assertIn(b"x-response-time-ms", headers)
         self.assertEqual(self.request("/api/organizations")[0], 401)
         status, data, _ = self.request("/api/organizations", token=self.member_token)
         self.assertEqual(status, 200)
         self.assertEqual(len(data["organizations"]), 1)
         self.assertFalse(data["can_create"])
+
+    def test_liveness_readiness_and_internal_operations_are_distinct(self):
+        self.assertEqual(self.request("/health/live")[0:2], (200, {"status": "ok"}))
+        with (
+            patch.object(self.main.repository, "health_check", return_value={"ok": True, "dataset_version": "2026-08"}),
+            patch.object(self.auth, "health_check", return_value=True),
+            patch.object(self.saas, "health_check", return_value=True),
+            patch.object(self.jobs, "health_check", return_value=True),
+            patch.object(self.main.job_runner, "is_alive", return_value=True),
+        ):
+            status, ready, _ = self.request("/health/ready")
+            self.assertEqual(status, 200)
+            self.assertTrue(ready["ready"])
+            status, operations, _ = self.request(
+                "/api/admin/operations", token=self.owner_token,
+                headers={"x-organization-id": str(self.org)},
+            )
+            self.assertEqual(status, 200)
+            self.assertIn("traffic", operations)
+            self.assertIn("backup", operations)
+        with patch.object(self.main.repository, "health_check", side_effect=RuntimeError("offline")):
+            self.assertEqual(self.request("/health/ready")[0], 503)
+        self.assertEqual(self.request("/api/admin/operations", token=self.member_token)[0], 403)
 
     def test_password_recovery_is_generic_single_use_and_logs_in(self):
         existing = self.request(

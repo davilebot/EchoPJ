@@ -173,6 +173,10 @@ class JobStore:
         with self._lock:
             self._connection.close()
 
+    def health_check(self) -> bool:
+        with self._lock:
+            return self._connection.execute("SELECT 1").fetchone()[0] == 1
+
     def assign_legacy_organization(self, organization_id: int) -> None:
         with self._lock, self._connection:
             self._connection.execute("UPDATE jobs SET organization_id=? WHERE organization_id IS NULL", (organization_id,))
@@ -409,6 +413,9 @@ class JobRunner:
 
     def notify(self) -> None:
         self._wake.set()
+
+    def is_alive(self) -> bool:
+        return self._thread.is_alive() and not self._stop.is_set()
 
     def stop(self) -> None:
         self._stop.set()

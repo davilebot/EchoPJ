@@ -5,12 +5,11 @@ ConditionPathExists=/srv/echopjs-saas-v2/data/auth.sqlite
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /opt/echopjs-saas-v2/backup_v2.py --source-dir /srv/echopjs-saas-v2/data --destination-dir /srv/echopjs-saas-v2/backups --retention-count 56
+ExecStart=/usr/bin/python3 /opt/echopjs-saas-v2/backup_v2.py --source-dir /srv/echopjs-saas-v2/data --destination-dir /srv/echopjs-saas-v2/backups --retention-count 56 --status-file /srv/echopjs-saas-v2/data/backup-status.json
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadOnlyPaths=/srv/echopjs-saas-v2/data
-ReadWritePaths=/srv/echopjs-saas-v2/backups
-
+ReadWritePaths=/srv/echopjs-saas-v2/backups /srv/echopjs-saas-v2/data/backup-status.json

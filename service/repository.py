@@ -41,6 +41,16 @@ class Repository:
             ).fetchone()
             return row["version"] if row else None
 
+    def health_check(self) -> dict[str, Any]:
+        with self.pool.connection() as connection:
+            row = connection.execute(
+                """SELECT current_timestamp AS checked_at,
+                          (SELECT version FROM dataset_versions
+                           WHERE is_current AND status='ready'
+                           ORDER BY imported_at DESC LIMIT 1) AS dataset_version"""
+            ).fetchone()
+        return {"ok": True, "dataset_version": row["dataset_version"]}
+
     def search_capabilities(self) -> SearchCapabilities:
         with self.pool.connection() as connection:
             row = connection.execute("""

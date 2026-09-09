@@ -60,8 +60,10 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] limites seguros de requisições pesadas, tamanho de payload e processamentos ativos por organização;
 - termos de uso, política de privacidade, retenção e exclusão de dados;
 - [x] backups SQLite consistentes, verificados e isolados para a v2, com retenção e procedimento de recuperação;
-- cópia criptografada fora do VPS, observabilidade e alertas operacionais;
-- testes de carga, metas de disponibilidade e atendimento;
+- [x] observabilidade interna com prontidão por componente, latência, erros, identificador de requisição e idade do backup;
+- cópia criptografada fora do VPS e alertas externos para o canal operacional escolhido;
+- [x] metas iniciais de disponibilidade, latência, erro e recuperação documentadas;
+- testes de carga com base representativa e processo de atendimento;
 - domínio comercial, páginas institucionais e documentação para clientes.
 
 ## Decisões pendentes

@@ -14,6 +14,8 @@ HTML, CSS e JavaScript sem etapa de build. O Dockerfile usa Python 3.12.
 | `service/main.py` | Rotas HTTP, autenticação e integração dos serviços |
 | `service/repository.py`, `search.py`, `explorer.py` | Consultas PostgreSQL, filtros e explorador |
 | `service/auth.py`, `organizations.py`, `mail.py` | Contas, permissões e envio de convites |
+| `service/payments.py`, `saas.py` | Catálogo, checkout, webhooks, créditos e recursos por organização |
+| `service/operations.py`, `ops/` | Prontidão, métricas internas, backup e rotinas operacionais |
 | `service/jobs.py` | Fila, histórico e arquivos de resultados |
 | `src/plataforma_receita/` | Normalização, matcher e importação complementar da Receita |
 | `tests/` | Testes unitários e testes da API com banco simulado |

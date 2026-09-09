@@ -5,7 +5,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ops.backup_v2 import CRITICAL_DATABASES, create_backup, verify_backup
+from ops.backup_v2 import CRITICAL_DATABASES, create_backup, verify_backup, write_status
 
 
 class BackupV2Tests(unittest.TestCase):
@@ -55,6 +55,13 @@ class BackupV2Tests(unittest.TestCase):
         (backup / "auth.sqlite").write_bytes(b"corrupted")
         with self.assertRaisesRegex(RuntimeError, "checksum mismatch"):
             verify_backup(backup)
+
+    def test_status_file_is_private_atomic_and_readable(self):
+        status = self.source / "backup-status.json"
+        write_status(status, {"status": "ok", "checked_at": "2026-09-09T00:00:00+00:00", "retained": 4})
+        self.assertEqual(json.loads(status.read_text())["retained"], 4)
+        self.assertEqual(status.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(status.with_name(".backup-status.json.partial").exists())
 
 
 if __name__ == "__main__":
