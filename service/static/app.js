@@ -1703,7 +1703,8 @@ async function loadCompanyListDetail(listId) {
     const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" data-capability="manage-library" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
     listDetail.dataset.listId = listId;
     listDetail.dataset.companies = JSON.stringify(data.companies);
-    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
+    listDetail.dataset.list = JSON.stringify({ id: data.id, name: data.name, description: data.description });
+    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="manage-library" type="button" data-edit-list>Editar</button><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
       ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
     listDetail.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
@@ -1751,7 +1752,13 @@ async function removeCompanyFromList(listId, cnpj) {
 }
 
 function openCreateListDialog(templateKey = null) {
-  document.querySelector("#create-list-form").reset();
+  const form = document.querySelector("#create-list-form");
+  form.reset();
+  form.dataset.listId = "";
+  document.querySelector("#list-dialog-eyebrow").textContent = "NOVA LISTA";
+  document.querySelector("#list-dialog-title").textContent = "Crie uma lista para sua equipe";
+  document.querySelector("#list-dialog-description").textContent = "Use listas para separar campanhas, territórios e etapas comerciais.";
+  document.querySelector("#list-dialog-submit").textContent = "Criar lista";
   const template = listTemplates[templateKey];
   if (template) {
     document.querySelector("#create-list-name").value = template.name;
@@ -1760,6 +1767,22 @@ function openCreateListDialog(templateKey = null) {
   setDialogFeedback(document.querySelector("#create-list-feedback"));
   createListDialog.showModal();
   document.querySelector("#create-list-name").focus();
+}
+
+function openEditListDialog(companyList) {
+  const form = document.querySelector("#create-list-form");
+  form.reset();
+  form.dataset.listId = companyList.id;
+  document.querySelector("#list-dialog-eyebrow").textContent = "EDITAR LISTA";
+  document.querySelector("#list-dialog-title").textContent = "Atualize esta lista";
+  document.querySelector("#list-dialog-description").textContent = "O novo nome e a descrição ficam visíveis para toda a equipe.";
+  document.querySelector("#list-dialog-submit").textContent = "Salvar alterações";
+  document.querySelector("#create-list-name").value = companyList.name || "";
+  document.querySelector("#create-list-description").value = companyList.description || "";
+  setDialogFeedback(document.querySelector("#create-list-feedback"));
+  createListDialog.showModal();
+  document.querySelector("#create-list-name").focus();
+  document.querySelector("#create-list-name").select();
 }
 
 function setActiveSavedSearch(saved = null) {
@@ -1853,18 +1876,20 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
 document.querySelector("#create-list-button").addEventListener("click", () => openCreateListDialog());
 document.querySelector("#create-list-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+  const form = event.currentTarget;
   const feedback = document.querySelector("#create-list-feedback");
   setDialogFeedback(feedback);
-  const response = await fetch("/api/company-lists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: document.querySelector("#create-list-name").value, description: document.querySelector("#create-list-description").value }) });
+  const listId = form.dataset.listId;
+  const response = await fetch(listId ? `/api/company-lists/${listId}` : "/api/company-lists", { method: listId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: document.querySelector("#create-list-name").value, description: document.querySelector("#create-list-description").value }) });
   if (!response.ok) {
-    setDialogFeedback(feedback, await responseError(response, "Não foi possível criar a lista."));
+    setDialogFeedback(feedback, await responseError(response, listId ? "Não foi possível atualizar a lista." : "Não foi possível criar a lista."));
     return;
   }
-  const created = await response.json();
+  const saved = await response.json();
   createListDialog.close();
   await loadCompanyLists();
-  await loadCompanyListDetail(created.id);
-  showToast("Lista criada.");
+  await loadCompanyListDetail(saved.id);
+  showToast(listId ? "Alterações da lista salvas." : "Lista criada.");
 });
 
 document.querySelectorAll("[data-close-dialog]").forEach((button) => button.addEventListener("click", () => button.closest("dialog").close()));
@@ -1925,6 +1950,9 @@ listsGrid.addEventListener("click", (event) => {
 
 listDetail.addEventListener("click", async (event) => {
   const listId = listDetail.dataset.listId;
+  if (event.target.closest("[data-edit-list]")) {
+    openEditListDialog(JSON.parse(listDetail.dataset.list || "{}"));
+  }
   const companyButton = event.target.closest("[data-company-cnpj]");
   if (companyButton) {
     switchTab("batch");

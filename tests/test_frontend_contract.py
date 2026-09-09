@@ -109,6 +109,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-edit-saved-search", script)
         self.assertIn('id="save-search-copy"', self.html)
 
+    def test_company_lists_can_be_renamed_and_described(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("data-edit-list", script)
+        self.assertIn('method: listId ? "PUT" : "POST"', script)
+        self.assertIn("openEditListDialog", script)
+        self.assertIn('id="list-dialog-submit"', self.html)
+
     def test_workspace_fetches_are_scoped_to_selected_organization(self):
         workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("window.fetch = function workspaceScopedFetch", workspace)

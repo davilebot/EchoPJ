@@ -245,11 +245,11 @@
   </dialog>
   <dialog id="create-list-dialog" class="saas-dialog">
     <form id="create-list-form" class="dialog-form">
-      <div class="dialog-heading"><span class="eyebrow">NOVA LISTA</span><h2>Crie uma lista para sua equipe</h2><p>Use listas para separar campanhas, territórios e etapas comerciais.</p></div>
+      <div class="dialog-heading"><span id="list-dialog-eyebrow" class="eyebrow">NOVA LISTA</span><h2 id="list-dialog-title">Crie uma lista para sua equipe</h2><p id="list-dialog-description">Use listas para separar campanhas, territórios e etapas comerciais.</p></div>
       <label>Nome da lista<input id="create-list-name" maxlength="120" required placeholder="Ex.: Leads prioritários"></label>
       <label>Descrição opcional<textarea id="create-list-description" maxlength="500" rows="3" placeholder="Explique quando esta lista deve ser usada"></textarea></label>
       <p id="create-list-feedback" class="dialog-feedback hidden" role="alert"></p>
-      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Criar lista</button></div>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button id="list-dialog-submit" type="submit">Criar lista</button></div>
     </form>
   </dialog>
   <dialog id="cancel-subscription-dialog" class="saas-dialog">

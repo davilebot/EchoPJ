@@ -2469,6 +2469,36 @@ class SaaSStore:
         ]
         return company_list
 
+    def update_company_list(
+        self,
+        organization_id: int,
+        list_id: str,
+        actor_id: int,
+        *,
+        name: str,
+        description: str = "",
+    ) -> dict[str, Any]:
+        now = utc_now()
+        with self._lock, self._connection:
+            cursor = self._connection.execute(
+                """UPDATE company_lists SET name=?,description=?,updated_at=?
+                   WHERE id=? AND organization_id=?""",
+                (name, description, now, list_id, organization_id),
+            )
+            if not cursor.rowcount:
+                raise SaaSError("Lista não encontrada.", 404)
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "company_list.updated",
+                subject_type="company_list",
+                subject_id=list_id,
+                occurred_at=now,
+            )
+        result = self.company_list_detail(organization_id, list_id)
+        assert result is not None
+        return result
+
     def add_companies(
         self,
         organization_id: int,

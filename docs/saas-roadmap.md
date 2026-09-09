@@ -24,7 +24,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] perfil comercial, saldo e livro-razão por organização;
 - [x] EchoHub com créditos ilimitados;
 - [x] desbloqueio único de CNPJ por organização;
-- [x] listas compartilhadas pela equipe;
+- [x] listas compartilhadas pela equipe, com nome e descrição editáveis;
 - [x] buscas salvas com os filtros completos, edição segura e opção de duplicar;
 - [x] navegação agrupada em “Buscar empresas”;
 - [x] telas responsivas de listas, buscas salvas e créditos;

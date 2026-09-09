@@ -631,6 +631,15 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertIn("perfil permite consultar", response["detail"])
+        company_list = self.saas.create_company_list(
+            self.other, self.owner["id"], name="Protegida",
+        )
+        status, response, _ = self.request(
+            f"/api/company-lists/{company_list['id']}", "PUT",
+            {"name": "Tentativa"}, viewer_token, headers,
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("perfil permite consultar", response["detail"])
         self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 2)
 
     def test_csrf_blocked_and_sensitive_input_not_echoed(self):
@@ -722,6 +731,22 @@ class OrganizationAPITests(unittest.TestCase):
             {"x-organization-id": str(self.other)},
         )
         self.assertEqual(status, 201)
+        status, company_list, _ = self.request(
+            f"/api/company-lists/{company_list['id']}", "PUT",
+            {"name": "Prospects prioritários", "description": "Contatar nesta semana"},
+            self.owner_token, {"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(company_list["name"], "Prospects prioritários")
+        self.assertEqual(company_list["description"], "Contatar nesta semana")
+        self.assertEqual(
+            self.request(
+                f"/api/company-lists/{company_list['id']}", "PUT",
+                {"name": "Tentativa externa"}, self.owner_token,
+                {"x-organization-id": str(self.org)},
+            )[0],
+            404,
+        )
         companies = [
             {"cnpj": "11222333000181", "legal_name": "Empresa A"},
             {"cnpj": "19131243000197", "legal_name": "Empresa B"},

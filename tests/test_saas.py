@@ -114,6 +114,24 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(self.store.list_saved_searches(5), [])
         self.assertEqual(self.store.list_company_lists(5), [])
 
+    def test_company_list_name_and_description_can_be_updated_inside_tenant(self):
+        self.store.ensure_organization(34)
+        self.store.ensure_organization(35)
+        company_list = self.store.create_company_list(
+            34, 60, name="Prospects", description="Primeira versão",
+        )
+        updated = self.store.update_company_list(
+            34, company_list["id"], 60,
+            name="Prospects prioritários", description="Contatar nesta semana",
+        )
+        self.assertEqual(updated["name"], "Prospects prioritários")
+        self.assertEqual(updated["description"], "Contatar nesta semana")
+        with self.assertRaises(SaaSError) as raised:
+            self.store.update_company_list(
+                35, company_list["id"], 61, name="Outra empresa",
+            )
+        self.assertEqual(raised.exception.status, 404)
+
     def test_saved_search_records_last_run_and_can_be_deleted(self):
         self.store.ensure_organization(6)
         saved = self.store.create_saved_search(

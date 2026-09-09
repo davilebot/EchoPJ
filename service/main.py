@@ -1622,6 +1622,19 @@ def get_company_list(list_id: str, user: dict = Depends(require_organization)) -
     return company_list
 
 
+@app.put("/api/company-lists/{list_id}")
+def update_company_list(
+    list_id: str,
+    payload: CompanyListRequest,
+    user: dict = Depends(require_organization),
+) -> dict:
+    require_capability(user, "manage_library", "alterar listas")
+    return saas_store.update_company_list(
+        user["organization_id"], list_id, user["id"],
+        name=payload.name, description=payload.description,
+    )
+
+
 @app.post("/api/company-lists/{list_id}/companies")
 def add_companies_to_list(
     list_id: str,
