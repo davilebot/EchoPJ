@@ -220,8 +220,12 @@ def build_search_query(
 
     states = _selected_states(filters)
     if states:
-        predicates.append("e.uf=ANY(%s)")
-        parameters.append(list(states))
+        if len(states) == 1:
+            predicates.append("e.uf=%s")
+            parameters.append(states[0])
+        else:
+            predicates.append("e.uf=ANY(%s)")
+            parameters.append(list(states))
     elif active_only and capital_filtered:
         # The partition indexes start with UF. Making the nationwide scope
         # explicit lets PostgreSQL seek directly into the capital range.

@@ -147,6 +147,17 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("ORDER BY e.share_capital,e.cnpj", candidate_sql)
         self.assertEqual(candidate_parameters, parameters)
 
+    def test_single_state_uses_direct_partition_predicate(self):
+        filters = CompanySearchRequest(
+            ufs=["SP"],
+            share_capital_min=60000,
+            share_capital_max=100000,
+        ).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn("e.uf=%s", sql)
+        self.assertNotIn("e.uf=ANY(%s)", sql)
+        self.assertEqual(parameters[0], "SP")
+
     def test_complete_cnae_can_include_secondary_activities(self):
         filters = CompanySearchRequest(cnae="6201501", cnae_scope="any").model_dump()
         sql, parameters = build_search_query(filters, SearchCapabilities())
