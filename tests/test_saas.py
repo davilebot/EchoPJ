@@ -125,6 +125,33 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertTrue(self.store.delete_saved_search(6, saved["id"]))
         self.assertFalse(self.store.delete_saved_search(6, saved["id"]))
 
+    def test_saved_search_can_be_renamed_or_updated_without_losing_run_context(self):
+        self.store.ensure_organization(32)
+        self.store.ensure_organization(33)
+        saved = self.store.create_saved_search(
+            32, 50, name="Indústrias", filters={"ufs": ["SP"], "limit": 100}, result_count=42,
+        )
+        renamed = self.store.update_saved_search(
+            32, saved["id"], 50, name="Indústrias de SP",
+            filters={"ufs": ["SP"], "limit": 100},
+        )
+        self.assertEqual(renamed["name"], "Indústrias de SP")
+        self.assertEqual(renamed["last_result_count"], 42)
+        self.assertEqual(renamed["last_run_at"], saved["last_run_at"])
+
+        changed = self.store.update_saved_search(
+            32, saved["id"], 50, name="Indústrias do Sudeste",
+            filters={"ufs": ["SP", "RJ"], "limit": 250},
+        )
+        self.assertEqual(changed["filters"]["ufs"], ["SP", "RJ"])
+        self.assertIsNone(changed["last_result_count"])
+        self.assertIsNone(changed["last_run_at"])
+        with self.assertRaises(SaaSError) as raised:
+            self.store.update_saved_search(
+                33, saved["id"], 51, name="Fora do tenant", filters={"limit": 1},
+            )
+        self.assertEqual(raised.exception.status, 404)
+
     def test_credit_grants_are_idempotent(self):
         self.store.ensure_organization(7, initial_credits=0)
         self.store.grant_credits(7, 500, description="Pagamento", idempotency_key="payment:abc")

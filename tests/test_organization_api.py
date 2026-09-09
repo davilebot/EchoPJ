@@ -622,6 +622,15 @@ class OrganizationAPITests(unittest.TestCase):
             status, response, _ = self.request(path, "POST", payload, viewer_token, headers)
             self.assertEqual(status, 403, path)
             self.assertIn("perfil permite consultar", response["detail"])
+        saved = self.saas.create_saved_search(
+            self.other, self.owner["id"], name="Protegida", filters={"limit": 1},
+        )
+        status, response, _ = self.request(
+            f"/api/saved-searches/{saved['id']}", "PUT",
+            {"name": "Tentativa", "filters": {"limit": 1}}, viewer_token, headers,
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("perfil permite consultar", response["detail"])
         self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 2)
 
     def test_csrf_blocked_and_sensitive_input_not_echoed(self):
@@ -690,8 +699,22 @@ class OrganizationAPITests(unittest.TestCase):
             {"x-organization-id": str(self.org)},
         )
         self.assertEqual(status, 201)
+        status, updated, _ = self.request(
+            f"/api/saved-searches/{saved['id']}", "PUT",
+            {**saved_payload, "name": "Empresas ativas de SP"}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["name"], "Empresas ativas de SP")
         self.assertEqual(
             self.request(f"/api/saved-searches/{saved['id']}", token=self.owner_token, headers={"x-organization-id": str(self.other)})[0],
+            404,
+        )
+        self.assertEqual(
+            self.request(
+                f"/api/saved-searches/{saved['id']}", "PUT", saved_payload,
+                self.owner_token, {"x-organization-id": str(self.other)},
+            )[0],
             404,
         )
         status, company_list, _ = self.request(

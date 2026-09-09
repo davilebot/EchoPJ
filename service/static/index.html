@@ -227,10 +227,10 @@
   </div>
   <dialog id="save-search-dialog" class="saas-dialog">
     <form id="save-search-form" class="dialog-form">
-      <div class="dialog-heading"><span class="eyebrow">SALVAR SEGMENTO</span><h2>Nomeie esta busca</h2><p>Os critérios atuais ficarão disponíveis para toda a organização.</p></div>
+      <div class="dialog-heading"><span id="save-search-eyebrow" class="eyebrow">SALVAR SEGMENTO</span><h2 id="save-search-title">Nomeie esta busca</h2><p id="save-search-description">Os critérios atuais ficarão disponíveis para toda a organização.</p></div>
       <label>Nome da busca<input id="saved-search-name" maxlength="120" required placeholder="Ex.: Autopeças ativas em São Paulo"></label>
       <p id="save-search-feedback" class="dialog-feedback hidden" role="alert"></p>
-      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Salvar busca</button></div>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button id="save-search-copy" class="secondary hidden" type="submit" value="create">Salvar como nova</button><button id="save-search-submit" type="submit" value="update">Salvar busca</button></div>
     </form>
   </dialog>
   <dialog id="save-list-dialog" class="saas-dialog">

@@ -1562,6 +1562,23 @@ def get_saved_search(search_id: str, user: dict = Depends(require_organization))
     return saved
 
 
+@app.put("/api/saved-searches/{search_id}")
+def update_saved_search(
+    search_id: str,
+    payload: SavedSearchRequest,
+    user: dict = Depends(require_organization),
+) -> dict:
+    require_capability(user, "manage_library", "alterar buscas salvas")
+    return saas_store.update_saved_search(
+        user["organization_id"],
+        search_id,
+        user["id"],
+        name=payload.name,
+        filters=payload.filters.model_dump(mode="json"),
+        result_count=payload.result_count,
+    )
+
+
 @app.post("/api/saved-searches/{search_id}/runs")
 def record_saved_search_run(
     search_id: str,

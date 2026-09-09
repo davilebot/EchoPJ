@@ -79,6 +79,7 @@ let lastCompanySearch = [];
 let lastCompanySearchPayload = null;
 let activeSavedSearchId = null;
 let activeSavedSearchFilters = null;
+let activeSavedSearchName = null;
 let selectedCompanyCnpjs = new Set();
 let searchSelectionEstimateTimer = null;
 let searchSelectionEstimateRequest = 0;
@@ -1553,7 +1554,7 @@ async function loadSavedSearches() {
     savedSearchesGrid.innerHTML = data.saved_searches.length ? data.saved_searches.map((saved) => `<article class="resource-card">
       <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg></div>
       <div class="resource-card-body"><span class="resource-meta">${saved.last_run_at ? `Usada ${formatDate(saved.last_run_at)}` : "Ainda não executada"}</span><h2>${escapeHtml(saved.name)}</h2><p>${escapeHtml(filtersDescription(saved.filters))}</p>${saved.last_result_count !== null ? `<small>${Number(saved.last_result_count).toLocaleString("pt-BR")} resultados na última execução</small>` : ""}</div>
-      <div class="resource-card-actions"><button type="button" data-use-saved-search="${saved.id}">Usar busca</button><button class="secondary" data-capability="manage-library" type="button" data-delete-saved-search="${saved.id}">Excluir</button></div>
+      <div class="resource-card-actions"><button type="button" data-use-saved-search="${saved.id}">Usar busca</button><button class="secondary" data-capability="manage-library" type="button" data-edit-saved-search="${saved.id}">Editar</button><button class="secondary" data-capability="manage-library" type="button" data-delete-saved-search="${saved.id}">Excluir</button></div>
     </article>`).join("") : `<div class="empty-state resource-empty"><strong>Nenhuma busca salva.</strong><p>Monte um segmento em “Busca com filtros” e use o botão “Salvar busca”.</p><button type="button" data-switch-tab="search">Criar primeira busca</button></div>`;
     savedSearchesGrid.dataset.searches = JSON.stringify(data.saved_searches);
     savedSearchesLoading.classList.add("hidden");
@@ -1602,8 +1603,7 @@ async function applySavedSearch(saved) {
   switchTab("search");
   const filters = saved.filters;
   await applySearchFilters(filters);
-  activeSavedSearchId = saved.id;
-  activeSavedSearchFilters = JSON.stringify(filters);
+  setActiveSavedSearch(saved);
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Busca salva: ${escapeHtml(saved.name)}`;
   companySearchForm.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1633,8 +1633,7 @@ async function applySearchTemplate(templateKey) {
   if (!template) return;
   await loadSearchCapabilities();
   await applySearchFilters(supportedTemplateFilters(template));
-  activeSavedSearchId = null;
-  activeSavedSearchFilters = null;
+  setActiveSavedSearch();
   companySearchResult.classList.add("hidden");
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Modelo aplicado: ${escapeHtml(template.name)}`;
@@ -1659,8 +1658,7 @@ async function deleteSavedSearch(searchId) {
   const response = await fetch(`/api/saved-searches/${searchId}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await responseError(response, "Não foi possível excluir a busca."));
   if (activeSavedSearchId === searchId) {
-    activeSavedSearchId = null;
-    activeSavedSearchFilters = null;
+    setActiveSavedSearch();
   }
   await loadSavedSearches();
   showToast("Busca excluída.");
@@ -1764,12 +1762,30 @@ function openCreateListDialog(templateKey = null) {
   document.querySelector("#create-list-name").focus();
 }
 
-document.querySelector("#save-current-search").addEventListener("click", () => {
-  document.querySelector("#saved-search-name").value = "";
+function setActiveSavedSearch(saved = null) {
+  activeSavedSearchId = saved?.id || null;
+  activeSavedSearchFilters = saved ? JSON.stringify(saved.filters) : null;
+  activeSavedSearchName = saved?.name || null;
+  document.querySelector("#save-current-search").textContent = saved ? "Salvar alterações" : "Salvar busca";
+}
+
+function openSaveSearchDialog() {
+  const editing = Boolean(activeSavedSearchId);
+  document.querySelector("#save-search-eyebrow").textContent = editing ? "ATUALIZAR SEGMENTO" : "SALVAR SEGMENTO";
+  document.querySelector("#save-search-title").textContent = editing ? "Salve os ajustes desta busca" : "Nomeie esta busca";
+  document.querySelector("#save-search-description").textContent = editing
+    ? "Atualize a busca da equipe ou guarde os critérios como um novo segmento."
+    : "Os critérios atuais ficarão disponíveis para toda a organização.";
+  document.querySelector("#saved-search-name").value = activeSavedSearchName || "";
+  document.querySelector("#save-search-copy").classList.toggle("hidden", !editing);
+  document.querySelector("#save-search-submit").textContent = editing ? "Atualizar busca" : "Salvar busca";
   setDialogFeedback(document.querySelector("#save-search-feedback"));
   saveSearchDialog.showModal();
   document.querySelector("#saved-search-name").focus();
-});
+  document.querySelector("#saved-search-name").select();
+}
+
+document.querySelector("#save-current-search").addEventListener("click", openSaveSearchDialog);
 
 document.querySelector("#save-search-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1779,16 +1795,19 @@ document.querySelector("#save-search-form").addEventListener("submit", async (ev
   const sameAsLastRun = lastCompanySearchPayload && JSON.stringify(filters) === JSON.stringify(lastCompanySearchPayload);
   const payload = { name: document.querySelector("#saved-search-name").value, filters };
   if (sameAsLastRun) payload.result_count = lastCompanySearch.length;
-  const response = await fetch("/api/saved-searches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const updateExisting = Boolean(activeSavedSearchId && event.submitter?.value !== "create");
+  const endpoint = updateExisting ? `/api/saved-searches/${activeSavedSearchId}` : "/api/saved-searches";
+  const response = await fetch(endpoint, { method: updateExisting ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   if (!response.ok) {
     setDialogFeedback(feedback, await responseError(response, "Não foi possível salvar a busca."));
     return;
   }
   const saved = await response.json();
-  activeSavedSearchId = saved.id;
-  activeSavedSearchFilters = JSON.stringify(saved.filters);
+  setActiveSavedSearch(saved);
   saveSearchDialog.close();
-  showToast("Busca salva para toda a organização.");
+  const guidance = document.querySelector(".filter-guidance");
+  guidance.innerHTML = `<span aria-hidden="true"></span>Busca salva: ${escapeHtml(saved.name)}`;
+  showToast(updateExisting ? "Alterações salvas para toda a organização." : "Nova busca salva para toda a organização.");
 });
 
 document.querySelector("#save-list-form").addEventListener("submit", async (event) => {
@@ -1877,6 +1896,15 @@ savedSearchesGrid.addEventListener("click", async (event) => {
     const searches = JSON.parse(savedSearchesGrid.dataset.searches || "[]");
     const saved = searches.find((item) => item.id === useButton.dataset.useSavedSearch);
     if (saved) await applySavedSearch(saved);
+  }
+  const editButton = event.target.closest("[data-edit-saved-search]");
+  if (editButton) {
+    const searches = JSON.parse(savedSearchesGrid.dataset.searches || "[]");
+    const saved = searches.find((item) => item.id === editButton.dataset.editSavedSearch);
+    if (saved) {
+      await applySavedSearch(saved);
+      openSaveSearchDialog();
+    }
   }
   const deleteButton = event.target.closest("[data-delete-saved-search]");
   if (deleteButton) {

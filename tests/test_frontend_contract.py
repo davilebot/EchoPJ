@@ -102,6 +102,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('class="usage-chart"', script)
         self.assertIn(".usage-chart", styles)
 
+    def test_saved_searches_can_be_updated_or_copied(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn('method: updateExisting ? "PUT" : "POST"', script)
+        self.assertIn("Salvar alterações", script)
+        self.assertIn("data-edit-saved-search", script)
+        self.assertIn('id="save-search-copy"', self.html)
+
     def test_workspace_fetches_are_scoped_to_selected_organization(self):
         workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("window.fetch = function workspaceScopedFetch", workspace)

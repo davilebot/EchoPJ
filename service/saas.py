@@ -2305,6 +2305,61 @@ class SaaSStore:
             ).fetchone()
         return self._saved_search(row) if row else None
 
+    def update_saved_search(
+        self,
+        organization_id: int,
+        search_id: str,
+        actor_id: int,
+        *,
+        name: str,
+        filters: dict[str, Any],
+        result_count: int | None = None,
+    ) -> dict[str, Any]:
+        now = utc_now()
+        filters_json = json.dumps(filters, ensure_ascii=False, sort_keys=True)
+        with self._lock, self._connection:
+            current = self._connection.execute(
+                "SELECT * FROM saved_searches WHERE id=? AND organization_id=?",
+                (search_id, organization_id),
+            ).fetchone()
+            if not current:
+                raise SaaSError("Busca salva não encontrada.", 404)
+            filters_changed = current["filters_json"] != filters_json
+            if result_count is not None:
+                last_result_count = result_count
+                last_run_at = now
+            elif filters_changed:
+                last_result_count = None
+                last_run_at = None
+            else:
+                last_result_count = current["last_result_count"]
+                last_run_at = current["last_run_at"]
+            self._connection.execute(
+                """UPDATE saved_searches
+                   SET name=?,filters_json=?,last_result_count=?,last_run_at=?,updated_at=?
+                   WHERE id=? AND organization_id=?""",
+                (
+                    name, filters_json, last_result_count, last_run_at, now,
+                    search_id, organization_id,
+                ),
+            )
+            self._insert_product_event(
+                organization_id,
+                actor_id,
+                "saved_search.updated",
+                subject_type="saved_search",
+                subject_id=search_id,
+                metadata={
+                    "filters_changed": filters_changed,
+                    "has_result_count": result_count is not None,
+                },
+                occurred_at=now,
+            )
+            row = self._connection.execute(
+                "SELECT * FROM saved_searches WHERE id=?", (search_id,),
+            ).fetchone()
+        return self._saved_search(row)
+
     def record_saved_search_run(
         self,
         organization_id: int,
