@@ -340,7 +340,6 @@ def build_search_query(
     parameters.append(limit)
     sql = f"""
         SELECT
-          count(*) OVER() AS total_count,
           e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
           e.registration_status_date,{opened_expression} AS opened_at,
           {company_size_expression} AS company_size,{share_capital_expression} AS share_capital,
@@ -360,3 +359,21 @@ def build_search_query(
         LIMIT %s
     """
     return sql, parameters
+
+
+def build_search_count_query(
+    filters: dict[str, Any],
+    capabilities: SearchCapabilities,
+) -> tuple[str, list[Any]]:
+    """Build the matching count without forcing the result query to scan every row.
+
+    Keeping the count separate lets PostgreSQL stop the ordered result query at
+    10,000 rows while still reporting the exact size of the full filtered set.
+    """
+    search_sql, parameters = build_search_query(filters, capabilities)
+    from_marker = "FROM rfb_establishments e"
+    order_marker = "ORDER BY e.cnpj"
+    from_and_where = search_sql[
+        search_sql.index(from_marker):search_sql.rindex(order_marker)
+    ]
+    return f"SELECT count(*) AS total_count\n{from_and_where}", parameters[:-1]

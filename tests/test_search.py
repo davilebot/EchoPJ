@@ -8,6 +8,7 @@ from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 from service.search import (
     SearchCapabilities,
     SearchCapabilityUnavailable,
+    build_search_count_query,
     build_search_query,
 )
 
@@ -84,8 +85,14 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("e.primary_cnae LIKE %s", sql)
         self.assertEqual(parameters[0], ["ES", "MG", "RJ", "SP"])
         self.assertEqual(parameters[1], "62%")
-        self.assertIn("count(*) OVER() AS total_count", sql)
+        self.assertNotIn("count(*) OVER() AS total_count", sql)
         self.assertEqual(parameters[-1], 500)
+
+        count_sql, count_parameters = build_search_count_query(filters, SearchCapabilities())
+        self.assertIn("SELECT count(*) AS total_count", count_sql)
+        self.assertNotIn("ORDER BY e.cnpj", count_sql)
+        self.assertNotIn("LIMIT %s", count_sql)
+        self.assertEqual(count_parameters, parameters[:-1])
 
     def test_exact_cnae_uses_equality(self):
         filters = CompanySearchRequest(cnae="6201501").model_dump()

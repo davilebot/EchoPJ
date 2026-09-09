@@ -12,7 +12,7 @@ from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 
-from .search import SearchCapabilities, build_search_query
+from .search import SearchCapabilities, build_search_count_query, build_search_query
 from .explorer import FIELD_GROUPS, RELATION_CATALOG, RELATION_CATALOG_BY_NAME, cnpj_root_bounds
 
 
@@ -191,15 +191,17 @@ class Repository:
         started = monotonic()
         capabilities = self.search_capabilities()
         sql, parameters = build_search_query(filters, capabilities)
+        count_sql, count_parameters = build_search_count_query(filters, capabilities)
         partners_by_root: dict[str, list[dict[str, Any]]] = {}
         with self.pool.connection() as connection:
             connection.execute(
                 "SELECT set_config('statement_timeout',%s,true)",
-                (str(60_000 if filters.get("partner_age_ranges") else max(15_000, self.statement_timeout_ms * 5)),),
+                (str(max(60_000, self.statement_timeout_ms * 10)),),
             )
+            count_row = connection.execute(count_sql, count_parameters).fetchone()
             rows = connection.execute(sql, parameters).fetchall()
         limit = int(filters["limit"])
-        total_count = int(rows[0]["total_count"]) if rows else 0
+        total_count = int(count_row["total_count"]) if count_row else 0
         has_more = total_count > len(rows)
         duration_ms = round((monotonic() - started) * 1000)
         results = []
