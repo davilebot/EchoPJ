@@ -119,6 +119,7 @@ class FrontendContractTests(unittest.TestCase):
         admin_script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
         self.assertIn('id="plans-grid"', plans)
         self.assertIn('fetch("/api/billing/catalog")', plans_script)
+        self.assertIn('fetch("/api/auth/status")', plans_script)
         self.assertIn('fetch("/api/billing/checkouts"', script)
         self.assertIn('data-billing-plan=', script)
         self.assertIn('id="admin-billing-events"', admin)
@@ -127,6 +128,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="admin-operations-grid"', admin)
         self.assertIn("renderOperations", admin_script)
         self.assertIn('/api/admin/operations', admin_script)
+
+    def test_public_product_page_explains_the_complete_customer_workflow(self):
+        html = (STATIC_DIR / "product.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "product.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "product.css").read_text(encoding="utf-8")
+        for text in ("Busca com filtros", "Consulta de CNPJs", "Identificação de CNPJ", "Buscas salvas", "Listas", "Administrador", "Membro", "Consulta"):
+            self.assertIn(text, html)
+        self.assertGreaterEqual(html.count("data-signup-cta"), 3)
+        self.assertIn('fetch("/api/auth/status")', script)
+        self.assertIn('fetch("/health")', script)
+        self.assertIn("@media(max-width:680px)", styles)
 
     def test_search_and_list_templates_start_from_editable_examples(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

@@ -167,7 +167,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/billing/return"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/produto", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/billing/return"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -369,6 +369,11 @@ def login_page(request: Request) -> Response:
 @app.get("/plans")
 def plans_page() -> Response:
     return FileResponse(static_dir / "plans.html")
+
+
+@app.get("/produto")
+def product_page() -> Response:
+    return FileResponse(static_dir / "product.html")
 
 
 @app.get("/billing/return")

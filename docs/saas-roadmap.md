@@ -65,7 +65,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] metas iniciais de disponibilidade, latência, erro e recuperação documentadas;
 - [x] processo de atendimento dentro do produto, com chamado por organização, histórico, prioridade, fila interna e notificação de resposta;
 - testes de carga com base representativa;
-- domínio comercial, páginas institucionais e documentação para clientes.
+- [x] página institucional responsiva do produto, com proposta de valor, fluxos, créditos, equipe, segurança e CTAs adaptados à disponibilidade do cadastro;
+- domínio comercial e documentação jurídica para clientes.
 
 ## Decisões pendentes
 

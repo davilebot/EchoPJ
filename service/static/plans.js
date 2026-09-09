@@ -1,5 +1,6 @@
 const grid = document.querySelector("#plans-grid");
 const state = document.querySelector("#billing-state");
+const signupAction = document.querySelector("[data-signup-cta]");
 
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[character]));
@@ -38,3 +39,8 @@ fetch("/api/billing/catalog").then(async (response) => {
   state.textContent = "Catálogo indisponível";
   grid.innerHTML = `<article class="catalog-pending"><h3>Não foi possível carregar os planos.</h3><p>${escapeHtml(error.message)}</p><button type="button" onclick="location.reload()">Tentar novamente</button></article>`;
 });
+
+fetch("/api/auth/status").then((response) => response.ok ? response.json() : null).then((status) => {
+  signupAction.href = status?.signup_available ? "/signup" : "/login";
+  signupAction.textContent = status?.signup_available ? "Começar avaliação" : "Acessar plataforma";
+}).catch(() => {});

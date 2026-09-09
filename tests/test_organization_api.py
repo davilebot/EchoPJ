@@ -417,6 +417,9 @@ class OrganizationAPITests(unittest.TestCase):
         status, plans, headers = self.request("/plans")
         self.assertEqual(status, 200); self.assertIn('id="plans-grid"', plans)
         self.assertIn(b"no-store", headers[b"cache-control"])
+        status, product, headers = self.request("/produto")
+        self.assertEqual(status, 200); self.assertIn('id="produto-em-acao"', product)
+        self.assertIn(b"no-store", headers[b"cache-control"])
 
     def test_saas_resources_are_tenant_scoped_and_credits_are_enforced(self):
         saved_payload = {
