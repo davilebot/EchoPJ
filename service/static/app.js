@@ -1303,7 +1303,24 @@ function scheduleCompanySearchPreview({ immediate = false } = {}) {
   clearTimeout(searchPreviewTimer);
   const payload = companySearchPayload();
   if (!hasMeaningfulCompanyFilters(payload)) {
+    searchPreviewRequest += 1;
     if (searchPreviewController) searchPreviewController.abort();
+    lastCompanySearch = [];
+    lastCompanySearchData = null;
+    selectedCompanyCnpjs = new Set();
+    activeCompanySearchView = "total";
+    document.querySelectorAll("[data-search-view-count]").forEach((element) => { element.textContent = "0"; });
+    document.querySelectorAll("[data-search-view]").forEach((button) => {
+      const active = button.dataset.searchView === "total";
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    companySearchForm.removeAttribute("aria-busy");
+    const submitButton = companySearchForm.querySelector('button[type="submit"]');
+    submitButton.disabled = false;
+    submitButton.textContent = "Buscar agora";
+    companySearchLoading.classList.add("hidden");
+    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. A prévia aparecerá aqui automaticamente.</p></div>`;
     setSearchPreviewStatus("Aguardando filtros");
     return;
   }
