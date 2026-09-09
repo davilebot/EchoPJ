@@ -195,6 +195,39 @@ class AsaasClient:
             raise PaymentError("O provedor não devolveu um link de checkout válido.", 502)
         return {"provider_checkout_id": checkout_id, "checkout_url": checkout_url}
 
+    def cancel_subscription(self, provider_subscription_id: str) -> dict[str, Any]:
+        """Permanently stop a recurrence after the customer confirms the action."""
+        subscription_id = provider_subscription_id.strip()
+        if not self.available:
+            raise PaymentError("A gestão da assinatura ainda não foi ativada pela EchoHub.", 503)
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,255}", subscription_id):
+            raise PaymentError("A assinatura não possui um identificador válido no provedor.", 409)
+        request = Request(
+            f"{self.api_url}/v3/subscriptions/{subscription_id}",
+            method="DELETE",
+            headers={
+                "access_token": self.api_key,
+                "accept": "application/json",
+                "user-agent": "EchoPJs/1.0 billing",
+            },
+        )
+        try:
+            with self._opener(request, timeout=self.timeout) as response:
+                raw = response.read().decode("utf-8")
+                result = json.loads(raw) if raw else {}
+        except HTTPError as error:
+            try:
+                provider_error = json.loads(error.read().decode("utf-8"))
+                detail = provider_error.get("errors", [{}])[0].get("description")
+            except Exception:
+                detail = None
+            raise PaymentError(detail or "O provedor recusou o cancelamento da assinatura.", 502) from error
+        except (URLError, TimeoutError, json.JSONDecodeError) as error:
+            raise PaymentError("O cancelamento está temporariamente indisponível. Tente novamente.", 502) from error
+        if result.get("deleted") is not True:
+            raise PaymentError("O provedor não confirmou o cancelamento da assinatura.", 502)
+        return {"provider_subscription_id": subscription_id, "canceled": True}
+
 
 def normalize_asaas_event(payload: Any) -> dict[str, Any]:
     """Extract only reconciliation fields and tolerate new provider attributes."""
@@ -207,6 +240,14 @@ def normalize_asaas_event(payload: Any) -> dict[str, Any]:
     checkout = payload.get("checkout") if isinstance(payload.get("checkout"), dict) else {}
     payment = payload.get("payment") if isinstance(payload.get("payment"), dict) else {}
     subscription = payload.get("subscription") if isinstance(payload.get("subscription"), dict) else {}
+    payment_subscription = payment.get("subscription")
+    checkout_subscription = checkout.get("subscription")
+    payment_subscription_id = (
+        payment_subscription.get("id") if isinstance(payment_subscription, dict) else payment_subscription
+    )
+    checkout_subscription_id = (
+        checkout_subscription.get("id") if isinstance(checkout_subscription, dict) else checkout_subscription
+    )
     amount_cents = None
     if payment.get("value") is not None:
         try:
@@ -222,7 +263,12 @@ def normalize_asaas_event(payload: Any) -> dict[str, Any]:
         "provider_checkout_id": str(checkout.get("id", "")).strip() or None,
         "provider_payment_id": str(payment.get("id", "")).strip() or None,
         "provider_subscription_id": str(
-            subscription.get("id") or payment.get("subscription") or checkout.get("subscription") or ""
+            subscription.get("id") or payment_subscription_id or checkout_subscription_id or ""
         ).strip() or None,
         "amount_cents": amount_cents,
+        "payment_status": str(payment.get("status", "")).strip().upper() or None,
+        "payment_due_date": str(payment.get("dueDate", "")).strip()[:20] or None,
+        "payment_billing_type": str(payment.get("billingType", "")).strip().upper()[:40] or None,
+        "subscription_status": str(subscription.get("status", "")).strip().upper() or None,
+        "subscription_next_due_date": str(subscription.get("nextDueDate", "")).strip()[:20] or None,
     }

@@ -146,8 +146,8 @@ summary { cursor: pointer; font-size: 14px; }
 .stage-activated { color: #7dd3fc; background: rgba(3, 105, 161, .2); }
 .stage-value { color: #c4b5fd; background: rgba(109, 40, 217, .2); }
 .stage-converted, .stage-internal { color: var(--accent); background: rgba(13, 148, 136, .18); }
-.status-past_due { color: #ffd166; background: rgba(146, 64, 14, .3); }
-.status-canceled, .status-suspended { color: var(--danger); background: rgba(153, 27, 27, .22); }
+.status-past_due, .status-overdue, .status-refund_pending, .status-review, .status-pending { color: #ffd166; background: rgba(146, 64, 14, .3); }
+.status-canceled, .status-suspended, .status-inactive, .status-failed, .status-refunded, .status-chargeback { color: var(--danger); background: rgba(153, 27, 27, .22); }
 .admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 11px; }
 .admin-pagination > div { display: flex; gap: 8px; }
 .admin-empty { display: grid; gap: 5px; padding: 24px; text-align: center; }
@@ -163,6 +163,10 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .admin-ledger { margin-top: 24px; }
 .admin-ledger h3 { margin-bottom: 12px; }
+.admin-subscription-summary { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 12px; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.admin-subscription-summary > div { display: grid; gap: 4px; }
+.admin-subscription-summary strong { font-size: 11px; }
+.admin-subscription-summary small, .admin-subscription-summary span { color: var(--muted); font-size: 9px; }
 .credit-positive { color: var(--success); }
 .credit-negative { color: var(--danger); }
 .admin-support-filter { display: grid; min-width: min(100%, 610px); grid-template-columns: 160px minmax(190px, 1fr) auto; gap: 8px; }
@@ -216,6 +220,7 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-funnel-stages { grid-template-columns: 1fr; }
   .admin-funnel-stages p { min-height: 0; }
   .admin-form-grid, .admin-detail-metrics { grid-template-columns: 1fr; }
+  .admin-subscription-summary { flex-direction: column; }
   .admin-search { grid-template-columns: 1fr; }
   .admin-pagination { align-items: stretch; flex-direction: column; }
   .admin-pagination > div { display: grid; grid-template-columns: 1fr 1fr; }

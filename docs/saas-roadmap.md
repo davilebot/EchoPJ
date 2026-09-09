@@ -37,7 +37,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] infraestrutura de checkout hospedado Asaas com preços configuráveis, desativada até receber catálogo e credenciais;
 - assinatura mensal e pacotes avulsos de créditos;
 - [x] endpoint de webhooks Asaas autenticado, idempotente e auditável, com conferência do valor antes de liberar créditos;
-- renovação, inadimplência, cancelamento e reativação;
+- [x] renovação, inadimplência, cancelamento autenticado e reativação, com histórico separado por ciclo e revisão de estornos;
 - notas e recibos fornecidos pelo provedor;
 - [x] painel interno para consultar organizações, planos e concessões manuais;
 - [x] pedidos e eventos de cobrança no painel interno, prontos para receber a integração ativada;

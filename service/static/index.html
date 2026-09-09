@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-search-ux-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-billing-cycle-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -252,8 +252,17 @@
       <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Cancelar</button><button type="submit">Criar lista</button></div>
     </form>
   </dialog>
+  <dialog id="cancel-subscription-dialog" class="saas-dialog">
+    <form id="cancel-subscription-form" class="dialog-form">
+      <div class="dialog-heading"><span class="eyebrow">CANCELAR RENOVAÇÃO</span><h2>Confirme o cancelamento</h2><p>A cobrança recorrente será encerrada no provedor. Os créditos que já estão no saldo continuam disponíveis.</p></div>
+      <label>Senha atual<input id="cancel-subscription-password" type="password" maxlength="1024" autocomplete="current-password" required></label>
+      <label>Motivo opcional<textarea id="cancel-subscription-reason" maxlength="500" rows="3" placeholder="Conte o que motivou o cancelamento"></textarea></label>
+      <p id="cancel-subscription-feedback" class="dialog-feedback hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="secondary" data-close-dialog type="button">Voltar</button><button class="danger-button" type="submit">Cancelar renovação</button></div>
+    </form>
+  </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-search-ux-1"></script>
+  <script src="/static/app.js?v=20260909-billing-cycle-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-      <link rel="stylesheet" href="/static/auth.css?v=20260909-privacy-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-billing-cycle-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -70,6 +70,7 @@
         <div class="admin-form-grid"><label>Quantidade<input id="admin-credit-amount" type="number" min="-1000000" max="1000000" step="1" required placeholder="Ex.: 500"></label><label>Motivo<input id="admin-credit-description" maxlength="200" minlength="3" required placeholder="Ex.: Crédito comercial aprovado"></label></div>
         <button type="submit">Registrar ajuste</button>
       </form>
+      <section class="admin-ledger"><h3>Assinatura e ciclos</h3><div id="admin-subscription-summary" class="admin-subscription-summary"></div><div class="admin-table-wrap"><table><thead><tr><th>Atualização</th><th>Plano</th><th>Valor</th><th>Créditos</th><th>Status</th></tr></thead><tbody id="admin-payments"></tbody></table></div></section>
       <section class="admin-ledger"><h3>Pedidos de pagamento</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Oferta</th><th>Valor</th><th>Créditos</th><th>Status</th></tr></thead><tbody id="admin-orders"></tbody></table></div></section>
       <section class="admin-ledger"><h3>Histórico comercial</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Variação</th><th>Saldo</th></tr></thead><tbody id="admin-ledger"></tbody></table></div></section>
     </section>
@@ -93,6 +94,6 @@
       <form id="admin-privacy-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Registre o estágio e uma orientação que também ficará visível para o titular.</p></div></div><label>Status<select id="admin-privacy-edit-status"><option value="requested">Recebida</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovada para processamento</option><option value="canceled">Cancelada</option><option value="closed">Encerrada</option></select></label><label>Nota de tratamento<textarea id="admin-privacy-note" maxlength="2000" rows="4" placeholder="Ex.: Precisamos confirmar a transferência do workspace antes da exclusão"></textarea></label><button type="submit">Salvar tratamento</button></form>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-privacy-1"></script>
+  <script src="/static/admin.js?v=20260909-billing-cycle-1"></script>
 </body>
 </html>

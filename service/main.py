@@ -35,6 +35,7 @@ from .models import (
     PrivacyPasswordRequest,
     SignupRequest,
     SignupVerificationRequest,
+    BillingCancellationRequest,
     BillingCheckoutRequest,
     BillingProfileUpdateRequest,
     CreditAdjustmentRequest,
@@ -822,10 +823,24 @@ def create_billing_checkout(
         raise PaymentError("O provedor de cobrança configurado não é suportado.", 503)
     if not 32 <= len(settings.asaas_webhook_token) <= 255:
         raise PaymentError("O checkout aguarda a configuração segura dos webhooks.", 503)
-    offer = billing_catalog.get(payload.plan_code)
     client_key = request.headers.get("idempotency-key")
     if client_key and (len(client_key) > 120 or not all(character.isalnum() or character in "-_:" for character in client_key)):
         raise HTTPException(status_code=422, detail="Chave de repetição inválida.")
+    offer = billing_catalog.get(payload.plan_code)
+    if offer.kind == "subscription":
+        blocker = saas_store.subscription_purchase_blocker(
+            user["organization_id"], client_key=client_key,
+        )
+        if blocker:
+            if blocker["kind"] == "checkout":
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Já existe um checkout de {blocker['plan_name']} aguardando conclusão. Continue pelo histórico de pagamentos.",
+                )
+            raise HTTPException(
+                status_code=409,
+                detail=f"A organização já possui a assinatura {blocker['plan_name']}. Cancele a renovação atual antes de contratar outra.",
+            )
     order = saas_store.create_billing_order(
         user["organization_id"],
         user["id"],
@@ -850,6 +865,40 @@ def create_billing_checkout(
         saas_store.billing_checkout_failed(user["organization_id"], order["id"])
         raise
     return saas_store.billing_checkout_created(user["organization_id"], order["id"], **checkout)
+
+
+@app.delete("/api/billing/subscription")
+def cancel_billing_subscription(
+    payload: BillingCancellationRequest,
+    user: dict = Depends(require_organization),
+) -> dict:
+    if user["organization_role"] != "admin":
+        raise HTTPException(status_code=403, detail="Somente administradores podem cancelar a assinatura.")
+    if user["billing"]["is_internal"]:
+        raise HTTPException(status_code=409, detail="O plano interno da EchoHub não possui cobrança recorrente.")
+    if not auth_store.verify_password(user["id"], payload.current_password):
+        raise HTTPException(status_code=401, detail="A senha atual está incorreta.")
+    if (
+        not settings.saas_billing_enabled
+        or settings.saas_billing_provider != "asaas"
+        or not asaas_client.available
+        or not 32 <= len(settings.asaas_webhook_token) <= 255
+    ):
+        raise PaymentError("A gestão da assinatura ainda não foi ativada pela EchoHub.", 503)
+    action = saas_store.begin_subscription_cancellation(
+        user["organization_id"], user["id"], reason=payload.reason,
+    )
+    try:
+        asaas_client.cancel_subscription(action["provider_subscription_id"])
+    except PaymentError as error:
+        saas_store.fail_subscription_cancellation(action["id"], str(error))
+        raise
+    subscription = saas_store.complete_subscription_cancellation(action["id"])
+    return {
+        "canceled": True,
+        "subscription": subscription,
+        "message": "A renovação foi cancelada. Os créditos que já estavam no saldo continuam disponíveis.",
+    }
 
 
 @app.post("/api/webhooks/asaas")

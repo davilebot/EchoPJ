@@ -13,9 +13,32 @@ do catálogo e das credenciais.
 4. O retorno do navegador informa somente o andamento ao usuário.
 5. O saldo e o plano mudam depois de `PAYMENT_RECEIVED`,
    `PAYMENT_CONFIRMED` ou `PAYMENT_RECEIVED_IN_CASH` no webhook.
-6. O identificador do pagamento impede crédito duplicado em eventos reenviados.
-7. Se o valor recebido divergir do pedido, nada é liberado e o pedido fica
+6. O pedido inicial, a assinatura recorrente e cada cobrança mensal ficam em
+   registros separados. Assim, cada renovação tem status, vencimento e crédito próprios.
+7. O identificador do pagamento impede crédito duplicado em eventos reenviados.
+8. Se o valor recebido divergir do pedido, nada é liberado e o pedido fica
    `needs_review`.
+
+## Ciclo da assinatura
+
+- `PAYMENT_OVERDUE` e falhas de cartão deixam a assinatura como `past_due`, sem
+  apagar créditos já adquiridos;
+- a confirmação posterior do mesmo pagamento concede os créditos uma única vez
+  e restaura o status ativo quando não existe outra cobrança problemática;
+- cada novo identificador de pagamento representa uma renovação e gera uma nova
+  entrada no histórico financeiro;
+- `SUBSCRIPTION_INACTIVATED` e `SUBSCRIPTION_DELETED` encerram a renovação. Um
+  pagamento entregue fora de ordem ainda pode ser conciliado, mas não reativa
+  uma assinatura cancelada;
+- `SUBSCRIPTION_UPDATED` com status ativo reativa uma assinatura que estava
+  inativa, desde que não existam cobranças pendentes;
+- estornos e contestações não tentam produzir saldo negativo automaticamente:
+  eles vão para revisão no painel interno.
+
+Um administrador pode cancelar a renovação na tela **Plano e créditos**. A ação
+exige a senha atual, guarda o motivo opcional para auditoria e remove a assinatura
+no Asaas. Os créditos remanescentes continuam no saldo. Depois de um cancelamento
+permanente, a reativação cria uma nova assinatura por um novo checkout.
 
 ## Configuração
 
@@ -60,6 +83,8 @@ também precisa de `cycle`. Preços são sempre inteiros em centavos.
 - entrega: sequencial;
 - eventos mínimos: `CHECKOUT_PAID`, `CHECKOUT_CANCELED`, `CHECKOUT_EXPIRED`,
   `PAYMENT_RECEIVED`, `PAYMENT_CONFIRMED`, `PAYMENT_OVERDUE`,
+  `PAYMENT_CREDIT_CARD_CAPTURE_REFUSED`, `PAYMENT_REFUNDED`,
+  `PAYMENT_PARTIALLY_REFUNDED`, `PAYMENT_CHARGEBACK_REQUESTED`,
   `SUBSCRIPTION_CREATED`, `SUBSCRIPTION_UPDATED`, `SUBSCRIPTION_INACTIVATED` e
   `SUBSCRIPTION_DELETED`.
 
@@ -76,7 +101,8 @@ Antes de mudar `SAAS_BILLING_ENABLED` para `true`:
 3. configurar o webhook com token próprio;
 4. executar Pix e cartão de teste e verificar pedido, evento, plano e saldo;
 5. repetir o teste de reenvio do mesmo evento;
-6. cadastrar as credenciais de produção, trocar `ASAAS_API_URL` e refazer um
+6. testar renovação, atraso, recuperação, cancelamento e nova contratação;
+7. cadastrar as credenciais de produção, trocar `ASAAS_API_URL` e refazer um
    pagamento real controlado.
 
 Boleto exige um fluxo hospedado complementar por Link de Pagamento ou uma

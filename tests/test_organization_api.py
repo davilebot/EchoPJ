@@ -307,18 +307,49 @@ class OrganizationAPITests(unittest.TestCase):
             )
             self.assertEqual(status, 201)
             self.assertEqual(checkout["checkout_url"], "https://sandbox.asaas.com/checkout/api")
+            retry = self.request(
+                "/api/billing/checkouts", "POST", {"plan_code": "growth"}, self.owner_token, headers,
+            )
+            self.assertEqual(retry[0], 201)
+            self.assertEqual(retry[1]["id"], checkout["id"])
+            duplicate_headers = {"x-organization-id": str(self.other), "idempotency-key": "checkout-api-2"}
+            self.assertEqual(
+                self.request(
+                    "/api/billing/checkouts", "POST", {"plan_code": "growth"}, self.owner_token, duplicate_headers,
+                )[0],
+                409,
+            )
+            provider.create_checkout.assert_called_once()
             order = self.saas.billing_summary(self.other)["orders"][0]
             event = {
                 "id": "evt_api_1", "event": "PAYMENT_RECEIVED",
-                "payment": {"id": "pay_api_1", "externalReference": f"echopjs-order:{order['id']}", "value": 149.9},
+                "payment": {"id": "pay_api_1", "subscription": "sub_api_1", "externalReference": f"echopjs-order:{order['id']}", "value": 149.9},
             }
             self.assertEqual(self.request("/api/webhooks/asaas", "POST", event)[0], 401)
             webhook_headers = {"asaas-access-token": "webhook-secret-with-at-least-32-chars"}
             self.assertEqual(self.request("/api/webhooks/asaas", "POST", event, headers=webhook_headers)[0], 200)
             duplicate = self.request("/api/webhooks/asaas", "POST", event, headers=webhook_headers)[1]
             self.assertTrue(duplicate["duplicate"])
+            self.assertEqual(
+                self.request(
+                    "/api/billing/subscription", "DELETE",
+                    {"current_password": "wrong", "reason": "Sem uso"}, self.owner_token, headers,
+                )[0],
+                401,
+            )
+            provider.cancel_subscription.return_value = {
+                "provider_subscription_id": "sub_api_1", "canceled": True,
+            }
+            status, canceled, _ = self.request(
+                "/api/billing/subscription", "DELETE",
+                {"current_password": "test-only-password", "reason": "Sem uso"}, self.owner_token, headers,
+            )
+            self.assertEqual(status, 200)
+            self.assertTrue(canceled["canceled"])
+            provider.cancel_subscription.assert_called_once_with("sub_api_1")
         self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 1002)
         self.assertEqual(self.saas.billing_summary(self.other)["profile"]["plan_code"], "growth")
+        self.assertEqual(self.saas.billing_summary(self.other)["profile"]["subscription_status"], "canceled")
 
     def test_suspended_customer_workspace_is_blocked(self):
         self.saas.update_billing_profile(

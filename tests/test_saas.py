@@ -144,8 +144,19 @@ class SaaSStoreTests(unittest.TestCase):
             cycle="MONTHLY", client_key="checkout-click-1",
         )
         self.assertEqual(repeated["id"], order["id"])
+        with self.assertRaises(SaaSError):
+            self.store.create_billing_order(
+                22, 7, provider="asaas", kind="subscription", plan_code="scale",
+                plan_name="Escala", price_cents=39990, credits=4000,
+                cycle="MONTHLY", client_key="checkout-click-1",
+            )
         self.store.billing_checkout_created(
             22, order["id"], provider_checkout_id="chk_1", checkout_url="https://sandbox.asaas.com/checkout/1",
+        )
+        self.assertIsNone(self.store.subscription_purchase_blocker(22, client_key="checkout-click-1"))
+        self.assertEqual(
+            self.store.subscription_purchase_blocker(22, client_key="another-click")["kind"],
+            "checkout",
         )
         checkout_event = self.store.process_billing_event(
             provider="asaas", event_id="evt_checkout", event_type="CHECKOUT_PAID",
@@ -164,9 +175,121 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(summary["profile"]["credit_balance"], 1000)
         self.assertEqual(summary["profile"]["plan_code"], "growth")
         self.assertEqual(summary["orders"][0]["status"], "paid")
+        self.assertEqual(summary["subscription"]["status"], "active")
+        self.assertEqual(summary["payments"][0]["credits_granted"], 1000)
+        self.assertEqual(summary["payments"][0]["status"], "received")
         duplicate = self.store.process_billing_event(event_id="evt_payment_received", **payment)
         self.assertTrue(duplicate["duplicate"])
         self.assertEqual(len(self.store.admin_billing_events()), 3)
+
+    def test_subscription_renewal_overdue_recovery_cancellation_and_reactivation(self):
+        self.store.ensure_organization(24, initial_credits=0)
+        order = self.store.create_billing_order(
+            24, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000, cycle="MONTHLY",
+        )
+        common = {
+            "provider": "asaas", "payload_digest": "d" * 64,
+            "external_reference": order["external_reference"], "provider_subscription_id": "sub_cycle_1",
+            "amount_cents": 14990,
+        }
+        self.store.process_billing_event(
+            event_id="evt_first", event_type="PAYMENT_CONFIRMED",
+            provider_payment_id="pay_cycle_1", **common,
+        )
+        self.store.process_billing_event(
+            event_id="evt_overdue", event_type="PAYMENT_OVERDUE",
+            provider_payment_id="pay_cycle_2", **common,
+        )
+        overdue = self.store.billing_summary(24)
+        self.assertEqual(overdue["profile"]["subscription_status"], "past_due")
+        self.assertEqual(overdue["subscription"]["status"], "past_due")
+        self.assertEqual(overdue["profile"]["credit_balance"], 1000)
+        self.store.process_billing_event(
+            event_id="evt_renewed", event_type="PAYMENT_RECEIVED",
+            provider_payment_id="pay_cycle_2", **common,
+        )
+        renewed = self.store.billing_summary(24)
+        self.assertEqual(renewed["profile"]["subscription_status"], "active")
+        self.assertEqual(renewed["profile"]["credit_balance"], 2000)
+        self.assertEqual(len(renewed["payments"]), 2)
+
+        self.store.process_billing_event(
+            provider="asaas", event_id="evt_deleted", event_type="SUBSCRIPTION_DELETED",
+            payload_digest="e" * 64, provider_subscription_id="sub_cycle_1",
+            subscription_status="INACTIVE",
+        )
+        canceled = self.store.billing_summary(24)
+        self.assertEqual(canceled["profile"]["subscription_status"], "canceled")
+        self.assertEqual(canceled["subscription"]["status"], "canceled")
+        self.store.process_billing_event(
+            event_id="evt_late_payment", event_type="PAYMENT_RECEIVED",
+            provider_payment_id="pay_cycle_late", **common,
+        )
+        late = self.store.billing_summary(24)
+        self.assertEqual(late["profile"]["subscription_status"], "canceled")
+        self.assertEqual(late["profile"]["credit_balance"], 3000)
+
+        new_order = self.store.create_billing_order(
+            24, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000, cycle="MONTHLY",
+        )
+        self.store.process_billing_event(
+            provider="asaas", event_id="evt_reactivated", event_type="PAYMENT_RECEIVED",
+            payload_digest="f" * 64, external_reference=new_order["external_reference"],
+            provider_payment_id="pay_reactivated", provider_subscription_id="sub_cycle_2",
+            amount_cents=14990,
+        )
+        reactivated = self.store.billing_summary(24)
+        self.assertEqual(reactivated["profile"]["subscription_status"], "active")
+        self.assertEqual(reactivated["subscription"]["provider_subscription_id"], "sub_cycle_2")
+        self.assertEqual(reactivated["profile"]["credit_balance"], 4000)
+
+    def test_subscription_cancellation_action_is_audited_and_keeps_balance(self):
+        self.store.ensure_organization(25, initial_credits=12)
+        order = self.store.create_billing_order(
+            25, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000, cycle="MONTHLY",
+        )
+        self.store.process_billing_event(
+            provider="asaas", event_id="evt_active", event_type="PAYMENT_RECEIVED",
+            payload_digest="a" * 64, external_reference=order["external_reference"],
+            provider_payment_id="pay_active", provider_subscription_id="sub_cancel",
+            amount_cents=14990,
+        )
+        action = self.store.begin_subscription_cancellation(25, 7, reason="Não preciso mais")
+        subscription = self.store.complete_subscription_cancellation(action["id"])
+        self.assertEqual(subscription["status"], "canceled")
+        summary = self.store.billing_summary(25)
+        self.assertEqual(summary["profile"]["credit_balance"], 1012)
+        self.assertEqual(summary["profile"]["subscription_status"], "canceled")
+        self.assertEqual(summary["cancellation"]["status"], "completed")
+        with self.assertRaises(SaaSError):
+            self.store.begin_subscription_cancellation(25, 7)
+
+    def test_refund_is_flagged_without_creating_an_automatic_negative_balance(self):
+        self.store.ensure_organization(26, initial_credits=0)
+        order = self.store.create_billing_order(
+            26, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000, cycle="MONTHLY",
+        )
+        common = {
+            "provider": "asaas", "payload_digest": "9" * 64,
+            "external_reference": order["external_reference"], "provider_payment_id": "pay_refund",
+            "provider_subscription_id": "sub_refund", "amount_cents": 14990,
+        }
+        self.store.process_billing_event(
+            event_id="evt_refund_paid", event_type="PAYMENT_RECEIVED", **common,
+        )
+        refunded = self.store.process_billing_event(
+            event_id="evt_refunded", event_type="PAYMENT_REFUNDED", **common,
+        )
+        self.assertTrue(refunded["review"])
+        summary = self.store.billing_summary(26)
+        self.assertEqual(summary["profile"]["credit_balance"], 1000)
+        self.assertEqual(summary["profile"]["subscription_status"], "past_due")
+        self.assertEqual(summary["payments"][0]["status"], "refunded")
+        self.assertEqual(summary["orders"][0]["status"], "needs_review")
 
     def test_billing_webhook_never_grants_wrong_amount(self):
         self.store.ensure_organization(23, initial_credits=0)
@@ -268,6 +391,26 @@ class SaaSStoreTests(unittest.TestCase):
         self.store.sync_notifications(17, 21, jobs=[], low_credit_threshold=10)
         notices = self.store.list_notifications(17, 21)["notifications"]
         self.assertEqual(sum(item["kind"] == "low_credit" for item in notices), 2)
+
+    def test_billing_status_notifications_follow_each_issue_episode(self):
+        self.store.ensure_organization(18, initial_credits=50)
+        self.store.update_billing_profile(
+            18, plan_code="growth", subscription_status="past_due", unlimited_credits=False,
+        )
+        self.store.sync_notifications(18, 31, jobs=[], low_credit_threshold=10)
+        self.store.sync_notifications(18, 31, jobs=[], low_credit_threshold=10)
+        notices = self.store.list_notifications(18, 31)["notifications"]
+        self.assertEqual(sum(item["kind"] == "billing_status" for item in notices), 1)
+        self.store.update_billing_profile(
+            18, plan_code="growth", subscription_status="active", unlimited_credits=False,
+        )
+        self.store.sync_notifications(18, 31, jobs=[], low_credit_threshold=10)
+        self.store.update_billing_profile(
+            18, plan_code="growth", subscription_status="past_due", unlimited_credits=False,
+        )
+        self.store.sync_notifications(18, 31, jobs=[], low_credit_threshold=10)
+        notices = self.store.list_notifications(18, 31)["notifications"]
+        self.assertEqual(sum(item["kind"] == "billing_status" for item in notices), 2)
 
     def test_support_tickets_are_tenant_scoped_threaded_and_prioritized(self):
         self.store.ensure_organization(30)

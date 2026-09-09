@@ -187,6 +187,15 @@ class BillingCheckoutRequest(BaseModel):
         return value.strip().casefold()
 
 
+class BillingCancellationRequest(PrivacyPasswordRequest):
+    reason: str = Field(default="", max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def clean_cancellation_reason(cls, value: str) -> str:
+        return value.strip()
+
+
 class MatchInput(BaseModel):
     local_id: str = Field(min_length=1, max_length=200)
     name: str = Field(min_length=1, max_length=300)

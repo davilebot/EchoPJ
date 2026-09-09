@@ -64,6 +64,7 @@ const savedSearchesLoading = document.querySelector("#saved-searches-loading");
 const savedSearchesGrid = document.querySelector("#saved-searches-grid");
 const billingLoading = document.querySelector("#billing-loading");
 const billingSummary = document.querySelector("#billing-summary");
+const cancelSubscriptionDialog = document.querySelector("#cancel-subscription-dialog");
 const saveSearchDialog = document.querySelector("#save-search-dialog");
 const saveListDialog = document.querySelector("#save-list-dialog");
 const createListDialog = document.querySelector("#create-list-dialog");
@@ -1384,7 +1385,9 @@ async function loadBillingSummary() {
     const catalog = await catalogResponse.json();
     const profile = data.profile;
     updateCreditIndicator(profile);
-    const planName = profile.plan_code === "internal" ? "EchoHub interno" : profile.plan_code === "trial" ? "Avaliação" : profile.plan_code;
+    const subscription = data.subscription;
+    const planName = profile.plan_code === "internal" ? "EchoHub interno" : profile.plan_code === "trial" ? "Avaliação" : subscription?.plan_name || profile.plan_code;
+    const subscriptionLabels = { trialing: "Avaliação", active: "Ativa", past_due: "Pagamento pendente", inactive: "Inativa", canceled: "Cancelada", suspended: "Suspensa", pending: "Aguardando pagamento" };
     const ledger = data.ledger.length ? data.ledger.map((entry) => `<tr>
       <td>${formatDate(entry.created_at)}</td><td>${escapeHtml(entry.description)}</td>
       <td class="ledger-value ${entry.delta > 0 ? "positive" : entry.delta < 0 ? "negative" : ""}">${entry.delta === 0 ? "—" : `${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}`}</td>
@@ -1392,6 +1395,11 @@ async function loadBillingSummary() {
     const orderLabels = { creating: "Criando checkout", pending: "Aguardando pagamento", checkout_paid: "Confirmando pagamento", paid: "Pago", failed: "Falhou", expired: "Expirado", canceled: "Cancelado", past_due: "Pagamento pendente", needs_review: "Em revisão" };
     const orders = data.orders?.length ? `<section class="section-card billing-orders"><div class="section-card-heading"><div><span class="eyebrow">PAGAMENTOS</span><h2>Pedidos recentes</h2><p>Acompanhe a confirmação feita pelo provedor.</p></div></div><div class="billing-order-list">${data.orders.map((order) => `<article><span class="billing-order-status status-${escapeHtml(order.status)}">${escapeHtml(orderLabels[order.status] || order.status)}</span><div><strong>${escapeHtml(order.plan_name)}</strong><small>${formatDate(order.created_at)} · ${(Number(order.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</small></div>${order.checkout_url && ["pending", "creating"].includes(order.status) ? `<a href="${escapeHtml(order.checkout_url)}" rel="noopener">Continuar pagamento</a>` : ""}</article>`).join("")}</div></section>` : "";
     const canManagePlan = workspace?.organization?.role === "admin";
+    const cancellationPending = data.cancellation?.status === "pending";
+    const canCancelSubscription = subscription && ["active", "past_due", "inactive"].includes(subscription.status) && catalog.enabled && canManagePlan;
+    const subscriptionCard = subscription ? `<section class="section-card billing-subscription"><div><span class="eyebrow">ASSINATURA</span><h2>${escapeHtml(subscription.plan_name)}</h2><p>${Number(subscription.credits_per_cycle).toLocaleString("pt-BR")} créditos por ciclo · ${subscription.cycle === "MONTHLY" ? "mensal" : escapeHtml(subscription.cycle)}</p></div><div class="billing-subscription-state"><span class="billing-order-status status-${escapeHtml(subscription.status)}">${escapeHtml(subscriptionLabels[subscription.status] || subscription.status)}</span>${subscription.next_due_date && ["active", "past_due"].includes(subscription.status) ? `<small>Próxima cobrança: ${formatDate(subscription.next_due_date)}</small>` : subscription.status === "canceled" ? `<small>Para reativar, escolha um plano abaixo.</small>` : ""}</div>${canCancelSubscription ? `<button class="secondary danger-button" data-cancel-subscription type="button" ${cancellationPending ? "disabled" : ""}>${cancellationPending ? "Cancelamento em andamento" : "Cancelar renovação"}</button>` : ""}</section>` : "";
+    const paymentLabels = { pending: "Aguardando", confirmed: "Confirmado", received: "Recebido", overdue: "Em atraso", failed: "Falhou", canceled: "Cancelado", refund_pending: "Estorno em andamento", refunded: "Estornado", chargeback: "Contestado", review: "Em revisão" };
+    const cyclePayments = data.payments?.length ? `<section class="section-card billing-orders"><div class="section-card-heading"><div><span class="eyebrow">CICLOS E RECARGAS</span><h2>Histórico financeiro</h2><p>Cada cobrança fica registrada separadamente, inclusive renovações.</p></div></div><div class="billing-order-list">${data.payments.map((payment) => `<article><span class="billing-order-status status-${escapeHtml(payment.status)}">${escapeHtml(paymentLabels[payment.status] || payment.status)}</span><div><strong>${escapeHtml(payment.plan_name)}</strong><small>${payment.due_date ? `Vencimento ${formatDate(payment.due_date)}` : formatDate(payment.updated_at)} · ${payment.amount_cents === null ? "Valor em conferência" : (Number(payment.amount_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${payment.billing_type ? ` · ${escapeHtml(payment.billing_type === "CREDIT_CARD" ? "Cartão" : payment.billing_type)}` : ""}</small></div><strong class="billing-cycle-credit">${payment.credits_granted ? `+${Number(payment.credits_granted).toLocaleString("pt-BR")} créditos` : "—"}</strong></article>`).join("")}</div></section>` : "";
     const offerCards = profile.is_internal ? `<article class="billing-internal"><span>PLANO INTERNO</span><strong>A EchoHub não precisa contratar um plano.</strong><p>Este workspace permanece ativo com créditos ilimitados.</p></article>` : catalog.offers.length ? catalog.offers.map((offer) => `<article class="billing-offer ${offer.highlighted ? "highlighted" : ""}">${offer.highlighted ? '<span class="billing-recommended">RECOMENDADO</span>' : ""}<small>${offer.kind === "subscription" ? "ASSINATURA" : "PACOTE AVULSO"}</small><h3>${escapeHtml(offer.name)}</h3><p>${escapeHtml(offer.description)}</p><strong>${(Number(offer.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${offer.cycle === "MONTHLY" ? "<i>/mês</i>" : ""}</strong><b>${Number(offer.credits).toLocaleString("pt-BR")} créditos${offer.cycle ? " por ciclo" : ""}</b><ul>${offer.features.map((feature) => `<li>✓ ${escapeHtml(feature)}</li>`).join("")}</ul><button type="button" data-billing-plan="${escapeHtml(offer.code)}" ${catalog.enabled && canManagePlan ? "" : "disabled"}>${!canManagePlan ? "Administrador contrata" : catalog.enabled ? `Escolher ${escapeHtml(offer.name)}` : "Checkout em preparação"}</button></article>`).join("") : `<article class="billing-catalog-pending"><span>PRÓXIMA ETAPA</span><strong>Planos comerciais em preparação</strong><p>Preços e quantidades de créditos serão publicados aqui antes da abertura do checkout.</p><a href="/plans">Ver como os créditos funcionam</a></article>`;
     const returnStatus = new URLSearchParams(location.search).get("billing_return");
     const returnBanner = returnStatus ? `<div class="billing-return ${escapeHtml(returnStatus)}"><strong>${returnStatus === "success" ? "Pagamento enviado para confirmação" : returnStatus === "expired" ? "O checkout expirou" : "Pagamento não concluído"}</strong><span>${returnStatus === "success" ? "O saldo é atualizado automaticamente após o webhook financeiro do provedor." : "Você pode escolher o plano novamente quando quiser."}</span></div>` : "";
@@ -1399,8 +1407,10 @@ async function loadBillingSummary() {
       <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva ou exporta uma empresa."}</p></div>
       <span class="plan-badge">${escapeHtml(planName)}</span>
     </div>
-    <div class="billing-metrics"><article><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><span>Empresas desbloqueadas</span></article><article><strong>${profile.unlimited_credits ? "Sem limite" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Saldo disponível</span></article><article><strong>${escapeHtml(profile.subscription_status === "active" ? "Ativo" : profile.subscription_status)}</strong><span>Status do plano</span></article></div>
+    <div class="billing-metrics"><article><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><span>Empresas desbloqueadas</span></article><article><strong>${profile.unlimited_credits ? "Sem limite" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Saldo disponível</span></article><article><strong>${escapeHtml(subscriptionLabels[profile.subscription_status] || profile.subscription_status)}</strong><span>Status do plano</span></article></div>
+    ${subscriptionCard}
     <section class="billing-catalog"><div class="section-card-heading"><div><span class="eyebrow">CONTRATAÇÃO</span><h2>Planos e recargas</h2><p>O pagamento acontece em ambiente seguro do provedor.</p></div><a href="/plans">Comparar em página completa</a></div><div class="billing-offer-grid">${offerCards}</div></section>
+    ${cyclePayments}
     ${orders}
     <section class="section-card billing-history"><div class="section-card-heading"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2><p>Entradas e usos de créditos desta organização.</p></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Créditos</th></tr></thead><tbody>${ledger}</tbody></table></div></section>`;
     billingLoading.classList.add("hidden");
@@ -1411,6 +1421,14 @@ async function loadBillingSummary() {
 }
 
 billingSummary.addEventListener("click", async (event) => {
+  const cancelButton = event.target.closest("[data-cancel-subscription]");
+  if (cancelButton && !cancelButton.disabled) {
+    document.querySelector("#cancel-subscription-form").reset();
+    setDialogFeedback(document.querySelector("#cancel-subscription-feedback"));
+    cancelSubscriptionDialog.showModal();
+    document.querySelector("#cancel-subscription-password").focus();
+    return;
+  }
   const button = event.target.closest("[data-billing-plan]");
   if (!button || button.disabled) return;
   const original = button.textContent;
@@ -1430,6 +1448,36 @@ billingSummary.addEventListener("click", async (event) => {
     showToast(error.message);
     button.disabled = false;
     button.textContent = original;
+  }
+});
+
+document.querySelector("#cancel-subscription-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('button[type="submit"]');
+  const feedback = document.querySelector("#cancel-subscription-feedback");
+  setDialogFeedback(feedback);
+  submit.disabled = true;
+  submit.textContent = "Cancelando…";
+  try {
+    const response = await fetch("/api/billing/subscription", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: document.querySelector("#cancel-subscription-password").value,
+        reason: document.querySelector("#cancel-subscription-reason").value,
+      }),
+    });
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível cancelar a assinatura."));
+    const result = await response.json();
+    cancelSubscriptionDialog.close();
+    showToast(result.message || "Renovação cancelada.");
+    await loadBillingSummary();
+  } catch (error) {
+    setDialogFeedback(feedback, error.message);
+  } finally {
+    submit.disabled = false;
+    submit.textContent = "Cancelar renovação";
   }
 });
 

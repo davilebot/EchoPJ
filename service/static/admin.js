@@ -30,7 +30,7 @@ function planLabel(value) {
 }
 
 function statusLabel(value) {
-  return { trialing: "Em teste", active: "Ativo", past_due: "Pagamento pendente", canceled: "Cancelado", suspended: "Suspenso" }[value] || value;
+  return { trialing: "Em teste", active: "Ativo", past_due: "Pagamento pendente", inactive: "Inativo", pending: "Aguardando pagamento", canceled: "Cancelado", suspended: "Suspenso" }[value] || value;
 }
 
 function stageLabel(value) {
@@ -244,6 +244,11 @@ function renderOrganizationDetail(data) {
   document.querySelector("#admin-status").value = profile.subscription_status;
   document.querySelector("#admin-unlimited").checked = profile.unlimited_credits;
   document.querySelector("#admin-credit-form").classList.toggle("hidden", profile.unlimited_credits);
+  const subscription = data.commercial.subscription;
+  const cancellation = data.commercial.cancellation;
+  document.querySelector("#admin-subscription-summary").innerHTML = subscription ? `<div><span class="admin-status status-${escapeHtml(subscription.status)}">${escapeHtml(statusLabel(subscription.status))}</span><strong>${escapeHtml(subscription.plan_name)}</strong><small>${Number(subscription.credits_per_cycle).toLocaleString("pt-BR")} créditos · ${escapeHtml(subscription.cycle)}${subscription.next_due_date ? ` · próxima cobrança ${formatDate(subscription.next_due_date)}` : ""}</small></div>${cancellation ? `<div><small>Último cancelamento</small><strong>${escapeHtml(cancellation.status)}</strong><span>${escapeHtml(cancellation.reason || cancellation.detail || "Sem motivo informado")}</span></div>` : ""}` : `<span class="muted">Nenhuma assinatura recorrente conciliada.</span>`;
+  const paymentLabels = { pending: "Aguardando", confirmed: "Confirmado", received: "Recebido", overdue: "Em atraso", failed: "Falhou", canceled: "Cancelado", refund_pending: "Estorno pendente", refunded: "Estornado", chargeback: "Contestado", review: "Revisar" };
+  document.querySelector("#admin-payments").innerHTML = data.commercial.payments.length ? data.commercial.payments.map((payment) => `<tr><td>${formatDate(payment.updated_at)}</td><td>${escapeHtml(payment.plan_name)}</td><td>${payment.amount_cents === null ? "—" : (Number(payment.amount_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td><td>${Number(payment.credits_granted).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(payment.status)}">${escapeHtml(paymentLabels[payment.status] || payment.status)}</span></td></tr>`).join("") : `<tr><td colspan="5">Ainda não há ciclos financeiros.</td></tr>`;
   const orderLabels = { creating: "Criando", pending: "Aguardando", checkout_paid: "Confirmando", paid: "Pago", failed: "Falhou", expired: "Expirado", canceled: "Cancelado", past_due: "Pendente", needs_review: "Revisar" };
   document.querySelector("#admin-orders").innerHTML = data.commercial.orders.length ? data.commercial.orders.map((order) => `<tr><td>${formatDate(order.created_at)}</td><td><strong>${escapeHtml(order.plan_name)}</strong><small>${escapeHtml(order.kind)}</small></td><td>${(Number(order.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td><td>${Number(order.credits).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(order.status)}">${escapeHtml(orderLabels[order.status] || order.status)}</span></td></tr>`).join("") : `<tr><td colspan="5">Ainda não há pedidos.</td></tr>`;
   document.querySelector("#admin-ledger").innerHTML = data.commercial.ledger.length ? data.commercial.ledger.map((entry) => {
