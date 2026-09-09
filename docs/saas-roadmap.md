@@ -39,7 +39,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - assinatura mensal e pacotes avulsos de créditos;
 - [x] endpoint de webhooks Asaas autenticado, idempotente e auditável, com conferência do valor antes de liberar créditos;
 - [x] renovação, inadimplência, cancelamento autenticado e reativação, com histórico separado por ciclo e revisão de estornos;
-- notas e recibos fornecidos pelo provedor;
+- [x] links seguros para cobranças e comprovantes quando fornecidos pelo provedor;
+- notas fiscais emitidas e fornecidas pelo provedor;
 - [x] painel interno para consultar organizações, planos e concessões manuais;
 - [x] fluxo interno único para criar um piloto, conceder créditos e gerar o convite do responsável;
 - [x] acompanhamento do piloto do convite à entrega, com busca pelo e-mail pendente e transferência direta ao responsável;

@@ -116,6 +116,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Sua assinatura renova", app)
         self.assertIn("billing-attention", styles)
         self.assertIn("kind-billing_renewal", styles)
+        self.assertIn("Ver comprovante", app)
+        self.assertIn("billing-cycle-end", styles)
 
     def test_internal_admin_shows_product_funnel_and_customer_activity(self):
         html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")

@@ -18,6 +18,9 @@ do catálogo e das credenciais.
 7. O identificador do pagamento impede crédito duplicado em eventos reenviados.
 8. Se o valor recebido divergir do pedido, nada é liberado e o pedido fica
    `needs_review`.
+9. Quando o webhook fornecer uma fatura ou comprovante HTTPS hospedado pelo
+   Asaas, o cliente pode abri-lo no histórico financeiro. URLs externas ou com
+   credenciais embutidas são descartadas.
 
 ## Ciclo da assinatura
 

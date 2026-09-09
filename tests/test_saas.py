@@ -1,4 +1,5 @@
 import json
+import sqlite3
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -29,6 +30,38 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(result["credits_spent"], 0)
         self.assertEqual(result["total"], 2)
         self.assertEqual(self.store.billing_summary(1)["unlocked_companies"], 2)
+
+    def test_existing_payment_table_is_upgraded_for_provider_documents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "previous-saas.sqlite"
+            connection = sqlite3.connect(path)
+            connection.execute("""CREATE TABLE billing_payments (
+                provider TEXT NOT NULL,
+                provider_payment_id TEXT NOT NULL,
+                organization_id INTEGER NOT NULL,
+                order_id TEXT NOT NULL,
+                provider_subscription_id TEXT,
+                amount_cents INTEGER,
+                status TEXT NOT NULL,
+                provider_status TEXT,
+                billing_type TEXT,
+                due_date TEXT,
+                credits_granted INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                paid_at TEXT,
+                PRIMARY KEY(provider, provider_payment_id)
+            )""")
+            connection.commit()
+            connection.close()
+
+            upgraded = SaaSStore(str(path))
+            columns = {
+                row[1] for row in upgraded._connection.execute("PRAGMA table_info(billing_payments)")
+            }
+            upgraded.close()
+            self.assertIn("invoice_url", columns)
+            self.assertIn("receipt_url", columns)
 
     def test_billing_catalog_keeps_draft_separate_and_versions_publications(self):
         first = json.dumps([{"code": "growth", "name": "Crescimento"}])
@@ -186,6 +219,8 @@ class SaaSStoreTests(unittest.TestCase):
             provider="asaas", event_type="PAYMENT_RECEIVED", payload_digest="b" * 64,
             external_reference=order["external_reference"], provider_payment_id="pay_1",
             provider_subscription_id="sub_1", amount_cents=14990,
+            payment_invoice_url="https://sandbox.asaas.com/i/pay_1",
+            payment_receipt_url="https://www.asaas.com/comprovantes/pay_1",
         )
         self.store.process_billing_event(event_id="evt_payment_received", **payment)
         self.store.process_billing_event(event_id="evt_payment_confirmed", event_type="PAYMENT_CONFIRMED", **{k: v for k, v in payment.items() if k != "event_type"})
@@ -196,6 +231,8 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(summary["subscription"]["status"], "active")
         self.assertEqual(summary["payments"][0]["credits_granted"], 1000)
         self.assertEqual(summary["payments"][0]["status"], "received")
+        self.assertEqual(summary["payments"][0]["invoice_url"], "https://sandbox.asaas.com/i/pay_1")
+        self.assertEqual(summary["payments"][0]["receipt_url"], "https://www.asaas.com/comprovantes/pay_1")
         duplicate = self.store.process_billing_event(event_id="evt_payment_received", **payment)
         self.assertTrue(duplicate["duplicate"])
         self.assertEqual(len(self.store.admin_billing_events()), 3)

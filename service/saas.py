@@ -197,6 +197,8 @@ class SaaSStore:
                 provider_status TEXT,
                 billing_type TEXT,
                 due_date TEXT,
+                invoice_url TEXT,
+                receipt_url TEXT,
                 credits_granted INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
@@ -280,6 +282,13 @@ class SaaSStore:
             CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_created
                 ON support_messages(ticket_id, created_at);
         """)
+        payment_columns = {
+            row[1] for row in self._connection.execute("PRAGMA table_info(billing_payments)")
+        }
+        if "invoice_url" not in payment_columns:
+            self._connection.execute("ALTER TABLE billing_payments ADD COLUMN invoice_url TEXT")
+        if "receipt_url" not in payment_columns:
+            self._connection.execute("ALTER TABLE billing_payments ADD COLUMN receipt_url TEXT")
         self._connection.commit()
 
     def close(self) -> None:
@@ -596,6 +605,8 @@ class SaaSStore:
             "status": row["status"],
             "billing_type": row["billing_type"],
             "due_date": row["due_date"],
+            "invoice_url": row["invoice_url"],
+            "receipt_url": row["receipt_url"],
             "credits_granted": row["credits_granted"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -866,6 +877,8 @@ class SaaSStore:
         payment_status: str | None = None,
         payment_due_date: str | None = None,
         payment_billing_type: str | None = None,
+        payment_invoice_url: str | None = None,
+        payment_receipt_url: str | None = None,
         subscription_status: str | None = None,
         subscription_next_due_date: str | None = None,
     ) -> dict[str, Any]:
@@ -1011,8 +1024,9 @@ class SaaSStore:
                 self._connection.execute(
                     """INSERT INTO billing_payments(
                          provider,provider_payment_id,organization_id,order_id,provider_subscription_id,
-                         amount_cents,status,provider_status,billing_type,due_date,created_at,updated_at,paid_at
-                       ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+                         amount_cents,status,provider_status,billing_type,due_date,invoice_url,receipt_url,
+                         created_at,updated_at,paid_at
+                       ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(provider,provider_payment_id) DO UPDATE SET
                          provider_subscription_id=coalesce(excluded.provider_subscription_id,billing_payments.provider_subscription_id),
                          amount_cents=coalesce(excluded.amount_cents,billing_payments.amount_cents),
@@ -1020,12 +1034,15 @@ class SaaSStore:
                          provider_status=coalesce(excluded.provider_status,billing_payments.provider_status),
                          billing_type=coalesce(excluded.billing_type,billing_payments.billing_type),
                          due_date=coalesce(excluded.due_date,billing_payments.due_date),
+                         invoice_url=coalesce(excluded.invoice_url,billing_payments.invoice_url),
+                         receipt_url=coalesce(excluded.receipt_url,billing_payments.receipt_url),
                          updated_at=excluded.updated_at,
                          paid_at=coalesce(billing_payments.paid_at,excluded.paid_at)""",
                     (
                         provider, provider_payment_id, order["organization_id"], order_id,
                         effective_subscription_id, amount_cents, payment_state, payment_status,
-                        payment_billing_type, payment_due_date, now, now, now if financial else None,
+                        payment_billing_type, payment_due_date, payment_invoice_url,
+                        payment_receipt_url, now, now, now if financial else None,
                     ),
                 )
 

@@ -72,12 +72,29 @@ class PaymentTests(unittest.TestCase):
     def test_webhook_normalization_uses_reconciliation_fields(self):
         event = normalize_asaas_event({
             "id": "evt_1", "event": "payment_received",
-            "payment": {"id": "pay_1", "subscription": "sub_1", "externalReference": "order", "value": 149.9},
+            "payment": {
+                "id": "pay_1", "subscription": "sub_1", "externalReference": "order", "value": 149.9,
+                "invoiceUrl": "https://sandbox.asaas.com/i/valid",
+                "transactionReceiptUrl": "https://www.asaas.com/comprovantes/valid",
+            },
             "newProviderField": {"ignored": True},
         })
         self.assertEqual(event["event_type"], "PAYMENT_RECEIVED")
         self.assertEqual(event["provider_payment_id"], "pay_1")
         self.assertEqual(event["amount_cents"], 14990)
+        self.assertEqual(event["payment_invoice_url"], "https://sandbox.asaas.com/i/valid")
+        self.assertEqual(event["payment_receipt_url"], "https://www.asaas.com/comprovantes/valid")
+
+    def test_webhook_rejects_untrusted_payment_document_urls(self):
+        event = normalize_asaas_event({
+            "id": "evt_untrusted", "event": "PAYMENT_RECEIVED",
+            "payment": {
+                "id": "pay_untrusted", "invoiceUrl": "https://attacker.example/fatura",
+                "transactionReceiptUrl": "https://asaas.com@attacker.example/comprovante",
+            },
+        })
+        self.assertIsNone(event["payment_invoice_url"])
+        self.assertIsNone(event["payment_receipt_url"])
 
     def test_webhook_normalization_keeps_cycle_status_without_private_payload(self):
         event = normalize_asaas_event({

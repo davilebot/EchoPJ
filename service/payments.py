@@ -9,6 +9,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 
@@ -16,6 +17,26 @@ class PaymentError(ValueError):
     def __init__(self, detail: str, status: int = 400):
         super().__init__(detail)
         self.status = status
+
+
+def _asaas_document_url(value: Any) -> str | None:
+    """Accept only provider-hosted HTTPS documents exposed to customers."""
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate or len(candidate) > 2048:
+        return None
+    parsed = urlparse(candidate)
+    hostname = (parsed.hostname or "").casefold()
+    if (
+        parsed.scheme.casefold() != "https"
+        or not hostname
+        or parsed.username
+        or parsed.password
+        or not (hostname == "asaas.com" or hostname.endswith(".asaas.com"))
+    ):
+        return None
+    return candidate
 
 
 @dataclass(frozen=True)
@@ -271,6 +292,8 @@ def normalize_asaas_event(payload: Any) -> dict[str, Any]:
         "payment_status": str(payment.get("status", "")).strip().upper() or None,
         "payment_due_date": str(payment.get("dueDate", "")).strip()[:20] or None,
         "payment_billing_type": str(payment.get("billingType", "")).strip().upper()[:40] or None,
+        "payment_invoice_url": _asaas_document_url(payment.get("invoiceUrl")),
+        "payment_receipt_url": _asaas_document_url(payment.get("transactionReceiptUrl")),
         "subscription_status": str(subscription.get("status", "")).strip().upper() or None,
         "subscription_next_due_date": str(subscription.get("nextDueDate", "")).strip()[:20] or None,
     }

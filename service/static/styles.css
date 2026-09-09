@@ -583,6 +583,8 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
 .billing-order-status { padding: 4px 7px; border-radius: 999px; color: var(--text-secondary); background: var(--surface-hover); font-size: 8px; font-weight: 700; }
 .billing-order-status.status-paid, .billing-order-status.status-active, .billing-order-status.status-confirmed, .billing-order-status.status-received { color: var(--success); background: var(--success-soft); }.billing-order-status.status-past_due, .billing-order-status.status-needs_review, .billing-order-status.status-overdue, .billing-order-status.status-refund_pending, .billing-order-status.status-review, .billing-order-status.status-pending { color: var(--warning); background: var(--warning-soft); }.billing-order-status.status-failed, .billing-order-status.status-canceled, .billing-order-status.status-expired, .billing-order-status.status-refunded, .billing-order-status.status-chargeback, .billing-order-status.status-inactive { color: var(--danger); background: var(--danger-soft); }
 .billing-cycle-credit { color: var(--success); font-size: 9px; text-align: right; }
+.billing-cycle-end { display: grid; justify-items: end; gap: 4px; }
+.billing-cycle-end > a { color: var(--accent-strong); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .ledger-value { text-align: right; font-weight: 700; }
 .ledger-value.positive { color: var(--success); }
 .ledger-value.negative { color: var(--danger); }
@@ -683,6 +685,7 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .billing-subscription { grid-template-columns: 1fr; align-items: start; }
   .billing-subscription-state { justify-items: start; }
   .billing-cycle-credit { text-align: left; }
+  .billing-cycle-end { justify-items: start; }
   .workspace-feed-head { align-items: flex-start; flex-direction: column; }
   .onboarding-heading { flex-direction: column; }
   .onboarding-progress { width: 100%; text-align: left; }
