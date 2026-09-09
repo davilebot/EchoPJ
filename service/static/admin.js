@@ -3,6 +3,7 @@ const adminHeaders = adminOrganizationId ? { "X-Organization-Id": adminOrganizat
 const adminMessage = document.querySelector("#admin-message");
 const adminRows = document.querySelector("#admin-organizations");
 const adminDialog = document.querySelector("#admin-organization-dialog");
+const adminCustomerDialog = document.querySelector("#admin-customer-dialog");
 const adminSupportDialog = document.querySelector("#admin-support-dialog");
 const adminPrivacyDialog = document.querySelector("#admin-privacy-dialog");
 const pageSize = 50;
@@ -45,12 +46,14 @@ function notify(message, target = adminMessage, success = false) {
 
 async function adminFetch(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { ...adminHeaders, ...(options.headers || {}) } });
-  const payload = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json") ? await response.json() : null;
   if (response.status === 401) {
     location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
     throw new Error("Sua sessão expirou.");
   }
-  if (!response.ok) throw new Error(typeof payload.detail === "string" ? payload.detail : "Não foi possível concluir a operação.");
+  if (!response.ok) throw new Error(typeof payload?.detail === "string" ? payload.detail : "A plataforma recebeu uma resposta inesperada. Tente novamente em instantes.");
+  if (!payload) throw new Error("A plataforma recebeu uma resposta inesperada. Atualize a página e tente novamente.");
   return payload;
 }
 
@@ -287,6 +290,67 @@ async function openOrganization(organizationId) {
     notify(error.message, document.querySelector("#admin-dialog-message"));
   }
 }
+
+function openCustomerDialog() {
+  const form = document.querySelector("#admin-customer-form");
+  form.reset();
+  form.classList.remove("hidden");
+  document.querySelector("#admin-customer-message").classList.add("hidden");
+  document.querySelector("#admin-customer-result").classList.add("hidden");
+  adminCustomerDialog.showModal();
+  document.querySelector("#admin-customer-name").focus();
+}
+
+async function copyCustomerInvitation() {
+  const input = document.querySelector("#admin-customer-link");
+  const button = document.querySelector("#admin-customer-copy");
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch (_) {
+    input.focus();
+    input.select();
+    document.execCommand("copy");
+  }
+  button.textContent = "Convite copiado";
+  window.setTimeout(() => { button.textContent = "Copiar convite"; }, 1800);
+}
+
+document.querySelector("#admin-create-customer").addEventListener("click", openCustomerDialog);
+document.querySelector("#admin-customer-close").addEventListener("click", () => adminCustomerDialog.close());
+adminCustomerDialog.addEventListener("click", (event) => { if (event.target === adminCustomerDialog) adminCustomerDialog.close(); });
+document.querySelector("#admin-customer-copy").addEventListener("click", copyCustomerInvitation);
+document.querySelector("#admin-customer-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = document.querySelector("#admin-customer-message");
+  const button = event.target.querySelector('button[type="submit"]');
+  const credits = document.querySelector("#admin-customer-credits").value.trim();
+  const payload = {
+    name: document.querySelector("#admin-customer-name").value,
+    owner_email: document.querySelector("#admin-customer-email").value,
+    send_email: document.querySelector("#admin-customer-send-email").checked,
+  };
+  if (credits !== "") payload.trial_credits = Number(credits);
+  message.classList.add("hidden");
+  button.disabled = true;
+  try {
+    const data = await adminFetch("/api/admin/customer-workspaces", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    const balance = Number(data.organization.billing.credit_balance || 0).toLocaleString("pt-BR");
+    const delivery = { sent: "Convite enviado por e-mail.", manual: "Envio manual: copie e compartilhe o link.", failed: "O e-mail falhou; use o link abaixo." }[data.invitation.delivery] || "Convite gerado.";
+    document.querySelector("#admin-customer-result-title").textContent = data.organization.name;
+    document.querySelector("#admin-customer-result-meta").textContent = `${balance} créditos liberados · ${delivery}`;
+    document.querySelector("#admin-customer-link").value = data.invitation.link;
+    document.querySelector("#admin-customer-manage").href = `/organizations?organization=${encodeURIComponent(data.organization.id)}`;
+    document.querySelector("#admin-customer-next-step").textContent = data.handoff.next_step;
+    document.querySelector("#admin-customer-copy").textContent = "Copiar convite";
+    event.target.classList.add("hidden");
+    document.querySelector("#admin-customer-result").classList.remove("hidden");
+    adminOffset = 0;
+    await loadOrganizations();
+  } catch (error) { notify(error.message, message); }
+  finally { button.disabled = false; }
+});
 
 document.querySelector("#admin-search-form").addEventListener("submit", (event) => { event.preventDefault(); adminOffset = 0; loadOrganizations(); });
 document.querySelector("#admin-previous").addEventListener("click", () => { adminOffset = Math.max(0, adminOffset - pageSize); loadOrganizations(); });

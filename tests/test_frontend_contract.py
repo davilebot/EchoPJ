@@ -122,6 +122,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("renderFunnel(data.funnel)", script)
         self.assertIn(".admin-funnel-stages", styles)
 
+    def test_internal_admin_can_prepare_a_customer_pilot_in_one_flow(self):
+        html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "auth.css").read_text(encoding="utf-8")
+        self.assertIn('id="admin-create-customer"', html)
+        self.assertIn('id="admin-customer-form"', html)
+        self.assertIn('id="admin-customer-result"', html)
+        self.assertIn('/api/admin/customer-workspaces', script)
+        self.assertIn("copyCustomerInvitation", script)
+        self.assertIn(".admin-customer-result", styles)
+
     def test_billing_catalog_checkout_and_admin_audit_have_complete_ui(self):
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
         plans = (STATIC_DIR / "plans.html").read_text(encoding="utf-8")

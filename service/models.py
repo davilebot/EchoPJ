@@ -35,6 +35,20 @@ class OrganizationRequest(BaseModel):
         return value
 
 
+class CustomerWorkspaceRequest(OrganizationRequest):
+    owner_email: str = Field(min_length=3, max_length=254)
+    trial_credits: int | None = Field(default=None, ge=0, le=1_000_000)
+    send_email: bool = False
+
+    @field_validator("owner_email")
+    @classmethod
+    def clean_owner_email(cls, value: str) -> str:
+        value = value.strip().casefold()
+        if not re.fullmatch(r"[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+", value):
+            raise ValueError("Informe um e-mail válido para o responsável.")
+        return value
+
+
 class SignupRequest(OrganizationRequest):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=8, max_length=1024)

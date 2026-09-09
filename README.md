@@ -111,6 +111,9 @@ estão em [`.env.example`](.env.example).
   empresas clientes, alterar plano e status, conceder ou descontar créditos e
   consultar o histórico de movimentações. A EchoHub permanece protegida como
   organização interna ativa com créditos ilimitados.
+- O botão **Criar piloto** prepara o workspace do cliente, define os créditos
+  iniciais e gera o convite de administrador em uma única operação. Depois da
+  aceitação, a EchoHub transfere a responsabilidade na área de organizações.
 - O painel interno mede cadastro, ativação, entrada em plano comercial, uso em
   dias distintos e atividade nos últimos 30 dias. Eventos de produto guardam
   apenas o tipo da ação, identificadores técnicos e contagens; filtros e dados

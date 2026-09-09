@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260909-launch-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-pilot-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -39,7 +39,7 @@
         </div>
       </section>
       <section class="admin-catalog">
-        <div class="admin-section-heading"><div><h2>Empresas clientes</h2><p class="muted">Busque pelo nome da empresa ou e-mail de qualquer integrante.</p></div><form id="admin-search-form" class="admin-search"><label><span class="sr-only">Buscar empresa ou usuário</span><input id="admin-search" type="search" maxlength="120" placeholder="Buscar empresa ou e-mail"></label><button type="submit">Buscar</button></form></div>
+        <div class="admin-section-heading"><div><h2>Empresas clientes</h2><p class="muted">Busque uma empresa ou abra um piloto com acesso e créditos preparados.</p></div><div class="admin-catalog-actions"><button id="admin-create-customer" type="button">Criar piloto</button><form id="admin-search-form" class="admin-search"><label><span class="sr-only">Buscar empresa ou usuário</span><input id="admin-search" type="search" maxlength="120" placeholder="Buscar empresa ou e-mail"></label><button class="secondary-button" type="submit">Buscar</button></form></div></div>
         <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="9">Carregando empresas…</td></tr></tbody></table></div>
         <div class="admin-pagination"><span id="admin-range">—</span><div><button id="admin-previous" class="secondary-button" type="button">Anterior</button><button id="admin-next" class="secondary-button" type="button">Próxima</button></div></div>
       </section>
@@ -58,6 +58,26 @@
       </section>
     </section>
   </main>
+
+  <dialog id="admin-customer-dialog" class="admin-dialog admin-customer-dialog">
+    <section class="admin-dialog-card" aria-labelledby="admin-customer-title">
+      <div class="admin-dialog-header"><div><span class="eyebrow">NOVO PILOTO</span><h2 id="admin-customer-title">Preparar empresa cliente</h2><p class="muted">Crie o workspace, libere os créditos iniciais e gere o acesso do responsável.</p></div><button id="admin-customer-close" class="dialog-close" type="button" aria-label="Fechar">×</button></div>
+      <p id="admin-customer-message" class="auth-message hidden" role="status"></p>
+      <form id="admin-customer-form">
+        <div class="admin-form-grid"><label>Nome da empresa<input id="admin-customer-name" maxlength="120" required autocomplete="organization" placeholder="Ex.: Cliente Comércio Ltda."></label><label>E-mail do responsável<input id="admin-customer-email" type="email" maxlength="254" required autocomplete="email" placeholder="responsavel@cliente.com.br"></label></div>
+        <label>Créditos do piloto <span class="field-hint">Deixe vazio para usar o padrão do ambiente.</span><input id="admin-customer-credits" type="number" min="0" max="1000000" step="1" placeholder="Padrão do ambiente"></label>
+        <label class="checkbox-label"><input id="admin-customer-send-email" type="checkbox">Enviar o convite automaticamente por e-mail</label>
+        <p class="admin-customer-guidance">A EchoHub permanece como responsável pelo workspace até o cliente aceitar o convite e você concluir a transferência em “Organizações e equipe”.</p>
+        <button type="submit">Criar piloto e convite</button>
+      </form>
+      <section id="admin-customer-result" class="admin-customer-result hidden" aria-live="polite">
+        <span class="eyebrow">PILOTO PREPARADO</span><h3 id="admin-customer-result-title">Workspace criado</h3><p id="admin-customer-result-meta" class="muted"></p>
+        <label>Link de entrada do responsável<input id="admin-customer-link" readonly></label>
+        <div class="admin-customer-actions"><button id="admin-customer-copy" type="button">Copiar convite</button><a id="admin-customer-manage" class="secondary-button" href="/organizations">Abrir equipe</a></div>
+        <p id="admin-customer-next-step" class="admin-customer-guidance"></p>
+      </section>
+    </section>
+  </dialog>
 
   <dialog id="admin-organization-dialog" class="admin-dialog">
     <section class="admin-dialog-card" aria-labelledby="admin-organization-name">
@@ -99,6 +119,6 @@
       <form id="admin-privacy-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Registre o estágio e uma orientação que também ficará visível para o titular.</p></div></div><label>Status<select id="admin-privacy-edit-status"><option value="requested">Recebida</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovada para processamento</option><option value="canceled">Cancelada</option><option value="closed">Encerrada</option></select></label><label>Nota de tratamento<textarea id="admin-privacy-note" maxlength="2000" rows="4" placeholder="Ex.: Precisamos confirmar a transferência do workspace antes da exclusão"></textarea></label><button type="submit">Salvar tratamento</button></form>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-launch-1"></script>
+  <script src="/static/admin.js?v=20260909-pilot-1"></script>
 </body>
 </html>

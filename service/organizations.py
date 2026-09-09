@@ -325,6 +325,46 @@ class OrganizationStoreMixin:
             self._audit(org_id, user_id, "organization.created")
             return self._membership(user_id, org_id)
 
+    def provision_customer_workspace(self, actor_id, name, owner_email):
+        owner_email = owner_email.strip().casefold()
+        token = secrets.token_urlsafe(32)
+        created = datetime.now(timezone.utc)
+        expires = (created + timedelta(days=7)).isoformat()
+        with self._org_transaction():
+            actor = self._connection.execute(
+                "SELECT identifier FROM users WHERE id=?", (actor_id,)
+            ).fetchone()
+            if not actor or not self._connection.execute(
+                "SELECT 1 FROM memberships WHERE user_id=? AND role='admin'", (actor_id,)
+            ).fetchone():
+                raise OrganizationError("Somente administradores podem criar pilotos.", 403)
+            if actor["identifier"].casefold() == owner_email:
+                raise OrganizationError("Informe o e-mail do responsável da empresa cliente.", 409)
+            org_id = self._connection.execute(
+                "INSERT INTO organizations(name,created_by,created_at) VALUES(?,?,?)",
+                (name, actor_id, created.isoformat()),
+            ).lastrowid
+            self._connection.execute(
+                "INSERT INTO memberships VALUES(?,?,'admin',?)",
+                (org_id, actor_id, created.isoformat()),
+            )
+            invite_id = self._connection.execute(
+                """INSERT INTO invitations(
+                     organization_id,email,role,token_hash,created_by,created_at,expires_at
+                   ) VALUES(?,?,'admin',?,?,?,?)""",
+                (org_id, owner_email, invitation_hash(token), actor_id, created.isoformat(), expires),
+            ).lastrowid
+            self._audit(org_id, actor_id, "organization.provisioned", owner_email)
+            self._audit(org_id, actor_id, "invitation.created", owner_email)
+            organization = self._membership(actor_id, org_id, admin=True)
+        return {
+            "organization": organization,
+            "invitation": {
+                "id": invite_id, "email": owner_email, "role": "admin",
+                "organization_name": name, "expires_at": expires, "token": token,
+            },
+        }
+
     def rename_organization(self, actor_id, org_id, name):
         with self._org_transaction():
             self._membership(actor_id, org_id, admin=True)

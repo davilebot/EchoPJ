@@ -6,7 +6,7 @@ from pathlib import Path
 
 from service.auth import AuthStore
 from service.jobs import JobStore
-from service.models import InvitationRequest, OrganizationRequest
+from service.models import CustomerWorkspaceRequest, InvitationRequest, OrganizationRequest
 from service.organizations import OrganizationError
 from pydantic import ValidationError
 
@@ -51,6 +51,25 @@ class OrganizationTests(unittest.TestCase):
         with self.assertRaises(OrganizationError): self.store.organization_for_user(member["id"], second["id"])
         with self.assertRaises(OrganizationError): self.store.organization_team(member["id"], self.org)
         with self.assertRaises(OrganizationError): self.store.create_invitation(member["id"], self.org, "other@example.com", "admin")
+
+    def test_admin_can_provision_customer_workspace_and_owner_invitation_atomically(self):
+        provisioned = self.store.provision_customer_workspace(
+            self.owner, "Cliente Piloto", "  CLIENTE@Example.com ",
+        )
+        organization = provisioned["organization"]
+        invitation = provisioned["invitation"]
+        self.assertEqual(organization["name"], "Cliente Piloto")
+        self.assertEqual(organization["created_by"], self.owner)
+        self.assertEqual(invitation["email"], "cliente@example.com")
+        self.assertEqual(invitation["role"], "admin")
+        self.assertEqual(
+            self.store.invitation_preview(invitation["token"])["organization_name"],
+            "Cliente Piloto",
+        )
+        actions = {item["action"] for item in self.store.organization_team(self.owner, organization["id"])["audit"]}
+        self.assertTrue({"organization.provisioned", "invitation.created"}.issubset(actions))
+        with self.assertRaises(OrganizationError):
+            self.store.provision_customer_workspace(self.owner, "Inválido", "owner@example.com")
 
     def test_viewer_role_is_invitable_and_has_read_only_product_permissions(self):
         viewer = self.invite_user("viewer@example.com", role="viewer")
@@ -236,3 +255,7 @@ class OrganizationTests(unittest.TestCase):
             with self.assertRaises(ValidationError): InvitationRequest(email=email)
         with self.assertRaises(ValidationError): OrganizationRequest(name="   ")
         self.assertEqual(OrganizationRequest(name="  Minha equipe  ").name, "Minha equipe")
+        with self.assertRaises(ValidationError): CustomerWorkspaceRequest(name="Cliente", owner_email="invalido")
+        with self.assertRaises(ValidationError): CustomerWorkspaceRequest(name="Cliente", owner_email="cliente@example.com", trial_credits=-1)
+        request = CustomerWorkspaceRequest(name="  Cliente Piloto  ", owner_email=" CLIENTE@Example.com ")
+        self.assertEqual((request.name, request.owner_email), ("Cliente Piloto", "cliente@example.com"))

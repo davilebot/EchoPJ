@@ -25,6 +25,7 @@ from .models import (
     AccountUpdateRequest,
     BatchRequest,
     CompanyLookupRequest,
+    CustomerWorkspaceRequest,
     CompanySearchRequest,
     JobRequest,
     LoginRequest,
@@ -1285,6 +1286,43 @@ def admin_overview(
     catalog["funnel"] = funnel
     catalog["billing_events"] = saas_store.admin_billing_events(limit=20)
     return catalog
+
+
+@app.post("/api/admin/customer-workspaces", status_code=201)
+def provision_customer_workspace(
+    payload: CustomerWorkspaceRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    key = f"customer-workspace:{user['id']}"
+    if not invitation_rate_limiter.allowed(key, monotonic()):
+        raise HTTPException(status_code=429, detail="Limite temporário de pilotos atingido. Tente mais tarde.")
+    provisioned = auth_store.provision_customer_workspace(
+        user["id"], payload.name, payload.owner_email,
+    )
+    organization = provisioned["organization"]
+    initial_credits = settings.saas_trial_credits if payload.trial_credits is None else payload.trial_credits
+    profile = saas_store.ensure_organization(
+        organization["id"], initial_credits=initial_credits,
+    )
+    saas_store.record_product_event(
+        organization["id"], user["id"], "workspace.created",
+        subject_type="organization", subject_id=str(organization["id"]),
+        deduplication_key=f"workspace.created:{organization['id']}",
+    )
+    invitation_rate_limiter.failed(key, monotonic())
+    invitation = provisioned["invitation"]
+    link = f"{settings.app_public_url.rstrip('/')}/invite#token={invitation.pop('token')}"
+    delivery = send_invitation(
+        settings, email=invitation["email"], organization_name=invitation["organization_name"], link=link,
+    ) if payload.send_email else "manual"
+    return {
+        "organization": {**organization, "billing": profile},
+        "invitation": {**invitation, "link": link, "delivery": delivery},
+        "handoff": {
+            "status": "waiting_acceptance",
+            "next_step": "Depois que o cliente aceitar, transfira a responsabilidade na área Organizações e equipe.",
+        },
+    }
 
 
 @app.get("/api/notifications")

@@ -468,6 +468,52 @@ class OrganizationAPITests(unittest.TestCase):
         )[0], 200)
         self.assertEqual(self.request(f"/api/organizations/{self.other}", token=self.owner_token)[0], 403)
 
+    def test_internal_admin_can_prepare_complete_customer_pilot(self):
+        internal_headers = {"x-organization-id": str(self.org)}
+        self.assertEqual(self.request(
+            "/api/admin/customer-workspaces", "POST",
+            {"name": "Tentativa", "owner_email": "blocked@example.com", "trial_credits": 10},
+            self.member_token, internal_headers,
+        )[0], 403)
+        status, pilot, _ = self.request(
+            "/api/admin/customer-workspaces", "POST",
+            {
+                "name": "Cliente Piloto", "owner_email": "cliente.piloto@example.com",
+                "trial_credits": 37, "send_email": False,
+            },
+            self.owner_token, internal_headers,
+        )
+        self.assertEqual(status, 201)
+        organization_id = pilot["organization"]["id"]
+        self.assertEqual(pilot["organization"]["billing"]["credit_balance"], 37)
+        self.assertEqual(pilot["organization"]["billing"]["plan_code"], "trial")
+        self.assertEqual(pilot["invitation"]["delivery"], "manual")
+        self.assertEqual(pilot["invitation"]["role"], "admin")
+        self.assertNotIn("token", pilot["invitation"])
+        self.assertIn("/invite#token=", pilot["invitation"]["link"])
+        token = pilot["invitation"]["link"].split("#token=")[1]
+        preview = self.request("/api/invitations/preview", "POST", {"token": token})[1]
+        self.assertEqual(preview["organization_name"], "Cliente Piloto")
+        acceptance = {
+            "token": token, "password": "client-password-long", "accept_terms": True,
+            "terms_version": "2026-09", "privacy_version": "2026-09",
+        }
+        status, accepted, _ = self.request("/api/invitations/accept", "POST", acceptance)
+        self.assertEqual(status, 200)
+        self.assertEqual(accepted["organization_id"], organization_id)
+        client = self.auth.authenticate("cliente.piloto@example.com", "client-password-long")
+        status, transferred, _ = self.request(
+            f"/api/organizations/{organization_id}/owner/{client['id']}", "PUT",
+            token=self.owner_token,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(transferred["owner"]["created_by"], client["id"])
+        detail = self.request(
+            f"/api/admin/organizations/{organization_id}", token=self.owner_token,
+            headers=internal_headers,
+        )[1]
+        self.assertEqual(detail["owner_email"], "cliente.piloto@example.com")
+
     def test_jobs_created_are_bound_to_actor_and_org(self):
         payload = {"filename": "test.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}], "check_website": False}
         status, job, _ = self.request("/api/jobs", "POST", payload, self.owner_token, {"x-organization-id": str(self.other)})
