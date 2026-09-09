@@ -428,10 +428,16 @@ class OrganizationAPITests(unittest.TestCase):
         token = data["link"].split("#token=")[1]
         status, preview, _ = self.request("/api/invitations/preview", "POST", {"token": token})
         self.assertEqual(status, 200); self.assertEqual(preview["email"], "new@example.com")
-        status, data, headers = self.request("/api/invitations/accept", "POST", {"token": token, "password": "new-password-long"})
+        self.assertTrue(preview["legal_acceptance_required"])
+        self.assertEqual(preview["legal"]["documents"]["terms"]["version"], "2026-09")
+        self.assertEqual(self.request("/api/invitations/accept", "POST", {"token": token, "password": "new-password-long"})[0], 422)
+        acceptance = {"token": token, "password": "new-password-long", "accept_terms": True, "terms_version": "2026-09", "privacy_version": "2026-09"}
+        status, data, headers = self.request("/api/invitations/accept", "POST", acceptance)
         self.assertEqual(status, 200); self.assertEqual(data["organization_id"], self.other)
         self.assertIn(b"set-cookie", headers)
-        self.assertEqual(self.request("/api/invitations/accept", "POST", {"token": token, "password": "new-password-long"})[0], 404)
+        invited = self.auth.authenticate("new@example.com", "new-password-long")
+        self.assertEqual({item["source"] for item in self.auth.legal_acceptances(invited["id"])}, {"invitation"})
+        self.assertEqual(self.request("/api/invitations/accept", "POST", acceptance)[0], 404)
 
     def test_removed_members_session_immediately_loses_org_access(self):
         self.auth.change_member(self.owner["id"], self.org, self.member["id"])

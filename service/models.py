@@ -79,6 +79,9 @@ class InvitationTokenRequest(BaseModel):
 
 class InvitationAcceptRequest(InvitationTokenRequest):
     password: str = Field(min_length=1, max_length=1024)
+    accept_terms: bool = False
+    terms_version: str = Field(default="", max_length=40, pattern=r"^(?:|[A-Za-z0-9][A-Za-z0-9._-]*)$")
+    privacy_version: str = Field(default="", max_length=40, pattern=r"^(?:|[A-Za-z0-9][A-Za-z0-9._-]*)$")
 
 
 class AccountUpdateRequest(BaseModel):

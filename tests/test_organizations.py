@@ -128,9 +128,15 @@ class OrganizationTests(unittest.TestCase):
         with sqlite3.connect(self.path) as connection:
             stored = connection.execute("SELECT token_hash FROM invitations").fetchone()[0]
         self.assertNotEqual(invite["token"], stored)
-        user, org = self.store.accept_invitation(invite["token"], "new-password-long")
+        user, org = self.store.accept_invitation(
+            invite["token"], "new-password-long",
+            legal_versions={"terms": "2026-09", "privacy": "2026-09"},
+        )
         self.assertEqual(org, self.org)
         self.assertEqual(user["identifier"], "new@example.com")
+        acceptances = self.store.legal_acceptances(user["id"])
+        self.assertEqual({item["document_type"] for item in acceptances}, {"terms", "privacy"})
+        self.assertTrue(all(item["source"] == "invitation" for item in acceptances))
         self.assertIsNotNone(self.store.authenticate("new@example.com", "new-password-long"))
         with self.assertRaises(OrganizationError): self.store.accept_invitation(invite["token"], "new-password-long")
         team = self.store.organization_team(self.owner, self.org)

@@ -416,7 +416,7 @@ class OrganizationStoreMixin:
             row = self._valid_invitation(token)
             return {key: row[key] for key in ("email", "organization_name", "role", "expires_at")}
 
-    def accept_invitation(self, token, password):
+    def accept_invitation(self, token, password, *, legal_versions=None):
         with self._org_transaction():
             row = self._valid_invitation(token)
             existing = self._connection.execute("SELECT * FROM users WHERE identifier=? COLLATE NOCASE", (row["email"],)).fetchone()
@@ -430,6 +430,12 @@ class OrganizationStoreMixin:
                 user = self._insert_invited_user(row["email"], password)
             # Existing members never gain an elevated role from an older pending invite.
             self._connection.execute("INSERT OR IGNORE INTO memberships VALUES(?,?,?,?)", (row["organization_id"], user["id"], row["role"], now_iso()))
-            self._connection.execute("UPDATE invitations SET accepted_at=? WHERE id=?", (now_iso(), row["id"]))
+            accepted_at = now_iso()
+            if legal_versions:
+                self._record_legal_acceptances(
+                    user["id"], row["organization_id"], legal_versions,
+                    accepted_at=accepted_at, source="invitation",
+                )
+            self._connection.execute("UPDATE invitations SET accepted_at=? WHERE id=?", (accepted_at, row["id"]))
             self._audit(row["organization_id"], user["id"], "invitation.accepted", row["id"])
             return user, row["organization_id"]

@@ -10,6 +10,29 @@ from service.models import AccountUpdateRequest, PasswordResetConfirmRequest, Si
 
 
 class AuthStoreTests(unittest.TestCase):
+    def test_migrates_legal_acceptances_to_support_invitation_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "auth.sqlite"
+            store = AuthStore(str(path))
+            store.close()
+            with sqlite3.connect(path) as connection:
+                connection.execute("DROP INDEX idx_legal_acceptances_user")
+                connection.execute("DROP TABLE legal_acceptances")
+                connection.execute("""CREATE TABLE legal_acceptances (
+                  id TEXT PRIMARY KEY,user_id INTEGER NOT NULL,organization_id INTEGER NOT NULL,
+                  document_type TEXT NOT NULL CHECK(document_type IN ('terms','privacy')),
+                  document_version TEXT NOT NULL,accepted_at TEXT NOT NULL,
+                  source TEXT NOT NULL CHECK(source IN ('signup')),
+                  UNIQUE(user_id,organization_id,document_type,document_version,source)
+                )""")
+                connection.execute("CREATE INDEX idx_legal_acceptances_user ON legal_acceptances(user_id, accepted_at DESC)")
+            upgraded = AuthStore(str(path))
+            definition = upgraded._connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name='legal_acceptances'"
+            ).fetchone()[0]
+            self.assertIn("'invitation'", definition)
+            upgraded.close()
+
     def test_migrates_legacy_credential_and_never_stores_plain_password(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "auth.sqlite"

@@ -28,6 +28,11 @@ a leitura e o envio, a API recusa o cadastro e pede que a página seja recarrega
 Após a confirmação do e-mail, os aceites são gravados com usuário, organização,
 versão, data e origem.
 
+Convites para equipes continuam funcionando enquanto os documentos estão em
+rascunho. Depois da publicação, a tela do convite também apresenta as versões
+vigentes e exige o aceite antes de incluir a pessoa no workspace. O registro
+distingue a origem `signup` da origem `invitation`.
+
 ## Tratamento interno
 
 Administradores da organização interna EchoHub veem a fila em **Administração**.

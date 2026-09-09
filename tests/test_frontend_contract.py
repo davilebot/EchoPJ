@@ -220,6 +220,8 @@ class FrontendContractTests(unittest.TestCase):
         signup_script = (STATIC_DIR / "signup.js").read_text(encoding="utf-8")
         account = (STATIC_DIR / "account.html").read_text(encoding="utf-8")
         account_script = (STATIC_DIR / "account.js").read_text(encoding="utf-8")
+        invite = (STATIC_DIR / "invite.html").read_text(encoding="utf-8")
+        invite_script = (STATIC_DIR / "invite.js").read_text(encoding="utf-8")
         self.assertIn('id="terms-document"', legal)
         self.assertIn('id="privacy-document"', legal)
         self.assertIn('fetch("/api/legal/documents")', legal_script)
@@ -228,6 +230,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("privacy_version", signup_script)
         self.assertIn('id="legal-acceptances"', account)
         self.assertIn('fetch("/api/legal/acceptances")', account_script)
+        self.assertIn('id="invite-legal-consent"', invite)
+        self.assertIn("legal_acceptance_required", invite_script)
+        self.assertIn("terms_version", invite_script)
 
     def test_platform_accepts_safe_deep_links_to_known_tabs(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

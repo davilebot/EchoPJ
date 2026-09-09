@@ -102,6 +102,9 @@ estão em [`.env.example`](.env.example).
   versões exibidas, e a confirmação do e-mail registra os dois aceites com usuário,
   organização e data. A área **Minha conta** mostra as versões aceitas e a exportação
   pessoal inclui esse histórico.
+- Quando os documentos estiverem publicados, a aceitação de convite também exige
+  as versões atuais e registra o aceite. Enquanto forem rascunho, o fluxo interno
+  de convites permanece disponível para homologação.
 - Administradores da organização interna EchoHub acessam `/admin` para localizar
   empresas clientes, alterar plano e status, conceder ou descontar créditos e
   consultar o histórico de movimentações. A EchoHub permanece protegida como

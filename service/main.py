@@ -795,7 +795,11 @@ def invitation_attempt(request: Request, token: str):
 def invitation_preview(payload: InvitationTokenRequest, request: Request) -> dict:
     key = invitation_attempt(request, payload.token)
     try:
-        return auth_store.invitation_preview(payload.token)
+        return {
+            **auth_store.invitation_preview(payload.token),
+            "legal_acceptance_required": legal_documents.configured,
+            "legal": legal_documents.public(),
+        }
     except OrganizationError:
         login_rate_limiter.failed(key, monotonic())
         raise
@@ -804,8 +808,17 @@ def invitation_preview(payload: InvitationTokenRequest, request: Request) -> dic
 @app.post("/api/invitations/accept")
 def accept_invitation(payload: InvitationAcceptRequest, request: Request) -> Response:
     key = invitation_attempt(request, payload.token)
+    legal_versions = None
+    if legal_documents.configured:
+        if not payload.accept_terms:
+            raise HTTPException(status_code=422, detail="Leia e aceite os Termos de Uso e a Política de Privacidade.")
+        if not legal_documents.accepts(payload.terms_version, payload.privacy_version):
+            raise HTTPException(status_code=409, detail="Os documentos foram atualizados. Reabra o convite e revise as versões atuais.")
+        legal_versions = {"terms": payload.terms_version, "privacy": payload.privacy_version}
     try:
-        user, org_id = auth_store.accept_invitation(payload.token, payload.password)
+        user, org_id = auth_store.accept_invitation(
+            payload.token, payload.password, legal_versions=legal_versions,
+        )
     except OrganizationError:
         login_rate_limiter.failed(key, monotonic())
         raise

@@ -103,7 +103,7 @@ class AuthStore(OrganizationStoreMixin):
               document_type TEXT NOT NULL CHECK(document_type IN ('terms','privacy')),
               document_version TEXT NOT NULL,
               accepted_at TEXT NOT NULL,
-              source TEXT NOT NULL CHECK(source IN ('signup')),
+              source TEXT NOT NULL CHECK(source IN ('signup','invitation')),
               FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
               FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
               UNIQUE(user_id,organization_id,document_type,document_version,source)
@@ -127,6 +127,62 @@ class AuthStore(OrganizationStoreMixin):
         """)
         self._connection.commit()
         self._initialize_organizations()
+        self._upgrade_legal_acceptance_sources()
+
+    def _upgrade_legal_acceptance_sources(self) -> None:
+        definition = self._connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='legal_acceptances'"
+        ).fetchone()
+        if definition and "'invitation'" in (definition["sql"] or ""):
+            return
+        with self._org_transaction():
+            self._connection.execute("ALTER TABLE legal_acceptances RENAME TO legal_acceptances_before_invitation")
+            self._connection.execute("""CREATE TABLE legal_acceptances (
+              id TEXT PRIMARY KEY,
+              user_id INTEGER NOT NULL,
+              organization_id INTEGER NOT NULL,
+              document_type TEXT NOT NULL CHECK(document_type IN ('terms','privacy')),
+              document_version TEXT NOT NULL,
+              accepted_at TEXT NOT NULL,
+              source TEXT NOT NULL CHECK(source IN ('signup','invitation')),
+              FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY(organization_id) REFERENCES organizations(id) ON DELETE CASCADE,
+              UNIQUE(user_id,organization_id,document_type,document_version,source)
+            )""")
+            self._connection.execute(
+                """INSERT INTO legal_acceptances(
+                     id,user_id,organization_id,document_type,document_version,accepted_at,source
+                   ) SELECT id,user_id,organization_id,document_type,document_version,accepted_at,source
+                     FROM legal_acceptances_before_invitation"""
+            )
+            self._connection.execute("DROP TABLE legal_acceptances_before_invitation")
+            self._connection.execute(
+                "CREATE INDEX idx_legal_acceptances_user ON legal_acceptances(user_id, accepted_at DESC)"
+            )
+
+    def _record_legal_acceptances(
+        self,
+        user_id: int,
+        organization_id: int,
+        legal_versions: dict[str, str],
+        *,
+        accepted_at: str,
+        source: str,
+    ) -> None:
+        terms_version = str(legal_versions.get("terms", "")).strip()[:40]
+        privacy_version = str(legal_versions.get("privacy", "")).strip()[:40]
+        if not terms_version or not privacy_version:
+            raise OrganizationError("As versões dos documentos jurídicos são obrigatórias.", 422)
+        self._connection.executemany(
+            """INSERT OR IGNORE INTO legal_acceptances(
+                 id,user_id,organization_id,document_type,document_version,
+                 accepted_at,source
+               ) VALUES(?,?,?,?,?,?,?)""",
+            [
+                (str(uuid.uuid4()), user_id, organization_id, "terms", terms_version, accepted_at, source),
+                (str(uuid.uuid4()), user_id, organization_id, "privacy", privacy_version, accepted_at, source),
+            ],
+        )
 
     def _insert_invited_user(self, identifier: str, password: str) -> dict:
         salt = secrets.token_bytes(16)
@@ -399,21 +455,12 @@ class AuthStore(OrganizationStoreMixin):
                 (organization_id, user_id, isoformat(completed_at)),
             )
             if legal:
-                self._connection.executemany(
-                    """INSERT INTO legal_acceptances(
-                         id,user_id,organization_id,document_type,document_version,
-                         accepted_at,source
-                       ) VALUES(?,?,?,?,?,?,'signup')""",
-                    [
-                        (
-                            str(uuid.uuid4()), user_id, organization_id, "terms",
-                            legal["terms_version"], legal["accepted_at"],
-                        ),
-                        (
-                            str(uuid.uuid4()), user_id, organization_id, "privacy",
-                            legal["privacy_version"], legal["accepted_at"],
-                        ),
-                    ],
+                self._record_legal_acceptances(
+                    user_id,
+                    organization_id,
+                    {"terms": legal["terms_version"], "privacy": legal["privacy_version"]},
+                    accepted_at=legal["accepted_at"],
+                    source="signup",
                 )
             self._connection.execute(
                 "UPDATE pending_signups SET used_at=? WHERE identifier=? COLLATE NOCASE AND used_at IS NULL",
