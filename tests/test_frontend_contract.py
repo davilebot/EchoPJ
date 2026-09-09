@@ -38,7 +38,7 @@ class FrontendContractTests(unittest.TestCase):
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
-            "search-templates", "workspace-access-notice",
+            "search-templates", "workspace-access-notice", "search-excluded-cnae-picker",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -81,6 +81,16 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("saved_lists", script)
         self.assertIn("company-list-tags", script)
         self.assertIn(".search-preview-column { position: sticky", styles)
+
+    def test_search_loads_ten_thousand_and_supports_flexible_selection(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertNotIn('id="search-limit"', self.html)
+        self.assertIn("limit: 10000", script)
+        self.assertIn('id="select-all-results"', script)
+        self.assertIn('id="selection-quantity"', script)
+        self.assertIn("COMPANY_SEARCH_PAGE_SIZE", script)
+        self.assertIn("data.total_count", script)
+        self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

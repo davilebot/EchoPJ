@@ -353,6 +353,7 @@ class CompanySearchRequest(BaseModel):
     postal_code_prefixes: list[str] = Field(default_factory=list, max_length=1000)
     cnae: str | None = Field(default=None, max_length=10)
     cnaes: list[str] = Field(default_factory=list, max_length=2000)
+    excluded_cnaes: list[str] = Field(default_factory=list, max_length=2000)
     cnae_scope: Literal["primary", "any"] = "primary"
     registration_statuses: list[str] = Field(default_factory=list, max_length=6)
     company_sizes: list[str] = Field(default_factory=list, max_length=4)
@@ -371,7 +372,7 @@ class CompanySearchRequest(BaseModel):
     has_phone: bool | None = None
     active_branch_count_min: int | None = Field(default=None, ge=0, le=100000)
     active_branch_count_max: int | None = Field(default=None, ge=0, le=100000)
-    limit: int = Field(default=500, ge=1, le=10000)
+    limit: int = Field(default=10000, ge=1, le=10000)
 
     @field_validator("company_name")
     @classmethod
@@ -417,7 +418,7 @@ class CompanySearchRequest(BaseModel):
                     normalized.append(municipality)
         return list(dict.fromkeys(normalized))
 
-    @field_validator("cnaes")
+    @field_validator("cnaes", "excluded_cnaes")
     @classmethod
     def validate_cnaes(cls, value: list[str]) -> list[str]:
         normalized = list(dict.fromkeys(digits(item) for item in value if digits(item)))
@@ -513,7 +514,7 @@ class CompanySearchRequest(BaseModel):
 class SavedSearchRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     filters: CompanySearchRequest
-    result_count: int | None = Field(default=None, ge=0, le=10000)
+    result_count: int | None = Field(default=None, ge=0, le=100_000_000)
 
     @field_validator("name")
     @classmethod
@@ -525,7 +526,7 @@ class SavedSearchRequest(BaseModel):
 
 
 class SavedSearchRunRequest(BaseModel):
-    result_count: int = Field(ge=0, le=10000)
+    result_count: int = Field(ge=0, le=100_000_000)
 
 
 class CompanyListRequest(BaseModel):

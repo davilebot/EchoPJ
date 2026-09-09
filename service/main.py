@@ -1875,10 +1875,9 @@ def _company_search_response(
     preview: bool,
 ) -> dict:
     filters = payload.model_dump()
-    if preview:
-        filters["limit"] = min(payload.limit, 40)
+    filters["limit"] = 10000
     try:
-        results, capabilities, duration_ms, has_more = repository.search_companies(filters)
+        results, capabilities, duration_ms, has_more, total_count = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except QueryCanceled as error:
@@ -1902,6 +1901,7 @@ def _company_search_response(
     response = {
         "results": enriched_results,
         "returned": len(enriched_results),
+        "total_count": total_count,
         "limit": filters["limit"],
         "has_more": has_more,
         "preview": preview,
@@ -1919,7 +1919,7 @@ def _company_search_response(
             user["organization_id"],
             user["id"],
             "search.executed",
-            metadata={"returned": len(enriched_results), "limit": payload.limit},
+            metadata={"returned": len(enriched_results), "total_count": total_count, "limit": filters["limit"]},
         )
     return response
 

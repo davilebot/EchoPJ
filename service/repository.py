@@ -187,7 +187,7 @@ class Repository:
         }
         return {key: cls._serializable(value) for key, value in fields.items()}
 
-    def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool]:
+    def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool, int]:
         started = monotonic()
         capabilities = self.search_capabilities()
         sql, parameters = build_search_query(filters, capabilities)
@@ -199,16 +199,8 @@ class Repository:
             )
             rows = connection.execute(sql, parameters).fetchall()
         limit = int(filters["limit"])
-        has_more = len(rows) > limit
-        rows = rows[:limit]
-        if rows and capabilities.partners:
-            with self.pool.connection() as connection:
-                connection.execute("SELECT set_config('statement_timeout','60000',true)")
-                partners_by_root = self._partners_by_roots(
-                    connection,
-                    rows[0]["dataset_version"],
-                    list(dict.fromkeys(row["cnpj_root"] for row in rows)),
-                )
+        total_count = int(rows[0]["total_count"]) if rows else 0
+        has_more = total_count > len(rows)
         duration_ms = round((monotonic() - started) * 1000)
         results = []
         for row in rows:
@@ -216,7 +208,7 @@ class Repository:
             company["partners"] = partners_by_root.get(row["cnpj_root"], [])
             company["partner_count"] = len(company["partners"])
             results.append(company)
-        return results, capabilities, duration_ms, has_more
+        return results, capabilities, duration_ms, has_more, total_count
 
     def _partners_by_roots(
         self,

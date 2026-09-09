@@ -698,7 +698,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.saas.add_companies(self.org, company_list["id"], self.owner["id"], [company])
         capabilities = MagicMock()
         capabilities.as_dict.return_value = {"establishment_details": True}
-        self.main.repository.search_companies.return_value = ([company], capabilities, 12, False)
+        self.main.repository.search_companies.return_value = ([company], capabilities, 12, True, 12450)
         self.main.repository.current_version.return_value = "2026-08"
 
         status, data, _ = self.request(
@@ -707,12 +707,14 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertTrue(data["preview"])
-        self.assertEqual(data["limit"], 40)
+        self.assertEqual(data["limit"], 10000)
+        self.assertEqual(data["total_count"], 12450)
+        self.assertTrue(data["has_more"])
         self.assertEqual(data["segments"], {"total": 1, "new": 0, "saved": 1})
         self.assertTrue(data["results"][0]["saved"])
         self.assertEqual(data["results"][0]["saved_lists"][0]["name"], "Prospecção SaaS")
         filters = self.main.repository.search_companies.call_args.args[0]
-        self.assertEqual(filters["limit"], 40)
+        self.assertEqual(filters["limit"], 10000)
 
         status, foreign_data, _ = self.request(
             "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,

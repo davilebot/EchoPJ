@@ -88,6 +88,8 @@ let lastCompanySearchData = null;
 let searchPreviewTimer = null;
 let searchPreviewController = null;
 let searchPreviewRequest = 0;
+let companySearchPage = 0;
+const COMPANY_SEARCH_PAGE_SIZE = 50;
 let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -114,7 +116,7 @@ const searchTemplates = {
       company_sizes: ["MICRO EMPRESA", "EMPRESA DE PEQUENO PORTE"],
       has_email: true,
       has_phone: true,
-      limit: 500,
+      limit: 10000,
     },
   },
   "expanding-headquarters": {
@@ -123,7 +125,7 @@ const searchTemplates = {
       registration_statuses: ["ATIVA"],
       branch_type: "1",
       active_branch_count_min: 2,
-      limit: 500,
+      limit: 10000,
     },
   },
   "simples-contact": {
@@ -132,7 +134,7 @@ const searchTemplates = {
       registration_statuses: ["ATIVA"],
       simples: true,
       has_phone: true,
-      limit: 500,
+      limit: 10000,
     },
   },
 };
@@ -301,6 +303,7 @@ function createMultiPicker(root, emptyLabel) {
 }
 
 const cnaePicker = createMultiPicker(document.querySelector("#search-cnae-picker"), "Selecionar CNAEs");
+const excludedCnaePicker = createMultiPicker(document.querySelector("#search-excluded-cnae-picker"), "Nenhum CNAE excluído");
 const municipalityPicker = createMultiPicker(document.querySelector("#search-municipality-picker"), "Selecionar municípios");
 const regionPicker = createMultiPicker(document.querySelector("#search-region-picker"), "Brasil inteiro");
 const ufPicker = createMultiPicker(document.querySelector("#search-uf-picker"), "Todos os estados");
@@ -676,15 +679,19 @@ async function loadSearchCapabilities() {
 async function loadCnaeOptions() {
   if (searchCnaeOptionsLoaded) return;
   cnaePicker.setLoading("Carregando CNAEs da Receita…");
+  excludedCnaePicker.setLoading("Carregando CNAEs da Receita…");
   try {
     const response = await fetch("/api/search/options/cnaes");
     if (!response.ok) throw new Error("Não foi possível carregar os CNAEs");
     const data = await response.json();
     cnaePicker.setOptions(data.options);
+    excludedCnaePicker.setOptions(data.options);
     cnaePicker.setDisabled(false);
+    excludedCnaePicker.setDisabled(false);
     searchCnaeOptionsLoaded = true;
   } catch (error) {
     cnaePicker.setDisabled(true, error.message);
+    excludedCnaePicker.setDisabled(true, error.message);
   }
 }
 
@@ -715,6 +722,7 @@ async function loadMunicipalityOptions() {
 function companySearchPayload() {
   return {
     cnaes: cnaePicker.values(),
+    excluded_cnaes: excludedCnaePicker.values(),
     cnae_scope: document.querySelector("#search-cnae-scope").value,
     company_name: document.querySelector("#search-name").value || null,
     excluded_company_names: document.querySelector("#search-excluded-names").value
@@ -739,7 +747,7 @@ function companySearchPayload() {
     has_phone: optionalBoolean(document.querySelector("#search-has-phone").value),
     active_branch_count_min: optionalNumber(document.querySelector("#search-branches-min").value),
     active_branch_count_max: optionalNumber(document.querySelector("#search-branches-max").value),
-    limit: Math.max(1, Math.min(10000, Number(document.querySelector("#search-limit").value) || 1)),
+    limit: 10000,
   };
 }
 
@@ -1120,7 +1128,12 @@ function savedListsMarkup(company) {
 function renderCompanySearchView() {
   if (!lastCompanySearchData) return;
   const data = lastCompanySearchData;
-  const visible = companySearchViewResults().slice(0, 100);
+  const viewResults = companySearchViewResults();
+  const totalPages = Math.max(1, Math.ceil(viewResults.length / COMPANY_SEARCH_PAGE_SIZE));
+  companySearchPage = Math.min(companySearchPage, totalPages - 1);
+  const start = companySearchPage * COMPANY_SEARCH_PAGE_SIZE;
+  const visible = viewResults.slice(start, start + COMPANY_SEARCH_PAGE_SIZE);
+  const end = start + visible.length;
   const rows = visible.map((company) => `<tr>
     <td><input class="row-selector" type="checkbox" data-select-company="${escapeHtml(company.cnpj)}" aria-label="Selecionar ${escapeHtml(company.legal_name || company.cnpj)}" ${selectedCompanyCnpjs.has(company.cnpj) ? "checked" : ""}></td>
     <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
@@ -1130,34 +1143,63 @@ function renderCompanySearchView() {
     <td>${escapeHtml(companySizeLabel(company.company_size))}</td>
     <td>${savedListsMarkup(company)}</td>
   </tr>`).join("");
-  const viewLabels = { total: "nesta prévia", new: "que ainda não estão em listas", saved: "já salvas em listas" };
-  const loadedLabel = `${data.returned.toLocaleString("pt-BR")}${data.has_more ? "+" : ""}`;
-  companySearchResult.innerHTML = `<div class="search-result-context"><span><strong>${loadedLabel}</strong> empresas carregadas</span><span>${(data.timing_ms / 1000).toFixed(1)}s · Receita ${escapeHtml(data.dataset_version || "—")}</span></div>
-    ${visible.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar visíveis</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div>${data.preview ? "" : `<button id="download-company-search" class="secondary compact" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button>`}</div>
+  const viewLabels = { total: "no total carregado", new: "que ainda não estão em listas", saved: "já salvas em listas" };
+  const exactTotal = Number(data.total_count ?? data.returned ?? 0);
+  companySearchResult.innerHTML = `<div class="search-result-metrics">
+      <article><span>Encontradas na base</span><strong>${exactTotal.toLocaleString("pt-BR")}</strong></article>
+      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? "limite de 10.000 atingido" : "resultado completo carregado"}</small></article>
+      <article><span>Base consultada</span><strong>${escapeHtml(data.dataset_version || "—")}</strong><small>${(Number(data.timing_ms || 0) / 1000).toFixed(1)}s</small></article>
+    </div>
+    ${viewResults.length ? `<div class="selection-tools">
+      <div class="selection-tools-buttons"><button id="select-all-results" class="secondary compact" type="button">Selecionar todas (${viewResults.length.toLocaleString("pt-BR")})</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div>
+      <div class="selection-quantity-control"><label for="selection-quantity">Selecionar quantidade</label><input id="selection-quantity" type="number" min="1" max="${viewResults.length}" placeholder="Ex.: 250" inputmode="numeric"><button id="select-result-quantity" class="secondary compact" type="button">Selecionar</button></div>
+    </div>
     <div id="selection-action-bar" class="selection-action-bar" aria-label="Ações das empresas selecionadas">
       <div class="selection-action-copy"><strong id="selection-count">0 selecionadas</strong><small id="selection-credit-summary" aria-live="polite">Selecione empresas para salvar em uma lista ou baixar o CSV.</small></div>
       <div class="selection-action-buttons"><button id="save-selected-company-search" data-capability="manage-library" type="button" disabled>Salvar em uma lista</button><button id="download-selected-company-search" class="secondary" data-capability="export" type="button" disabled>Baixar selecionadas</button></div>
     </div>
     <div class="table-wrap search-results-table"><table><thead><tr><th>Selecionar</th><th>CNPJ</th><th>Empresa</th><th>CNAE principal</th><th>Município/UF</th><th>Porte</th><th>Listas</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="search-notice">Mostrando ${visible.length.toLocaleString("pt-BR")} empresa${visible.length === 1 ? "" : "s"} ${viewLabels[activeCompanySearchView]}. Nada é salvo automaticamente.</p>
-    ` : `<div class="empty-state"><strong>Nenhuma empresa ${activeCompanySearchView === "saved" ? "salva" : activeCompanySearchView === "new" ? "nova" : "encontrada"} nesta prévia.</strong><p>${activeCompanySearchView === "total" ? "Altere ou remova algum filtro e tente novamente." : "Escolha outra categoria ou ajuste os filtros."}</p></div>`}`;
+    <div class="search-results-pagination" aria-label="Paginação dos resultados"><span>Mostrando ${(start + 1).toLocaleString("pt-BR")}–${end.toLocaleString("pt-BR")} de ${viewResults.length.toLocaleString("pt-BR")} ${viewLabels[activeCompanySearchView]}</span><div><button class="secondary compact" data-search-page="previous" type="button" ${companySearchPage === 0 ? "disabled" : ""}>Anterior</button><strong>Página ${companySearchPage + 1} de ${totalPages}</strong><button class="secondary compact" data-search-page="next" type="button" ${companySearchPage >= totalPages - 1 ? "disabled" : ""}>Próxima</button></div></div>
+    <p class="search-notice">A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.</p>
+    ` : `<div class="empty-state"><strong>Nenhuma empresa ${activeCompanySearchView === "saved" ? "salva" : activeCompanySearchView === "new" ? "nova" : "encontrada"} nesta categoria.</strong><p>${activeCompanySearchView === "total" ? "Altere ou remova algum filtro e tente novamente." : "Escolha outra categoria ou ajuste os filtros."}</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
-  const downloadAllButton = document.querySelector("#download-company-search");
-  downloadAllButton?.addEventListener("click", () => runButtonAction(downloadAllButton, "Preparando CSV…", () => downloadCompanySearch(lastCompanySearch)));
   const downloadSelectedButton = document.querySelector("#download-selected-company-search");
   downloadSelectedButton?.addEventListener("click", () => runButtonAction(downloadSelectedButton, "Preparando CSV…", () => (
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas.csv")
   )));
-  document.querySelector("#select-preview")?.addEventListener("click", () => {
-    visible.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
-    companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = true; });
-    updateSearchSelection();
+  document.querySelector("#select-all-results")?.addEventListener("click", () => {
+    selectedCompanyCnpjs = new Set(viewResults.map((company) => company.cnpj));
+    renderCompanySearchView();
   });
   document.querySelector("#clear-preview-selection")?.addEventListener("click", () => {
     selectedCompanyCnpjs.clear();
-    companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = false; });
-    updateSearchSelection();
+    renderCompanySearchView();
   });
+  const quantityInput = document.querySelector("#selection-quantity");
+  const selectQuantity = () => {
+    const requested = Number(quantityInput?.value);
+    if (!Number.isInteger(requested) || requested < 1) {
+      showToast("Informe uma quantidade válida para selecionar.");
+      quantityInput?.focus();
+      return;
+    }
+    const quantity = Math.min(requested, viewResults.length);
+    selectedCompanyCnpjs = new Set(viewResults.slice(0, quantity).map((company) => company.cnpj));
+    renderCompanySearchView();
+    if (requested > viewResults.length) showToast(`Foram selecionadas as ${viewResults.length.toLocaleString("pt-BR")} empresas disponíveis nesta categoria.`);
+  };
+  document.querySelector("#select-result-quantity")?.addEventListener("click", selectQuantity);
+  quantityInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      selectQuantity();
+    }
+  });
+  document.querySelectorAll("[data-search-page]").forEach((button) => button.addEventListener("click", () => {
+    companySearchPage += button.dataset.searchPage === "next" ? 1 : -1;
+    renderCompanySearchView();
+    companySearchResult.scrollIntoView({ behavior: "smooth", block: "start" });
+  }));
   updateSearchSelection();
 }
 
@@ -1165,6 +1207,7 @@ function renderCompanySearch(data) {
   lastCompanySearch = data.results;
   lastCompanySearchData = data;
   selectedCompanyCnpjs = new Set();
+  companySearchPage = 0;
   updateCompanySearchTabs(data);
   renderCompanySearchView();
 }
@@ -1227,7 +1270,7 @@ async function downloadCompanySearch(companies, filename = "empresas-echopjs.csv
 
 function hasMeaningfulCompanyFilters(payload) {
   return Boolean(
-    payload.cnaes.length || (payload.company_name && payload.company_name.trim().length >= 3) || payload.excluded_company_names.length
+    payload.cnaes.length || payload.excluded_cnaes.length || (payload.company_name && payload.company_name.trim().length >= 3) || payload.excluded_company_names.length
     || payload.company_sizes.length || payload.share_capital_min !== null || payload.share_capital_max !== null
     || payload.opened_from || payload.opened_to || payload.regions.length || payload.ufs.length
     || payload.municipalities.length || payload.postal_code_prefixes.length || payload.partner_age_ranges.length
@@ -1251,10 +1294,10 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   const requestNumber = ++searchPreviewRequest;
   if (searchPreviewController) searchPreviewController.abort();
   searchPreviewController = new AbortController();
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>${preview ? "Atualizando a prévia…" : "Consultando a base da Receita…"}</strong><small>Aplicando os filtros aos dados publicados.</small></span>`;
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Calculando o total e carregando até 10.000 empresas.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
-  setSearchPreviewStatus(preview ? "Atualizando" : "Gerando lista", "loading");
+  setSearchPreviewStatus("Atualizando", "loading");
   if (!preview) {
     submitButton.disabled = true;
     submitButton.textContent = "Buscando…";
@@ -1265,7 +1308,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   }, 3500);
   try {
     const payload = companySearchPayload();
-    if (!preview) lastCompanySearchPayload = payload;
+    lastCompanySearchPayload = payload;
     const response = await fetch(preview ? "/api/search/preview" : "/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1276,16 +1319,16 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
     const data = await response.json();
     if (requestNumber !== searchPreviewRequest) return;
     renderCompanySearch(data);
-    setSearchPreviewStatus("Prévia atualizada", "ready");
-    if (!preview && activeSavedSearchId && JSON.stringify(lastCompanySearchPayload) === activeSavedSearchFilters) {
+    setSearchPreviewStatus("Resultados atualizados", "ready");
+    if (!preview && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.returned }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count }),
       }).catch(() => {});
     }
   } catch (error) {
     if (error.name === "AbortError") return;
     companySearchResult.innerHTML = `<div class="error"><strong>Não foi possível buscar as empresas.</strong><p>${escapeHtml(error.message)}</p></div>`;
-    setSearchPreviewStatus("Falha na prévia", "error");
+    setSearchPreviewStatus("Falha nos resultados", "error");
   } finally {
     clearTimeout(searchProgressTimer);
     if (requestNumber !== searchPreviewRequest) return;
@@ -1309,6 +1352,7 @@ function scheduleCompanySearchPreview({ immediate = false } = {}) {
     lastCompanySearchData = null;
     selectedCompanyCnpjs = new Set();
     activeCompanySearchView = "total";
+    companySearchPage = 0;
     document.querySelectorAll("[data-search-view-count]").forEach((element) => { element.textContent = "0"; });
     document.querySelectorAll("[data-search-view]").forEach((button) => {
       const active = button.dataset.searchView === "total";
@@ -1318,14 +1362,14 @@ function scheduleCompanySearchPreview({ immediate = false } = {}) {
     companySearchForm.removeAttribute("aria-busy");
     const submitButton = companySearchForm.querySelector('button[type="submit"]');
     submitButton.disabled = false;
-    submitButton.textContent = "Buscar agora";
+    submitButton.textContent = "Atualizar resultados";
     companySearchLoading.classList.add("hidden");
-    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. A prévia aparecerá aqui automaticamente.</p></div>`;
+    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Os resultados aparecerão aqui automaticamente.</p></div>`;
     setSearchPreviewStatus("Aguardando filtros");
     return;
   }
   setSearchPreviewStatus("Filtros alterados", "pending");
-  searchPreviewTimer = setTimeout(() => runCompanySearch({ preview: true }), immediate ? 0 : 650);
+  searchPreviewTimer = setTimeout(() => runCompanySearch({ preview: true }), immediate ? 0 : 850);
 }
 
 companySearchForm.addEventListener("submit", (event) => {
@@ -1335,20 +1379,21 @@ companySearchForm.addEventListener("submit", (event) => {
 });
 
 companySearchForm.addEventListener("input", (event) => {
-  if (event.target.closest(".multi-picker-search") || event.target.id === "search-limit") return;
+  if (event.target.closest(".multi-picker-search")) return;
   scheduleCompanySearchPreview();
 });
 companySearchForm.addEventListener("change", (event) => {
-  if (event.target.closest(".multi-picker-options") || event.target.id === "search-limit") return;
+  if (event.target.closest(".multi-picker-options")) return;
   scheduleCompanySearchPreview();
 });
-[cnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker]
+[cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker]
   .forEach((picker) => picker.onChange(() => scheduleCompanySearchPreview()));
 
 document.querySelector("#search-result-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-search-view]");
   if (!button || !lastCompanySearchData) return;
   activeCompanySearchView = button.dataset.searchView;
+  companySearchPage = 0;
   updateCompanySearchTabs(lastCompanySearchData);
   renderCompanySearchView();
 });
@@ -1654,12 +1699,24 @@ document.querySelector("#cancel-subscription-form").addEventListener("submit", a
 function filtersDescription(filters) {
   const parts = [];
   if (filters.cnaes?.length) parts.push(`${filters.cnaes.length} CNAE${filters.cnaes.length === 1 ? "" : "s"}`);
+  if (filters.excluded_cnaes?.length) parts.push(`${filters.excluded_cnaes.length} CNAE${filters.excluded_cnaes.length === 1 ? "" : "s"} excluído${filters.excluded_cnaes.length === 1 ? "" : "s"}`);
   if (filters.regions?.length) parts.push(filters.regions.join(", "));
   if (filters.ufs?.length) parts.push(filters.ufs.join(", "));
   if (filters.municipalities?.length) parts.push(`${filters.municipalities.length} município${filters.municipalities.length === 1 ? "" : "s"}`);
   if (filters.company_name) parts.push(`Nome: ${filters.company_name}`);
   if (filters.company_sizes?.length) parts.push(`${filters.company_sizes.length} porte${filters.company_sizes.length === 1 ? "" : "s"}`);
   return parts.length ? parts.slice(0, 4).join(" · ") : "Busca ampla na base da Receita";
+}
+
+function serializeSearchFilters(filters = {}) {
+  const defaults = companySearchPayload();
+  const normalized = Object.fromEntries(Object.keys(defaults).sort().map((key) => [
+    key,
+    Object.prototype.hasOwnProperty.call(filters, key) ? filters[key] : defaults[key],
+  ]));
+  normalized.excluded_cnaes = filters.excluded_cnaes || [];
+  normalized.limit = 10000;
+  return JSON.stringify(normalized);
 }
 
 async function loadSavedSearches() {
@@ -1690,6 +1747,7 @@ function setInputValue(selector, value) {
 async function applySearchFilters(filters) {
   await Promise.all([loadSearchCapabilities(), loadCnaeOptions()]);
   cnaePicker.setSelected(filters.cnaes || []);
+  excludedCnaePicker.setSelected(filters.excluded_cnaes || []);
   statusPicker.setSelected(filters.registration_statuses || []);
   sizePicker.setSelected(filters.company_sizes || []);
   partnerAgePicker.setSelected(filters.partner_age_ranges || []);
@@ -1714,7 +1772,6 @@ async function applySearchFilters(filters) {
   setInputValue("#search-has-phone", filters.has_phone === null || filters.has_phone === undefined ? "" : String(filters.has_phone));
   setInputValue("#search-branches-min", filters.active_branch_count_min);
   setInputValue("#search-branches-max", filters.active_branch_count_max);
-  setInputValue("#search-limit", filters.limit || 500);
 }
 
 async function applySavedSearch(saved) {
@@ -1756,7 +1813,7 @@ async function applySearchTemplate(templateKey) {
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Modelo aplicado: ${escapeHtml(template.name)}`;
   document.querySelector(".filter-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast(`Modelo “${template.name}” aplicado. A prévia está sendo atualizada.`);
+  showToast(`Modelo “${template.name}” aplicado. Os resultados estão sendo atualizados.`);
   scheduleCompanySearchPreview({ immediate: true });
 }
 
@@ -1919,7 +1976,7 @@ function openEditListDialog(companyList) {
 
 function setActiveSavedSearch(saved = null) {
   activeSavedSearchId = saved?.id || null;
-  activeSavedSearchFilters = saved ? JSON.stringify(saved.filters) : null;
+  activeSavedSearchFilters = saved ? serializeSearchFilters(saved.filters) : null;
   activeSavedSearchName = saved?.name || null;
   document.querySelector("#save-current-search").textContent = saved ? "Salvar alterações" : "Salvar busca";
 }
@@ -1947,9 +2004,9 @@ document.querySelector("#save-search-form").addEventListener("submit", async (ev
   const feedback = document.querySelector("#save-search-feedback");
   setDialogFeedback(feedback);
   const filters = companySearchPayload();
-  const sameAsLastRun = lastCompanySearchPayload && JSON.stringify(filters) === JSON.stringify(lastCompanySearchPayload);
+  const sameAsLastRun = lastCompanySearchPayload && serializeSearchFilters(filters) === serializeSearchFilters(lastCompanySearchPayload);
   const payload = { name: document.querySelector("#saved-search-name").value, filters };
-  if (sameAsLastRun) payload.result_count = lastCompanySearch.length;
+  if (sameAsLastRun) payload.result_count = Number(lastCompanySearchData?.total_count ?? lastCompanySearch.length);
   const updateExisting = Boolean(activeSavedSearchId && event.submitter?.value !== "create");
   const endpoint = updateExisting ? `/api/saved-searches/${activeSavedSearchId}` : "/api/saved-searches";
   const response = await fetch(endpoint, { method: updateExisting ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

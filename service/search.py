@@ -258,6 +258,15 @@ def build_search_query(
                 predicates.append(f"{cnae_expression} LIKE ANY(%s)")
                 parameters.append(patterns)
 
+    excluded_cnaes = [digits(value) for value in (filters.get("excluded_cnaes") or [])]
+    excluded_cnaes = list(dict.fromkeys(value for value in excluded_cnaes if value))
+    if excluded_cnaes:
+        predicates.append(
+            f"NOT ({cnae_expression}=ANY(%s) OR "
+            f"coalesce({secondary_cnaes_expression},ARRAY[]::text[]) && %s)"
+        )
+        parameters.extend([excluded_cnaes, excluded_cnaes])
+
     sizes = filters.get("company_sizes") or []
     if sizes:
         predicates.append(f"{company_size_filter_expression}=ANY(%s)")
@@ -328,9 +337,10 @@ def build_search_query(
         parameters.append(filters["active_branch_count_max"])
 
     limit = int(filters["limit"])
-    parameters.append(limit + 1)
+    parameters.append(limit)
     sql = f"""
         SELECT
+          count(*) OVER() AS total_count,
           e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
           e.registration_status_date,{opened_expression} AS opened_at,
           {company_size_expression} AS company_size,{share_capital_expression} AS share_capital,

@@ -23,6 +23,7 @@ class SearchModelTests(unittest.TestCase):
             regions=["SE", "S", "SE"],
             cnae="62.01-5/01",
             cnaes=["62.01-5/01", "6202300", "62.01-5/01"],
+            excluded_cnaes=["47.11-3/02", "4711302"],
             municipalities=["SP|São Paulo", "Campinas", "SP|SÃO PAULO"],
             postal_code_prefixes=["13010-000", "045", "13010-000"],
             partner_age_ranges=["3", "5", "3"],
@@ -34,6 +35,7 @@ class SearchModelTests(unittest.TestCase):
         self.assertEqual(request.regions, ["SE", "S"])
         self.assertEqual(request.cnae, "6201501")
         self.assertEqual(request.cnaes, ["6201501", "6202300"])
+        self.assertEqual(request.excluded_cnaes, ["4711302"])
         self.assertEqual(request.municipalities, ["SP|SAO PAULO", "CAMPINAS"])
         self.assertEqual(request.postal_code_prefixes, ["13010000", "045"])
         self.assertEqual(request.partner_age_ranges, ["3", "5"])
@@ -52,6 +54,8 @@ class SearchModelTests(unittest.TestCase):
             CompanySearchRequest(active_branch_count_min=5, active_branch_count_max=2)
         with self.assertRaises(ValidationError):
             CompanySearchRequest(cnaes=["62"])
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(excluded_cnaes=["47"])
         with self.assertRaises(ValidationError):
             CompanySearchRequest(excluded_company_names=["A"])
         with self.assertRaises(ValidationError):
@@ -80,7 +84,8 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("e.primary_cnae LIKE %s", sql)
         self.assertEqual(parameters[0], ["ES", "MG", "RJ", "SP"])
         self.assertEqual(parameters[1], "62%")
-        self.assertEqual(parameters[-1], 501)
+        self.assertIn("count(*) OVER() AS total_count", sql)
+        self.assertEqual(parameters[-1], 500)
 
     def test_exact_cnae_uses_equality(self):
         filters = CompanySearchRequest(cnae="6201501").model_dump()
@@ -107,6 +112,15 @@ class SearchSqlTests(unittest.TestCase):
         sql, parameters = build_search_query(filters, SearchCapabilities())
         self.assertIn("e.primary_cnae=ANY(%s) OR e.secondary_cnaes && %s", sql)
         self.assertEqual(parameters[-3:-1], [["6201501", "6202300"], ["6201501", "6202300"]])
+
+    def test_excluded_cnaes_remove_primary_and_secondary_activities(self):
+        filters = CompanySearchRequest(excluded_cnaes=["4711302", "4712100"]).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn(
+            "NOT (e.primary_cnae=ANY(%s) OR coalesce(e.secondary_cnaes,ARRAY[]::text[]) && %s)",
+            sql,
+        )
+        self.assertEqual(parameters[-3:-1], [["4711302", "4712100"], ["4711302", "4712100"]])
 
     def test_multiple_municipalities_and_excluded_names_are_safe_arrays(self):
         filters = CompanySearchRequest(
