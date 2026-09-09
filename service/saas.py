@@ -139,6 +139,49 @@ class SaaSStore:
                 ON product_events(organization_id, occurred_at DESC);
             CREATE INDEX IF NOT EXISTS idx_product_events_name_occurred
                 ON product_events(event_name, occurred_at DESC);
+            CREATE TABLE IF NOT EXISTS billing_orders (
+                id TEXT PRIMARY KEY,
+                organization_id INTEGER NOT NULL,
+                created_by INTEGER NOT NULL,
+                provider TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('subscription','credit_pack')),
+                plan_code TEXT NOT NULL,
+                plan_name TEXT NOT NULL,
+                price_cents INTEGER NOT NULL CHECK(price_cents > 0),
+                credits INTEGER NOT NULL CHECK(credits > 0),
+                cycle TEXT,
+                status TEXT NOT NULL,
+                client_key TEXT,
+                external_reference TEXT NOT NULL UNIQUE,
+                provider_checkout_id TEXT,
+                provider_subscription_id TEXT,
+                checkout_url TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                paid_at TEXT,
+                UNIQUE(organization_id, client_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_billing_orders_org_created
+                ON billing_orders(organization_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_billing_orders_checkout
+                ON billing_orders(provider, provider_checkout_id);
+            CREATE INDEX IF NOT EXISTS idx_billing_orders_subscription
+                ON billing_orders(provider, provider_subscription_id);
+            CREATE TABLE IF NOT EXISTS billing_webhook_events (
+                provider TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                payload_digest TEXT NOT NULL,
+                external_reference TEXT,
+                object_id TEXT,
+                processing_status TEXT NOT NULL,
+                detail TEXT,
+                received_at TEXT NOT NULL,
+                processed_at TEXT,
+                PRIMARY KEY(provider, event_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_billing_webhook_received
+                ON billing_webhook_events(received_at DESC);
         """)
         self._connection.commit()
 
@@ -315,7 +358,270 @@ class SaaSStore:
                 "SELECT count(*) FROM company_unlocks WHERE organization_id=?",
                 (organization_id,),
             ).fetchone()[0]
-        return {"profile": self._profile(profile), "ledger": ledger, "unlocked_companies": unlocked}
+            orders = [self._billing_order(row) for row in self._connection.execute(
+                """SELECT * FROM billing_orders WHERE organization_id=?
+                   ORDER BY created_at DESC LIMIT 20""",
+                (organization_id,),
+            ).fetchall()]
+        return {
+            "profile": self._profile(profile),
+            "ledger": ledger,
+            "unlocked_companies": unlocked,
+            "orders": orders,
+        }
+
+    @staticmethod
+    def _billing_order(row: sqlite3.Row) -> dict[str, Any]:
+        result = dict(row)
+        result.pop("client_key", None)
+        result.pop("external_reference", None)
+        return result
+
+    def create_billing_order(
+        self,
+        organization_id: int,
+        actor_id: int,
+        *,
+        provider: str,
+        kind: str,
+        plan_code: str,
+        plan_name: str,
+        price_cents: int,
+        credits: int,
+        cycle: str | None,
+        client_key: str | None = None,
+    ) -> dict[str, Any]:
+        if kind not in {"subscription", "credit_pack"} or price_cents <= 0 or credits <= 0:
+            raise SaaSError("Oferta de cobrança inválida.", 422)
+        now = utc_now()
+        order_id = str(uuid.uuid4())
+        external_reference = f"echopjs-order:{order_id}"
+        normalized_key = client_key.strip()[:120] if client_key and client_key.strip() else None
+        with self._transaction():
+            if normalized_key:
+                previous = self._connection.execute(
+                    "SELECT * FROM billing_orders WHERE organization_id=? AND client_key=?",
+                    (organization_id, normalized_key),
+                ).fetchone()
+                if previous:
+                    result = self._billing_order(previous)
+                    result["external_reference"] = previous["external_reference"]
+                    return result
+            self._connection.execute(
+                """INSERT INTO billing_orders(
+                     id,organization_id,created_by,provider,kind,plan_code,plan_name,
+                     price_cents,credits,cycle,status,client_key,external_reference,created_at,updated_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    order_id, organization_id, actor_id, provider, kind, plan_code, plan_name,
+                    price_cents, credits, cycle, "creating", normalized_key, external_reference, now, now,
+                ),
+            )
+            row = self._connection.execute("SELECT * FROM billing_orders WHERE id=?", (order_id,)).fetchone()
+        result = self._billing_order(row)
+        result["external_reference"] = external_reference
+        return result
+
+    def billing_checkout_created(
+        self,
+        organization_id: int,
+        order_id: str,
+        *,
+        provider_checkout_id: str,
+        checkout_url: str,
+    ) -> dict[str, Any]:
+        with self._transaction():
+            self._connection.execute(
+                """UPDATE billing_orders SET provider_checkout_id=?,checkout_url=?,status='pending',updated_at=?
+                   WHERE id=? AND organization_id=?""",
+                (provider_checkout_id, checkout_url, utc_now(), order_id, organization_id),
+            )
+            row = self._connection.execute(
+                "SELECT * FROM billing_orders WHERE id=? AND organization_id=?",
+                (order_id, organization_id),
+            ).fetchone()
+            if not row:
+                raise SaaSError("Pedido de cobrança não encontrado.", 404)
+        return self._billing_order(row)
+
+    def billing_checkout_failed(self, organization_id: int, order_id: str) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                """UPDATE billing_orders SET status='failed',updated_at=?
+                   WHERE id=? AND organization_id=? AND status='creating'""",
+                (utc_now(), order_id, organization_id),
+            )
+
+    def _billing_order_for_event(
+        self,
+        provider: str,
+        external_reference: str | None,
+        provider_checkout_id: str | None,
+        provider_subscription_id: str | None,
+    ) -> sqlite3.Row | None:
+        if external_reference:
+            row = self._connection.execute(
+                "SELECT * FROM billing_orders WHERE provider=? AND external_reference=?",
+                (provider, external_reference),
+            ).fetchone()
+            if row:
+                return row
+        if provider_checkout_id:
+            row = self._connection.execute(
+                "SELECT * FROM billing_orders WHERE provider=? AND provider_checkout_id=?",
+                (provider, provider_checkout_id),
+            ).fetchone()
+            if row:
+                return row
+        if provider_subscription_id:
+            return self._connection.execute(
+                "SELECT * FROM billing_orders WHERE provider=? AND provider_subscription_id=?",
+                (provider, provider_subscription_id),
+            ).fetchone()
+        return None
+
+    def process_billing_event(
+        self,
+        *,
+        provider: str,
+        event_id: str,
+        event_type: str,
+        payload_digest: str,
+        external_reference: str | None = None,
+        provider_checkout_id: str | None = None,
+        provider_payment_id: str | None = None,
+        provider_subscription_id: str | None = None,
+        amount_cents: int | None = None,
+    ) -> dict[str, Any]:
+        """Persist first, then apply a small idempotent state transition."""
+        now = utc_now()
+        object_id = provider_payment_id or provider_subscription_id or provider_checkout_id
+        with self._transaction():
+            inserted = self._connection.execute(
+                """INSERT OR IGNORE INTO billing_webhook_events(
+                     provider,event_id,event_type,payload_digest,external_reference,object_id,
+                     processing_status,received_at
+                   ) VALUES(?,?,?,?,?,?,?,?)""",
+                (provider, event_id, event_type, payload_digest, external_reference, object_id, "received", now),
+            )
+            duplicate = not bool(inserted.rowcount)
+            if duplicate:
+                existing = self._connection.execute(
+                    "SELECT processing_status FROM billing_webhook_events WHERE provider=? AND event_id=?",
+                    (provider, event_id),
+                ).fetchone()
+                if existing["processing_status"] != "received":
+                    return {"accepted": True, "duplicate": True, "status": existing["processing_status"]}
+            order = self._billing_order_for_event(
+                provider, external_reference, provider_checkout_id, provider_subscription_id,
+            )
+            if not order:
+                self._connection.execute(
+                    """UPDATE billing_webhook_events SET processing_status='ignored',detail=?,processed_at=?
+                       WHERE provider=? AND event_id=?""",
+                    ("Pedido não localizado para conciliação.", now, provider, event_id),
+                )
+                return {"accepted": True, "duplicate": False, "matched": False}
+            order_id = order["id"]
+            if provider_checkout_id and not order["provider_checkout_id"]:
+                self._connection.execute(
+                    "UPDATE billing_orders SET provider_checkout_id=?,updated_at=? WHERE id=?",
+                    (provider_checkout_id, now, order_id),
+                )
+            if provider_subscription_id and not order["provider_subscription_id"]:
+                self._connection.execute(
+                    "UPDATE billing_orders SET provider_subscription_id=?,updated_at=? WHERE id=?",
+                    (provider_subscription_id, now, order_id),
+                )
+            status = None
+            if event_type == "CHECKOUT_PAID":
+                status = "checkout_paid"
+            elif event_type in {"CHECKOUT_CANCELED", "SUBSCRIPTION_DELETED", "SUBSCRIPTION_INACTIVATED"}:
+                status = "canceled"
+            elif event_type == "CHECKOUT_EXPIRED":
+                status = "expired"
+            elif event_type in {"PAYMENT_OVERDUE", "PAYMENT_DUNNING_RECEIVED"}:
+                status = "past_due"
+            if status:
+                self._connection.execute(
+                    "UPDATE billing_orders SET status=?,updated_at=? WHERE id=?",
+                    (status, now, order_id),
+                )
+        financial = event_type in {"PAYMENT_RECEIVED", "PAYMENT_CONFIRMED", "PAYMENT_RECEIVED_IN_CASH"}
+        if financial and not provider_payment_id:
+            with self._transaction():
+                self._connection.execute(
+                    "UPDATE billing_orders SET status='needs_review',updated_at=? WHERE id=?",
+                    (utc_now(), order_id),
+                )
+                self._connection.execute(
+                    """UPDATE billing_webhook_events SET processing_status='review',detail=?,processed_at=?
+                       WHERE provider=? AND event_id=?""",
+                    ("Confirmação financeira sem identificador de pagamento.", utc_now(), provider, event_id),
+                )
+            return {"accepted": True, "duplicate": duplicate, "matched": True, "review": True, "order_id": order_id}
+        if financial and amount_cents != order["price_cents"]:
+            with self._transaction():
+                self._connection.execute(
+                    "UPDATE billing_orders SET status='needs_review',updated_at=? WHERE id=?",
+                    (utc_now(), order_id),
+                )
+                self._connection.execute(
+                    """UPDATE billing_webhook_events SET processing_status='review',detail=?,processed_at=?
+                       WHERE provider=? AND event_id=?""",
+                    ("Valor recebido diverge do pedido.", utc_now(), provider, event_id),
+                )
+            return {"accepted": True, "duplicate": duplicate, "matched": True, "review": True, "order_id": order_id}
+        if financial and provider_payment_id:
+            description = (
+                f"Renovação do plano {order['plan_name']}"
+                if order["kind"] == "subscription" else f"Compra de {order['credits']} créditos"
+            )
+            self.grant_credits(
+                order["organization_id"],
+                order["credits"],
+                description=description,
+                idempotency_key=f"{provider}:payment:{provider_payment_id}",
+                reference_id=provider_payment_id,
+            )
+            if order["kind"] == "subscription":
+                self.update_billing_profile(
+                    order["organization_id"],
+                    plan_code=order["plan_code"],
+                    subscription_status="active",
+                    unlimited_credits=False,
+                )
+            with self._transaction():
+                self._connection.execute(
+                    "UPDATE billing_orders SET status='paid',paid_at=coalesce(paid_at,?),updated_at=? WHERE id=?",
+                    (utc_now(), utc_now(), order_id),
+                )
+        elif order["kind"] == "subscription" and event_type == "PAYMENT_OVERDUE":
+            self.update_billing_profile(
+                order["organization_id"], plan_code=order["plan_code"],
+                subscription_status="past_due", unlimited_credits=False,
+            )
+        elif order["kind"] == "subscription" and event_type in {"SUBSCRIPTION_DELETED", "SUBSCRIPTION_INACTIVATED"}:
+            self.update_billing_profile(
+                order["organization_id"], plan_code=order["plan_code"],
+                subscription_status="canceled", unlimited_credits=False,
+            )
+        with self._transaction():
+            self._connection.execute(
+                """UPDATE billing_webhook_events SET processing_status='processed',detail=NULL,processed_at=?
+                   WHERE provider=? AND event_id=?""",
+                (utc_now(), provider, event_id),
+            )
+        return {"accepted": True, "duplicate": duplicate, "matched": True, "order_id": order_id}
+
+    def admin_billing_events(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        with self._lock:
+            return [dict(row) for row in self._connection.execute(
+                """SELECT provider,event_id,event_type,external_reference,object_id,
+                          processing_status,detail,received_at,processed_at
+                   FROM billing_webhook_events ORDER BY received_at DESC LIMIT ?""",
+                (max(1, min(500, limit)),),
+            ).fetchall()]
 
     def credit_estimate(self, organization_id: int, cnpjs: list[str]) -> dict[str, Any]:
         unique = list(dict.fromkeys(cnpjs))

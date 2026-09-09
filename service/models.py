@@ -123,6 +123,15 @@ class CreditAdjustmentRequest(BaseModel):
         return value
 
 
+class BillingCheckoutRequest(BaseModel):
+    plan_code: str = Field(min_length=1, max_length=50, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+    @field_validator("plan_code")
+    @classmethod
+    def normalize_plan_code(cls, value: str) -> str:
+        return value.strip().casefold()
+
+
 class MatchInput(BaseModel):
     local_id: str = Field(min_length=1, max_length=200)
     name: str = Field(min_length=1, max_length=300)

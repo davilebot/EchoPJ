@@ -34,6 +34,10 @@
         <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="9">Carregando empresas…</td></tr></tbody></table></div>
         <div class="admin-pagination"><span id="admin-range">—</span><div><button id="admin-previous" class="secondary-button" type="button">Anterior</button><button id="admin-next" class="secondary-button" type="button">Próxima</button></div></div>
       </section>
+      <section class="admin-catalog" aria-labelledby="admin-events-title">
+        <div class="admin-section-heading"><div><h2 id="admin-events-title">Eventos de cobrança</h2><p class="muted">Confirmações e exceções recebidas do provedor, sem armazenar o payload completo.</p></div></div>
+        <div class="admin-table-wrap"><table><thead><tr><th>Recebido</th><th>Evento</th><th>Objeto</th><th>Processamento</th><th>Detalhe</th></tr></thead><tbody id="admin-billing-events"><tr><td colspan="5">Carregando eventos…</td></tr></tbody></table></div>
+      </section>
     </section>
   </main>
 
@@ -53,9 +57,10 @@
         <div class="admin-form-grid"><label>Quantidade<input id="admin-credit-amount" type="number" min="-1000000" max="1000000" step="1" required placeholder="Ex.: 500"></label><label>Motivo<input id="admin-credit-description" maxlength="200" minlength="3" required placeholder="Ex.: Crédito comercial aprovado"></label></div>
         <button type="submit">Registrar ajuste</button>
       </form>
+      <section class="admin-ledger"><h3>Pedidos de pagamento</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Oferta</th><th>Valor</th><th>Créditos</th><th>Status</th></tr></thead><tbody id="admin-orders"></tbody></table></div></section>
       <section class="admin-ledger"><h3>Histórico comercial</h3><div class="admin-table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Variação</th><th>Saldo</th></tr></thead><tbody id="admin-ledger"></tbody></table></div></section>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260908-funnel-1"></script>
+  <script src="/static/admin.js?v=20260908-billing-1"></script>
 </body>
 </html>

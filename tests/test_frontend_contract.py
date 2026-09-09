@@ -110,6 +110,20 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("renderFunnel(data.funnel)", script)
         self.assertIn(".admin-funnel-stages", styles)
 
+    def test_billing_catalog_checkout_and_admin_audit_have_complete_ui(self):
+        plans = (STATIC_DIR / "plans.html").read_text(encoding="utf-8")
+        plans_script = (STATIC_DIR / "plans.js").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        admin = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
+        admin_script = (STATIC_DIR / "admin.js").read_text(encoding="utf-8")
+        self.assertIn('id="plans-grid"', plans)
+        self.assertIn('fetch("/api/billing/catalog")', plans_script)
+        self.assertIn('fetch("/api/billing/checkouts"', script)
+        self.assertIn('data-billing-plan=', script)
+        self.assertIn('id="admin-billing-events"', admin)
+        self.assertIn('id="admin-orders"', admin)
+        self.assertIn("renderBillingEvents", admin_script)
+
     def test_search_and_list_templates_start_from_editable_examples(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")

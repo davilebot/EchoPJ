@@ -33,14 +33,14 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 ## Entrega 2 — cobrança e administração
 
-- página pública de planos e comparação de limites;
-- checkout hospedado pelo provedor de pagamento;
+- [x] página pública dinâmica de planos, comparação de créditos e explicação transparente do consumo;
+- [x] infraestrutura de checkout hospedado Asaas com preços configuráveis, desativada até receber catálogo e credenciais;
 - assinatura mensal e pacotes avulsos de créditos;
-- webhooks assinados, idempotentes e auditáveis;
+- [x] endpoint de webhooks Asaas autenticado, idempotente e auditável, com conferência do valor antes de liberar créditos;
 - renovação, inadimplência, cancelamento e reativação;
 - notas e recibos fornecidos pelo provedor;
 - [x] painel interno para consultar organizações, planos e concessões manuais;
-- pagamentos e eventos de cobrança no painel após a integração do provedor;
+- [x] pedidos e eventos de cobrança no painel interno, prontos para receber a integração ativada;
 - migração dos dados operacionais para PostgreSQL próprio antes de escalar.
 
 ## Entrega 3 — aquisição e ativação
@@ -68,7 +68,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 Antes da entrega de cobrança, definir:
 
-1. provedor de pagamento e necessidade de Pix, boleto e cartão;
+1. confirmar o Asaas como provedor (integração preparada) e decidir se boleto entra no lançamento ou depois de Pix/cartão;
 2. preços, quantidade de créditos e regras de validade de cada plano;
 3. quais dados e exportações exigem desbloqueio;
 4. política de teste gratuito e reembolso;

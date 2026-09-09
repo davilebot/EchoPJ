@@ -35,6 +35,13 @@ class Settings(BaseSettings):
     saas_heavy_requests_per_minute: int = 30
     saas_max_active_jobs_per_organization: int = 5
     saas_max_request_bytes: int = 16_777_216
+    saas_billing_enabled: bool = False
+    saas_billing_provider: str = "asaas"
+    saas_billing_catalog_json: str = ""
+    asaas_api_url: str = "https://api-sandbox.asaas.com"
+    asaas_api_key: str = ""
+    asaas_webhook_token: str = ""
+    asaas_timeout_seconds: float = 12.0
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

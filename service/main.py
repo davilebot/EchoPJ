@@ -1,4 +1,7 @@
 import base64
+import hashlib
+import hmac
+import json
 import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -28,6 +31,7 @@ from .models import (
     PasswordResetRequest,
     SignupRequest,
     SignupVerificationRequest,
+    BillingCheckoutRequest,
     BillingProfileUpdateRequest,
     CreditAdjustmentRequest,
     OrganizationRequest,
@@ -48,6 +52,7 @@ from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
 from .mail import mail_available, send_invitation, send_password_reset, send_signup_verification
 from .saas import SaaSError, SaaSStore
+from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
 
 
 settings = get_settings()
@@ -75,6 +80,12 @@ if legacy_organization_id:
             settings.saas_internal_organization_name,
         )
 saas_store = SaaSStore(settings.saas_database_path)
+billing_catalog = BillingCatalog(settings.saas_billing_catalog_json)
+asaas_client = AsaasClient(
+    settings.asaas_api_url,
+    settings.asaas_api_key,
+    timeout=settings.asaas_timeout_seconds,
+)
 if legacy_organization_id:
     saas_store.ensure_organization(
         legacy_organization_id,
@@ -121,6 +132,11 @@ async def saas_error_handler(request: Request, error: SaaSError):
     return JSONResponse({"detail": str(error)}, status_code=error.status)
 
 
+@app.exception_handler(PaymentError)
+async def payment_error_handler(request: Request, error: PaymentError):
+    return JSONResponse({"detail": str(error)}, status_code=error.status)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, error: RequestValidationError):
     # Do not echo submitted passwords, invitation tokens or arbitrary input in errors.
@@ -145,7 +161,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/billing/return"} or request.url.path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -282,6 +298,16 @@ def login_page(request: Request) -> Response:
     if user:
         return RedirectResponse("/", status_code=303)
     return FileResponse(static_dir / "login.html")
+
+
+@app.get("/plans")
+def plans_page() -> Response:
+    return FileResponse(static_dir / "plans.html")
+
+
+@app.get("/billing/return")
+def billing_return(status: str = Query("pending", pattern="^(success|cancel|expired|pending)$")) -> Response:
+    return RedirectResponse(f"/?tab=billing&billing_return={status}", status_code=303)
 
 
 @app.get("/forgot-password")
@@ -633,6 +659,90 @@ def billing_summary(user: dict = Depends(require_organization)) -> dict:
     return saas_store.billing_summary(user["organization_id"])
 
 
+@app.get("/api/billing/catalog")
+def billing_catalog_public() -> dict:
+    webhook_ready = 32 <= len(settings.asaas_webhook_token) <= 255
+    provider_ready = (
+        settings.saas_billing_provider == "asaas"
+        and asaas_client.available
+        and webhook_ready
+    )
+    return {
+        "provider": settings.saas_billing_provider,
+        "enabled": bool(settings.saas_billing_enabled and provider_ready),
+        "configured": bool(billing_catalog.offers()),
+        "offers": [offer.public() for offer in billing_catalog.offers()],
+        "payment_methods": ["Pix", "Cartão de crédito"],
+    }
+
+
+@app.post("/api/billing/checkouts", status_code=201)
+def create_billing_checkout(
+    payload: BillingCheckoutRequest,
+    request: Request,
+    user: dict = Depends(require_organization),
+) -> dict:
+    if user["organization_role"] != "admin":
+        raise HTTPException(status_code=403, detail="Somente administradores podem contratar ou alterar o plano.")
+    if user["billing"]["is_internal"]:
+        raise HTTPException(status_code=409, detail="A EchoHub já possui o plano interno com créditos ilimitados.")
+    if not settings.saas_billing_enabled:
+        raise PaymentError("O checkout ainda não foi ativado pela EchoHub.", 503)
+    if settings.saas_billing_provider != "asaas":
+        raise PaymentError("O provedor de cobrança configurado não é suportado.", 503)
+    if not 32 <= len(settings.asaas_webhook_token) <= 255:
+        raise PaymentError("O checkout aguarda a configuração segura dos webhooks.", 503)
+    offer = billing_catalog.get(payload.plan_code)
+    client_key = request.headers.get("idempotency-key")
+    if client_key and (len(client_key) > 120 or not all(character.isalnum() or character in "-_:" for character in client_key)):
+        raise HTTPException(status_code=422, detail="Chave de repetição inválida.")
+    order = saas_store.create_billing_order(
+        user["organization_id"],
+        user["id"],
+        provider="asaas",
+        kind=offer.kind,
+        plan_code=offer.code,
+        plan_name=offer.name,
+        price_cents=offer.price_cents,
+        credits=offer.credits,
+        cycle=offer.cycle,
+        client_key=client_key,
+    )
+    if order.get("checkout_url"):
+        return order
+    try:
+        checkout = asaas_client.create_checkout(
+            offer,
+            external_reference=order["external_reference"],
+            public_url=settings.app_public_url,
+        )
+    except PaymentError:
+        saas_store.billing_checkout_failed(user["organization_id"], order["id"])
+        raise
+    return saas_store.billing_checkout_created(user["organization_id"], order["id"], **checkout)
+
+
+@app.post("/api/webhooks/asaas")
+def receive_asaas_webhook(payload: dict, request: Request) -> dict:
+    configured_token = settings.asaas_webhook_token
+    received_token = request.headers.get("asaas-access-token", "")
+    if not configured_token or not hmac.compare_digest(received_token, configured_token):
+        raise HTTPException(status_code=401, detail="Webhook não autorizado.")
+    event = normalize_asaas_event(payload)
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return saas_store.process_billing_event(provider="asaas", payload_digest=digest, **event)
+
+
+@app.get("/api/admin/billing/events")
+def admin_billing_events(
+    limit: int = Query(100, ge=1, le=500),
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    return {"events": saas_store.admin_billing_events(limit=limit)}
+
+
 @app.get("/api/dashboard")
 def dashboard(user: dict = Depends(require_organization)) -> dict:
     summary = saas_store.dashboard_summary(user["organization_id"])
@@ -747,6 +857,7 @@ def admin_overview(
         organization["activity"] = activity.get(organization["id"], {})
     catalog["metrics"] = saas_store.admin_metrics()
     catalog["funnel"] = funnel
+    catalog["billing_events"] = saas_store.admin_billing_events(limit=20)
     return catalog
 
 

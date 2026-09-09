@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f8f9fa">
+  <meta name="description" content="Planos EchoPJs para encontrar, organizar e exportar empresas brasileiras.">
+  <title>Planos · EchoPJs</title>
+  <script>try{document.documentElement.dataset.theme=localStorage.getItem("echopjs-theme")==="dark"?"dark":"light"}catch(_){}</script>
+  <link rel="stylesheet" href="/static/plans.css?v=20260908-1">
+</head>
+<body>
+  <header class="plans-header">
+    <a class="plans-brand" href="/" aria-label="EchoPJs">
+      <img class="brand-light" src="/static/assets/echo-wordmark-dark.png" alt="Echo">
+      <img class="brand-dark" src="/static/assets/echo-wordmark-light.png" alt="Echo">
+      <span>PJs</span>
+    </a>
+    <nav><a href="/login">Entrar</a><a class="header-cta" href="/signup">Começar avaliação</a></nav>
+  </header>
+
+  <main>
+    <section class="plans-hero">
+      <span class="eyebrow">PLANOS E CRÉDITOS</span>
+      <h1>Dados para prospectar.<br><em>Clareza para crescer.</em></h1>
+      <p>Pesquise sem gastar créditos. Você usa um crédito somente quando salva ou exporta uma empresa pela primeira vez no workspace.</p>
+      <div class="hero-points"><span>✓ Base da Receita Federal</span><span>✓ Saldo compartilhado pela equipe</span><span>✓ Mesmo CNPJ sem cobrança repetida</span></div>
+    </section>
+
+    <section aria-labelledby="plans-title" class="catalog-section">
+      <div class="section-heading"><div><span class="eyebrow">ESCOLHA SEU RITMO</span><h2 id="plans-title">Planos para cada etapa da operação</h2></div><span id="billing-state" class="billing-state">Carregando condições…</span></div>
+      <div id="plans-grid" class="plans-grid" aria-live="polite"><article class="loading-card">Carregando planos…</article></div>
+    </section>
+
+    <section class="credit-explainer">
+      <div><span class="eyebrow">CRÉDITO INTELIGENTE</span><h2>Você paga pelo dado que leva para o trabalho.</h2></div>
+      <ol><li><strong>1</strong><span><b>Pesquise e refine</b><small>Teste filtros e veja resultados antes de usar saldo.</small></span></li><li><strong>2</strong><span><b>Salve ou exporte</b><small>O primeiro desbloqueio da empresa usa um crédito.</small></span></li><li><strong>3</strong><span><b>Reutilize à vontade</b><small>A empresa já desbloqueada não consome outro crédito.</small></span></li></ol>
+    </section>
+
+    <section class="plans-faq" aria-labelledby="faq-title">
+      <div><span class="eyebrow">DÚVIDAS FREQUENTES</span><h2 id="faq-title">Antes de escolher</h2></div>
+      <div><details open><summary>O saldo é por usuário?</summary><p>Não. Os créditos pertencem à organização e ficam disponíveis para toda a equipe autorizada.</p></details><details><summary>Uma empresa pode gastar mais de um crédito?</summary><p>O mesmo CNPJ é desbloqueado uma vez por organização. Salvar em outra lista ou exportar novamente não cobra outro crédito.</p></details><details><summary>Posso acompanhar pagamentos?</summary><p>Sim. Pedidos, status e movimentações aparecem em Plano e créditos dentro do workspace.</p></details></div>
+    </section>
+  </main>
+
+  <footer><span>EchoPJs · Inteligência comercial por Echo</span><a href="/help">Ajuda e suporte</a></footer>
+  <script src="/static/plans.js?v=20260908-1"></script>
+</body>
+</html>

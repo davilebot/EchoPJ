@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from service.auth import AuthStore
 from service.jobs import JobStore
 from service.limits import SlidingWindowRateLimiter
+from service.payments import BillingCatalog
 from service.saas import SaaSStore
 
 
@@ -209,6 +210,48 @@ class OrganizationAPITests(unittest.TestCase):
             403,
         )
 
+    def test_checkout_is_admin_only_and_webhook_grants_once_after_payment(self):
+        catalog = BillingCatalog(json.dumps([{
+            "code": "growth", "name": "Crescimento", "kind": "subscription",
+            "price_cents": 14990, "credits": 1000, "cycle": "MONTHLY",
+            "description": "Créditos mensais para prospecção.", "features": ["1.000 créditos"],
+        }]))
+        provider = MagicMock()
+        provider.available = True
+        provider.create_checkout.return_value = {
+            "provider_checkout_id": "chk_api",
+            "checkout_url": "https://sandbox.asaas.com/checkout/api",
+        }
+        headers = {"x-organization-id": str(self.other), "idempotency-key": "checkout-api-1"}
+        with (
+            patch.object(self.main, "billing_catalog", catalog),
+            patch.object(self.main, "asaas_client", provider),
+            patch.object(self.main.settings, "saas_billing_enabled", True),
+            patch.object(self.main.settings, "saas_billing_provider", "asaas"),
+            patch.object(self.main.settings, "asaas_webhook_token", "webhook-secret-with-at-least-32-chars"),
+        ):
+            self.assertEqual(
+                self.request("/api/billing/checkouts", "POST", {"plan_code": "growth"}, self.member_token, {"x-organization-id": str(self.org)})[0],
+                403,
+            )
+            status, checkout, _ = self.request(
+                "/api/billing/checkouts", "POST", {"plan_code": "growth"}, self.owner_token, headers,
+            )
+            self.assertEqual(status, 201)
+            self.assertEqual(checkout["checkout_url"], "https://sandbox.asaas.com/checkout/api")
+            order = self.saas.billing_summary(self.other)["orders"][0]
+            event = {
+                "id": "evt_api_1", "event": "PAYMENT_RECEIVED",
+                "payment": {"id": "pay_api_1", "externalReference": f"echopjs-order:{order['id']}", "value": 149.9},
+            }
+            self.assertEqual(self.request("/api/webhooks/asaas", "POST", event)[0], 401)
+            webhook_headers = {"asaas-access-token": "webhook-secret-with-at-least-32-chars"}
+            self.assertEqual(self.request("/api/webhooks/asaas", "POST", event, headers=webhook_headers)[0], 200)
+            duplicate = self.request("/api/webhooks/asaas", "POST", event, headers=webhook_headers)[1]
+            self.assertTrue(duplicate["duplicate"])
+        self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 1002)
+        self.assertEqual(self.saas.billing_summary(self.other)["profile"]["plan_code"], "growth")
+
     def test_suspended_customer_workspace_is_blocked(self):
         self.saas.update_billing_profile(
             self.other, plan_code="growth", subscription_status="suspended", unlimited_credits=False,
@@ -345,6 +388,9 @@ class OrganizationAPITests(unittest.TestCase):
         status, html, headers = self.request("/invite")
         self.assertEqual(status, 200); self.assertIn('id="accept-form"', html)
         self.assertEqual(headers[b"referrer-policy"], b"no-referrer")
+        self.assertIn(b"no-store", headers[b"cache-control"])
+        status, plans, headers = self.request("/plans")
+        self.assertEqual(status, 200); self.assertIn('id="plans-grid"', plans)
         self.assertIn(b"no-store", headers[b"cache-control"])
 
     def test_saas_resources_are_tenant_scoped_and_credits_are_enforced(self):

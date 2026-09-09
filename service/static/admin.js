@@ -69,6 +69,11 @@ function renderFunnel(funnel) {
   document.querySelector("#admin-new-30").textContent = Number(funnel.registrations_last_30_days || 0).toLocaleString("pt-BR");
 }
 
+function renderBillingEvents(events) {
+  const target = document.querySelector("#admin-billing-events");
+  target.innerHTML = events.length ? events.map((event) => `<tr><td>${formatDate(event.received_at)}</td><td><strong>${escapeHtml(event.event_type)}</strong><small>${escapeHtml(event.provider)}</small></td><td>${escapeHtml(event.object_id || "—")}</td><td><span class="admin-status status-${escapeHtml(event.processing_status)}">${escapeHtml(event.processing_status)}</span></td><td>${escapeHtml(event.detail || "Processado sem ressalvas")}</td></tr>`).join("") : `<tr><td colspan="5"><div class="admin-empty"><strong>Nenhum evento recebido.</strong><span>Os webhooks aparecerão aqui quando a cobrança for ativada.</span></div></td></tr>`;
+}
+
 function activitySummary(activity) {
   const parts = [];
   if (activity.search_count) parts.push(`${activity.search_count} busca${activity.search_count === 1 ? "" : "s"}`);
@@ -102,6 +107,7 @@ async function loadOrganizations() {
     const data = await adminFetch(`/api/admin/overview?query=${encodeURIComponent(query)}&limit=${pageSize}&offset=${adminOffset}`);
     renderMetrics(data);
     renderFunnel(data.funnel);
+    renderBillingEvents(data.billing_events || []);
     renderOrganizations(data);
   } catch (error) {
     adminRows.innerHTML = "";
@@ -120,6 +126,8 @@ function renderOrganizationDetail(data) {
   document.querySelector("#admin-status").value = profile.subscription_status;
   document.querySelector("#admin-unlimited").checked = profile.unlimited_credits;
   document.querySelector("#admin-credit-form").classList.toggle("hidden", profile.unlimited_credits);
+  const orderLabels = { creating: "Criando", pending: "Aguardando", checkout_paid: "Confirmando", paid: "Pago", failed: "Falhou", expired: "Expirado", canceled: "Cancelado", past_due: "Pendente", needs_review: "Revisar" };
+  document.querySelector("#admin-orders").innerHTML = data.commercial.orders.length ? data.commercial.orders.map((order) => `<tr><td>${formatDate(order.created_at)}</td><td><strong>${escapeHtml(order.plan_name)}</strong><small>${escapeHtml(order.kind)}</small></td><td>${(Number(order.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td><td>${Number(order.credits).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(order.status)}">${escapeHtml(orderLabels[order.status] || order.status)}</span></td></tr>`).join("") : `<tr><td colspan="5">Ainda não há pedidos.</td></tr>`;
   document.querySelector("#admin-ledger").innerHTML = data.commercial.ledger.length ? data.commercial.ledger.map((entry) => {
     const delta = Number(entry.delta);
     const deltaClass = delta > 0 ? "credit-positive" : delta < 0 ? "credit-negative" : "";

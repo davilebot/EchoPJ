@@ -1317,9 +1317,13 @@ async function loadBillingSummary() {
   billingLoading.classList.remove("hidden");
   billingSummary.classList.add("hidden");
   try {
-    const response = await fetch("/api/billing/summary");
-    if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar os créditos."));
-    const data = await response.json();
+    const [summaryResponse, catalogResponse, workspace] = await Promise.all([
+      fetch("/api/billing/summary"), fetch("/api/billing/catalog"), window.echoWorkspace,
+    ]);
+    if (!summaryResponse.ok) throw new Error(await responseError(summaryResponse, "Não foi possível carregar os créditos."));
+    if (!catalogResponse.ok) throw new Error(await responseError(catalogResponse, "Não foi possível carregar os planos."));
+    const data = await summaryResponse.json();
+    const catalog = await catalogResponse.json();
     const profile = data.profile;
     updateCreditIndicator(profile);
     const planName = profile.plan_code === "internal" ? "EchoHub interno" : profile.plan_code === "trial" ? "Avaliação" : profile.plan_code;
@@ -1327,11 +1331,19 @@ async function loadBillingSummary() {
       <td>${formatDate(entry.created_at)}</td><td>${escapeHtml(entry.description)}</td>
       <td class="ledger-value ${entry.delta > 0 ? "positive" : entry.delta < 0 ? "negative" : ""}">${entry.delta === 0 ? "—" : `${entry.delta > 0 ? "+" : ""}${Number(entry.delta).toLocaleString("pt-BR")}`}</td>
     </tr>`).join("") : `<tr><td colspan="3">Nenhuma movimentação de créditos.</td></tr>`;
-    billingSummary.innerHTML = `<div class="billing-hero section-card">
+    const orderLabels = { creating: "Criando checkout", pending: "Aguardando pagamento", checkout_paid: "Confirmando pagamento", paid: "Pago", failed: "Falhou", expired: "Expirado", canceled: "Cancelado", past_due: "Pagamento pendente", needs_review: "Em revisão" };
+    const orders = data.orders?.length ? `<section class="section-card billing-orders"><div class="section-card-heading"><div><span class="eyebrow">PAGAMENTOS</span><h2>Pedidos recentes</h2><p>Acompanhe a confirmação feita pelo provedor.</p></div></div><div class="billing-order-list">${data.orders.map((order) => `<article><span class="billing-order-status status-${escapeHtml(order.status)}">${escapeHtml(orderLabels[order.status] || order.status)}</span><div><strong>${escapeHtml(order.plan_name)}</strong><small>${formatDate(order.created_at)} · ${(Number(order.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</small></div>${order.checkout_url && ["pending", "creating"].includes(order.status) ? `<a href="${escapeHtml(order.checkout_url)}" rel="noopener">Continuar pagamento</a>` : ""}</article>`).join("")}</div></section>` : "";
+    const canManagePlan = workspace?.organization?.role === "admin";
+    const offerCards = profile.is_internal ? `<article class="billing-internal"><span>PLANO INTERNO</span><strong>A EchoHub não precisa contratar um plano.</strong><p>Este workspace permanece ativo com créditos ilimitados.</p></article>` : catalog.offers.length ? catalog.offers.map((offer) => `<article class="billing-offer ${offer.highlighted ? "highlighted" : ""}">${offer.highlighted ? '<span class="billing-recommended">RECOMENDADO</span>' : ""}<small>${offer.kind === "subscription" ? "ASSINATURA" : "PACOTE AVULSO"}</small><h3>${escapeHtml(offer.name)}</h3><p>${escapeHtml(offer.description)}</p><strong>${(Number(offer.price_cents) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}${offer.cycle === "MONTHLY" ? "<i>/mês</i>" : ""}</strong><b>${Number(offer.credits).toLocaleString("pt-BR")} créditos${offer.cycle ? " por ciclo" : ""}</b><ul>${offer.features.map((feature) => `<li>✓ ${escapeHtml(feature)}</li>`).join("")}</ul><button type="button" data-billing-plan="${escapeHtml(offer.code)}" ${catalog.enabled && canManagePlan ? "" : "disabled"}>${!canManagePlan ? "Administrador contrata" : catalog.enabled ? `Escolher ${escapeHtml(offer.name)}` : "Checkout em preparação"}</button></article>`).join("") : `<article class="billing-catalog-pending"><span>PRÓXIMA ETAPA</span><strong>Planos comerciais em preparação</strong><p>Preços e quantidades de créditos serão publicados aqui antes da abertura do checkout.</p><a href="/plans">Ver como os créditos funcionam</a></article>`;
+    const returnStatus = new URLSearchParams(location.search).get("billing_return");
+    const returnBanner = returnStatus ? `<div class="billing-return ${escapeHtml(returnStatus)}"><strong>${returnStatus === "success" ? "Pagamento enviado para confirmação" : returnStatus === "expired" ? "O checkout expirou" : "Pagamento não concluído"}</strong><span>${returnStatus === "success" ? "O saldo é atualizado automaticamente após o webhook financeiro do provedor." : "Você pode escolher o plano novamente quando quiser."}</span></div>` : "";
+    billingSummary.innerHTML = `${returnBanner}<div class="billing-hero section-card">
       <div><span class="eyebrow">SALDO DA ORGANIZAÇÃO</span><strong>${profile.unlimited_credits ? "Créditos ilimitados" : `${Number(profile.credit_balance).toLocaleString("pt-BR")} créditos`}</strong><p>${profile.unlimited_credits ? "A EchoHub pode desbloquear empresas sem limite de uso." : "Um crédito é usado somente na primeira vez que a organização salva ou exporta uma empresa."}</p></div>
       <span class="plan-badge">${escapeHtml(planName)}</span>
     </div>
     <div class="billing-metrics"><article><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><span>Empresas desbloqueadas</span></article><article><strong>${profile.unlimited_credits ? "Sem limite" : Number(profile.credit_balance).toLocaleString("pt-BR")}</strong><span>Saldo disponível</span></article><article><strong>${escapeHtml(profile.subscription_status === "active" ? "Ativo" : profile.subscription_status)}</strong><span>Status do plano</span></article></div>
+    <section class="billing-catalog"><div class="section-card-heading"><div><span class="eyebrow">CONTRATAÇÃO</span><h2>Planos e recargas</h2><p>O pagamento acontece em ambiente seguro do provedor.</p></div><a href="/plans">Comparar em página completa</a></div><div class="billing-offer-grid">${offerCards}</div></section>
+    ${orders}
     <section class="section-card billing-history"><div class="section-card-heading"><div><span class="eyebrow">HISTÓRICO</span><h2>Movimentações</h2><p>Entradas e usos de créditos desta organização.</p></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Créditos</th></tr></thead><tbody>${ledger}</tbody></table></div></section>`;
     billingLoading.classList.add("hidden");
     billingSummary.classList.remove("hidden");
@@ -1339,6 +1351,29 @@ async function loadBillingSummary() {
     billingLoading.textContent = error.message;
   }
 }
+
+billingSummary.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-billing-plan]");
+  if (!button || button.disabled) return;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Abrindo checkout…";
+  try {
+    const response = await fetch("/api/billing/checkouts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ plan_code: button.dataset.billingPlan }),
+    });
+    if (!response.ok) throw new Error(await responseError(response, "Não foi possível abrir o checkout."));
+    const order = await response.json();
+    if (!String(order.checkout_url || "").startsWith("https://")) throw new Error("O provedor não devolveu um link seguro.");
+    location.assign(order.checkout_url);
+  } catch (error) {
+    showToast(error.message);
+    button.disabled = false;
+    button.textContent = original;
+  }
+});
 
 function filtersDescription(filters) {
   const parts = [];

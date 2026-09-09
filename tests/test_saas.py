@@ -131,6 +131,58 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 409)
         self.assertEqual(self.store.billing_summary(12)["profile"]["credit_balance"], 0)
 
+    def test_billing_orders_and_webhooks_are_idempotent_and_auditable(self):
+        self.store.ensure_organization(22, initial_credits=0)
+        order = self.store.create_billing_order(
+            22, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000,
+            cycle="MONTHLY", client_key="checkout-click-1",
+        )
+        repeated = self.store.create_billing_order(
+            22, 7, provider="asaas", kind="subscription", plan_code="growth",
+            plan_name="Crescimento", price_cents=14990, credits=1000,
+            cycle="MONTHLY", client_key="checkout-click-1",
+        )
+        self.assertEqual(repeated["id"], order["id"])
+        self.store.billing_checkout_created(
+            22, order["id"], provider_checkout_id="chk_1", checkout_url="https://sandbox.asaas.com/checkout/1",
+        )
+        checkout_event = self.store.process_billing_event(
+            provider="asaas", event_id="evt_checkout", event_type="CHECKOUT_PAID",
+            payload_digest="a" * 64, external_reference=order["external_reference"],
+            provider_checkout_id="chk_1",
+        )
+        self.assertTrue(checkout_event["matched"])
+        payment = dict(
+            provider="asaas", event_type="PAYMENT_RECEIVED", payload_digest="b" * 64,
+            external_reference=order["external_reference"], provider_payment_id="pay_1",
+            provider_subscription_id="sub_1", amount_cents=14990,
+        )
+        self.store.process_billing_event(event_id="evt_payment_received", **payment)
+        self.store.process_billing_event(event_id="evt_payment_confirmed", event_type="PAYMENT_CONFIRMED", **{k: v for k, v in payment.items() if k != "event_type"})
+        summary = self.store.billing_summary(22)
+        self.assertEqual(summary["profile"]["credit_balance"], 1000)
+        self.assertEqual(summary["profile"]["plan_code"], "growth")
+        self.assertEqual(summary["orders"][0]["status"], "paid")
+        duplicate = self.store.process_billing_event(event_id="evt_payment_received", **payment)
+        self.assertTrue(duplicate["duplicate"])
+        self.assertEqual(len(self.store.admin_billing_events()), 3)
+
+    def test_billing_webhook_never_grants_wrong_amount(self):
+        self.store.ensure_organization(23, initial_credits=0)
+        order = self.store.create_billing_order(
+            23, 7, provider="asaas", kind="credit_pack", plan_code="pack_500",
+            plan_name="Pacote 500", price_cents=9900, credits=500, cycle=None,
+        )
+        result = self.store.process_billing_event(
+            provider="asaas", event_id="evt_wrong", event_type="PAYMENT_RECEIVED",
+            payload_digest="c" * 64, external_reference=order["external_reference"],
+            provider_payment_id="pay_wrong", amount_cents=9800,
+        )
+        self.assertTrue(result["review"])
+        self.assertEqual(self.store.billing_summary(23)["profile"]["credit_balance"], 0)
+        self.assertEqual(self.store.billing_summary(23)["orders"][0]["status"], "needs_review")
+
     def test_admin_can_update_profile_and_adjust_credits_with_ledger(self):
         self.store.ensure_organization(13, initial_credits=10)
         profile = self.store.update_billing_profile(
