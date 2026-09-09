@@ -145,7 +145,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("renderBillingEvents", admin_script)
         self.assertIn("data.commercial.payments", admin_script)
         self.assertIn('id="admin-operations-grid"', admin)
+        self.assertIn('id="admin-launch-checklist"', admin)
         self.assertIn("renderOperations", admin_script)
+        self.assertIn("renderLaunchReadiness", admin_script)
         self.assertIn('/api/admin/operations', admin_script)
 
     def test_public_product_page_explains_the_complete_customer_workflow(self):

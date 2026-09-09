@@ -139,6 +139,25 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-operations-grid span { margin-top: 5px; color: var(--muted); font-size: 8px; text-transform: uppercase; }
 .admin-operations-grid article[data-state="ok"] strong { color: var(--accent); }
 .admin-operations-grid article[data-state="warning"] strong { color: var(--warning); }
+.admin-launch { margin-top: 18px; padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.admin-launch-header { display: flex; align-items: end; justify-content: space-between; gap: 26px; }
+.admin-launch-header h2 { margin: 6px 0 4px; }
+.admin-launch-score { flex: none; min-width: 130px; padding-left: 18px; border-left: 1px solid var(--border); }
+.admin-launch-score strong, .admin-launch-score span { display: block; }
+.admin-launch-score strong { font-size: 28px; }
+.admin-launch-score span { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.admin-launch-progress { height: 5px; margin: 18px 0; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .08); }
+.admin-launch-progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .35s ease; }
+.admin-launch-checklist { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.admin-launch-checklist article { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 11px; align-items: center; min-width: 0; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.admin-launch-checklist article[data-state="ready"] { border-color: rgba(112, 223, 160, .22); }
+.admin-launch-icon { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; color: var(--warning); background: rgba(255, 209, 102, .1); font-size: 11px; font-weight: 850; }
+.admin-launch-checklist article[data-state="ready"] .admin-launch-icon { color: var(--success); background: rgba(112, 223, 160, .1); }
+.admin-launch-checklist small, .admin-launch-checklist strong, .admin-launch-checklist p { display: block; }
+.admin-launch-checklist small { color: var(--muted); font-size: 8px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.admin-launch-checklist strong { margin-top: 3px; font-size: 11px; }
+.admin-launch-checklist p { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.admin-launch-checklist a { color: var(--accent); font-size: 9px; font-weight: 750; text-decoration: none; }
 .admin-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .admin-section-heading h2, .admin-section-heading h3 { margin: 0 0 5px; }
 .admin-search { display: grid; min-width: min(100%, 440px); grid-template-columns: 1fr auto; gap: 8px; }
@@ -220,6 +239,7 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-section-heading { align-items: stretch; flex-direction: column; }
   .admin-search { min-width: 100%; }
   .admin-operations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-launch-checklist { grid-template-columns: 1fr; }
   .admin-support-filter { min-width: 100%; grid-template-columns: 1fr 1fr auto; }
   .admin-support-diagnostic { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
@@ -234,6 +254,10 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-pagination { align-items: stretch; flex-direction: column; }
   .admin-pagination > div { display: grid; grid-template-columns: 1fr 1fr; }
   .admin-operations-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-launch-header { align-items: stretch; flex-direction: column; }
+  .admin-launch-score { padding: 12px 0 0; border-top: 1px solid var(--border); border-left: 0; }
+  .admin-launch-checklist article { grid-template-columns: 30px minmax(0, 1fr); }
+  .admin-launch-checklist a { grid-column: 2; }
   .admin-support-filter, .admin-support-diagnostic { grid-template-columns: 1fr; }
   .admin-support-message { max-width: 96%; }
   .privacy-actions { grid-template-columns: 1fr; }

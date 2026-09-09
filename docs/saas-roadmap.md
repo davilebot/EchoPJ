@@ -40,6 +40,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] renovação, inadimplência, cancelamento autenticado e reativação, com histórico separado por ciclo e revisão de estornos;
 - notas e recibos fornecidos pelo provedor;
 - [x] painel interno para consultar organizações, planos e concessões manuais;
+- [x] checklist interno de lançamento baseado na configuração real de produto, aquisição, cobrança e operação;
 - [x] pedidos e eventos de cobrança no painel interno, prontos para receber a integração ativada;
 - migração dos dados operacionais para PostgreSQL próprio antes de escalar.
 

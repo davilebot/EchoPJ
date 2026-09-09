@@ -167,6 +167,9 @@ class OrganizationAPITests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn("traffic", operations)
             self.assertIn("backup", operations)
+            self.assertIn("launch", operations)
+            self.assertEqual(operations["launch"]["total_count"], 10)
+            self.assertTrue(any(item["key"] == "legal" for item in operations["launch"]["checks"]))
         with patch.object(self.main.repository, "health_check", side_effect=RuntimeError("offline")):
             self.assertEqual(self.request("/health/ready")[0], 503)
         self.assertEqual(self.request("/api/admin/operations", token=self.member_token)[0], 403)

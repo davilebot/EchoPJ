@@ -99,6 +99,23 @@ function renderOperations(data) {
   document.querySelector("#admin-operations-grid").innerHTML = cards.map(([value, label, status]) => `<article data-state="${status}"><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span></article>`).join("");
   const backupTime = backup.checked_at ? ` · backup ${formatDate(backup.checked_at)}` : "";
   document.querySelector("#admin-operations-updated").textContent = `Atualizado ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}${backupTime}`;
+  renderLaunchReadiness(data.launch);
+}
+
+function renderLaunchReadiness(launch) {
+  if (!launch) return;
+  const percent = launch.total_count ? Math.round(launch.ready_count / launch.total_count * 100) : 0;
+  document.querySelector("#admin-launch-score").textContent = `${launch.ready_count}/${launch.total_count}`;
+  document.querySelector("#admin-launch-status").textContent = launch.ready
+    ? "Pronto para lançamento"
+    : `${launch.blocker_count} ${launch.blocker_count === 1 ? "item pendente" : "itens pendentes"}`;
+  document.querySelector("#admin-launch-progress").style.width = `${percent}%`;
+  document.querySelector("#admin-launch-checklist").innerHTML = launch.checks.map((item) => {
+    const action = typeof item.action_url === "string" && item.action_url.startsWith("/")
+      ? `<a href="${escapeHtml(item.action_url)}" target="_blank" rel="noopener">Revisar</a>`
+      : "";
+    return `<article data-state="${item.ready ? "ready" : "pending"}"><span class="admin-launch-icon" aria-hidden="true">${item.ready ? "✓" : "!"}</span><div><small>${escapeHtml(item.category)}</small><strong>${escapeHtml(item.label)}</strong><p>${escapeHtml(item.detail)}</p></div>${action}</article>`;
+  }).join("");
 }
 
 async function loadOperations() {

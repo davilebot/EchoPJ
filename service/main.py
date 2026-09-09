@@ -62,6 +62,7 @@ from .mail import mail_available, send_invitation, send_password_reset, send_sig
 from .saas import SaaSError, SaaSStore
 from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
 from .legal import LegalDocuments
+from .launch import commercial_launch_readiness
 from .operations import OperationsMonitor, backup_status
 
 
@@ -963,15 +964,29 @@ def admin_billing_events(
 
 @app.get("/api/admin/operations")
 def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
+    application = readiness_report()
+    backup = backup_status(settings.saas_backup_status_path)
+    billing = billing_catalog_public()
+    webhook_ready = 32 <= len(settings.asaas_webhook_token) <= 255
+    provider_ready = settings.saas_billing_provider == "asaas" and asaas_client.available and webhook_ready
     return {
-        "readiness": readiness_report(),
+        "readiness": application,
         "traffic": operations_monitor.snapshot(),
-        "backup": backup_status(settings.saas_backup_status_path),
+        "backup": backup,
         "billing": {
-            "enabled": billing_catalog_public()["enabled"],
+            "enabled": billing["enabled"],
             "catalog_offers": len(billing_catalog.offers()),
             "provider": settings.saas_billing_provider,
         },
+        "launch": commercial_launch_readiness(
+            settings,
+            application_ready=application["ready"],
+            backup=backup,
+            email_ready=mail_available(settings),
+            legal_ready=legal_documents.configured,
+            billing_catalog_ready=billing["configured"],
+            billing_provider_ready=provider_ready,
+        ),
     }
 
 

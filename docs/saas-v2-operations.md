@@ -8,6 +8,9 @@ A aplicação distingue processo vivo de serviço pronto para receber clientes:
 - `GET /health` permanece como verificação compatível com o container atual;
 - `GET /api/admin/operations` mostra o diagnóstico completo somente para
   administradores da organização interna EchoHub.
+- O mesmo endpoint gera o checklist **Prontidão para receber clientes** sem
+  expor segredos. Ele verifica aplicação, domínio, SMTP, documentos, cadastro,
+  catálogo, cobrança em produção, backup local, cópia externa e alertas.
 
 Todas as respostas recebem `X-Request-Id` e `X-Response-Time-Ms`. O processo
 mantém em memória uma janela limitada de requisições com contagem de erros,
@@ -63,3 +66,7 @@ documentada específica para a busca.
 Alertas externos ainda exigem um destino operacional, como e-mail, Slack ou um
 serviço de uptime. Até essa configuração, o Docker reinicia o processo quando o
 healthcheck falha e o painel interno concentra o diagnóstico disponível.
+Os indicadores `SAAS_OFFSITE_BACKUP_CONFIGURED` e
+`SAAS_EXTERNAL_ALERTS_CONFIGURED` devem permanecer `false` até uma execução real
+da cópia externa e um alerta de teste terem sido confirmados. Eles registram a
+evidência operacional no checklist; não criam a infraestrutura por conta própria.

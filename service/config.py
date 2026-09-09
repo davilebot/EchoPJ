@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     asaas_webhook_token: str = ""
     asaas_timeout_seconds: float = 12.0
     saas_backup_status_path: str = "/data/backup-status.json"
+    saas_offsite_backup_configured: bool = False
+    saas_external_alerts_configured: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
