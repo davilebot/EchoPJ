@@ -757,6 +757,14 @@ def remove_member(org_id: int, member_id: int, user: dict = Depends(require_auth
     return {"removed": True}
 
 
+@app.put("/api/organizations/{org_id}/owner/{member_id}")
+def transfer_organization_owner(org_id: int, member_id: int, user: dict = Depends(require_auth)) -> dict:
+    if org_id == settings.saas_internal_organization_id:
+        raise HTTPException(status_code=409, detail="A responsabilidade da organização interna EchoHub é protegida.")
+    owner = auth_store.transfer_organization_ownership(user["id"], org_id, member_id)
+    return {"transferred": True, "owner": owner}
+
+
 @app.post("/api/organizations/{org_id}/invitations", status_code=201)
 def create_invitation(org_id: int, payload: InvitationRequest, user: dict = Depends(require_auth)) -> dict:
     key = f"invite-create:{user['id']}"

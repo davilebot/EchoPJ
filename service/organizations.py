@@ -340,6 +340,7 @@ class OrganizationStoreMixin:
             )]
             for member in members:
                 member["permissions"] = role_permissions(member["role"])
+                member["is_owner"] = member["id"] == org["created_by"]
             invites = [dict(r) for r in self._connection.execute(
                 """SELECT id,email,role,created_at,expires_at,accepted_at,revoked_at,
                 CASE WHEN accepted_at IS NOT NULL THEN 'accepted' WHEN revoked_at IS NOT NULL THEN 'revoked'
@@ -351,6 +352,24 @@ class OrganizationStoreMixin:
             )]
             return {"organization": org, "members": members, "invitations": invites, "audit": audit}
 
+    def transfer_organization_ownership(self, actor_id, org_id, new_owner_id):
+        with self._org_transaction():
+            organization = self._membership(actor_id, org_id, admin=True)
+            if organization["created_by"] != actor_id:
+                raise OrganizationError("Somente o responsável atual pode transferir a organização.", 403)
+            target = self._connection.execute(
+                "SELECT role FROM memberships WHERE organization_id=? AND user_id=?",
+                (org_id, new_owner_id),
+            ).fetchone()
+            if not target or target["role"] != "admin":
+                raise OrganizationError("Promova a pessoa a administradora antes da transferência.", 409)
+            if new_owner_id != actor_id:
+                self._connection.execute(
+                    "UPDATE organizations SET created_by=? WHERE id=?", (new_owner_id, org_id)
+                )
+                self._audit(org_id, actor_id, "organization.owner_transferred", new_owner_id)
+            return self._membership(new_owner_id, org_id, admin=True)
+
     def change_member(self, actor_id, org_id, user_id, role=None):
         if role not in (None, "admin", "member", "viewer"):
             raise OrganizationError("Perfil inválido.")
@@ -359,6 +378,11 @@ class OrganizationStoreMixin:
             member = self._connection.execute("SELECT role FROM memberships WHERE organization_id=? AND user_id=?", (org_id, user_id)).fetchone()
             if not member:
                 raise OrganizationError("Membro não encontrado.", 404)
+            owner = self._connection.execute(
+                "SELECT created_by FROM organizations WHERE id=?", (org_id,)
+            ).fetchone()["created_by"]
+            if user_id == owner and role != "admin":
+                raise OrganizationError("Transfira a responsabilidade antes de remover ou rebaixar esta pessoa.", 409)
             if member["role"] == "admin" and role != "admin":
                 admins = self._connection.execute("SELECT count(*) FROM memberships WHERE organization_id=? AND role='admin'", (org_id,)).fetchone()[0]
                 if admins <= 1:

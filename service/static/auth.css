@@ -93,6 +93,7 @@ select:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid
 .team-info { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
 .team-info strong { font-size: 13px; }
 .team-info small { color: var(--muted); font-size: 11px; }
+.owner-badge { width: max-content; padding: 4px 7px; border-radius: 99px; color: var(--accent); background: rgba(59, 253, 231, .09); font-size: 8px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .team-row button { font-size: 11px; min-height: 36px; }
 summary { cursor: pointer; font-size: 14px; }
 @media (max-width: 650px) {

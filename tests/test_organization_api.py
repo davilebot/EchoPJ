@@ -444,6 +444,30 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(self.request("/api/jobs", token=self.member_token)[0], 403)
         self.assertEqual(self.request("/api/auth/me", token=self.member_token)[0], 200)
 
+    def test_owner_can_transfer_customer_workspace_then_leave_it(self):
+        invitation = self.auth.create_invitation(self.owner["id"], self.other, "client@example.com", "admin")
+        client = self.auth.accept_invitation(invitation["token"], "client-password-long")[0]
+        self.assertEqual(self.request(
+            f"/api/organizations/{self.org}/owner/{self.member['id']}", "PUT",
+            token=self.owner_token,
+        )[0], 409)
+        status, transferred, _ = self.request(
+            f"/api/organizations/{self.other}/owner/{client['id']}", "PUT",
+            token=self.owner_token,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(transferred["owner"]["created_by"], client["id"])
+        headers = {"x-organization-id": str(self.org)}
+        self.assertEqual(
+            self.request(f"/api/admin/organizations/{self.other}", token=self.owner_token, headers=headers)[1]["owner_email"],
+            "client@example.com",
+        )
+        self.assertEqual(self.request(
+            f"/api/organizations/{self.other}/members/{self.owner['id']}", "DELETE",
+            token=self.owner_token,
+        )[0], 200)
+        self.assertEqual(self.request(f"/api/organizations/{self.other}", token=self.owner_token)[0], 403)
+
     def test_jobs_created_are_bound_to_actor_and_org(self):
         payload = {"filename": "test.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}], "check_website": False}
         status, job, _ = self.request("/api/jobs", "POST", payload, self.owner_token, {"x-organization-id": str(self.other)})

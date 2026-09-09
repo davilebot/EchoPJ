@@ -253,6 +253,14 @@ class FrontendContractTests(unittest.TestCase):
         for capability in ('data-capability="manage-library"', 'data-capability="export"', 'data-capability="run-jobs"'):
             self.assertIn(capability, self.html + script)
 
+    def test_organization_owner_can_be_transferred_before_operator_leaves(self):
+        html = (STATIC_DIR / "organizations.html").read_text(encoding="utf-8")
+        script = (STATIC_DIR / "organizations.js").read_text(encoding="utf-8")
+        self.assertIn("transfira a responsabilidade", html.casefold())
+        self.assertIn("Tornar responsável", script)
+        self.assertIn("/owner/", script)
+        self.assertIn("member.is_owner", script)
+
 
 if __name__ == "__main__":
     unittest.main()

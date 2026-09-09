@@ -81,7 +81,9 @@ estão em [`.env.example`](.env.example).
   e só armazenam seu hash. O link usa fragmento para não expor o token em access logs.
 - Uma conta existente precisa usar sua senha atual ao aceitar outro convite.
   Remover alguém não apaga a conta ou suas outras participações. O último administrador
-  não pode ser removido/rebaixado. Alterações têm trilha de auditoria.
+  não pode ser removido/rebaixado. O responsável pela organização precisa transferir
+  essa função para outro administrador antes de sair; o painel passa a exibir o novo
+  responsável e registra a transferência na auditoria.
 - Sem serviço de e-mail, use “Copiar convite” ou “Abrir no meu e-mail”. Envio automático
   exige `SMTP_HOST`, `SMTP_FROM` e, quando aplicável, `SMTP_USERNAME`/`SMTP_PASSWORD`
   no arquivo de segredos do servidor. Padrão: `SMTP_PORT=465`, `SMTP_SSL=true`;

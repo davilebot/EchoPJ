@@ -19,6 +19,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 
 - [x] implantação separada da aplicação atual;
 - [x] acesso e histórico isolados por organização;
+- [x] transferência explícita da responsabilidade da organização antes da saída do administrador que criou o piloto;
 - [x] todas as chamadas da interface vinculadas à organização selecionada;
 - [x] perfil comercial, saldo e livro-razão por organização;
 - [x] EchoHub com créditos ilimitados;

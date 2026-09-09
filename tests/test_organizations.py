@@ -169,11 +169,26 @@ class OrganizationTests(unittest.TestCase):
         with self.assertRaises(OrganizationError): self.store.change_member(self.owner, self.org, self.owner)
         with self.assertRaises(OrganizationError): self.store.change_member(self.owner, self.org, self.owner, "member")
         self.store.change_member(self.owner, self.org, member["id"], "admin")
+        with self.assertRaises(OrganizationError): self.store.change_member(self.owner, self.org, self.owner, "member")
+        self.store.transfer_organization_ownership(self.owner, self.org, member["id"])
         self.store.change_member(self.owner, self.org, self.owner, "member")
         self.store.change_member(member["id"], self.org, self.owner)
         with self.assertRaises(OrganizationError): self.store.organization_for_user(self.owner, self.org)
         self.store.ensure_initial_organization()
         self.assertEqual(self.store.organizations_for_user(self.owner), [])
+
+    def test_only_current_owner_can_transfer_to_an_administrator(self):
+        member = self.invite_user()
+        with self.assertRaises(OrganizationError):
+            self.store.transfer_organization_ownership(self.owner, self.org, member["id"])
+        self.store.change_member(self.owner, self.org, member["id"], "admin")
+        transferred = self.store.transfer_organization_ownership(self.owner, self.org, member["id"])
+        self.assertEqual(transferred["created_by"], member["id"])
+        team = self.store.organization_team(member["id"], self.org)
+        self.assertTrue(next(item for item in team["members"] if item["id"] == member["id"])["is_owner"])
+        with self.assertRaises(OrganizationError):
+            self.store.transfer_organization_ownership(self.owner, self.org, self.owner)
+        self.assertEqual(team["audit"][0]["action"], "organization.owner_transferred")
 
     def test_demoting_inviter_revokes_pending_invitations(self):
         admin = self.invite_user(role="admin")

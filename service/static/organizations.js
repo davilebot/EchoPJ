@@ -54,9 +54,20 @@ async function loadTeam() {
   const data = await api(`/api/organizations/${currentOrg.id}`);
   $("#members-list").replaceChildren();
   for (const member of data.members) {
-    const item = row(member.identifier + (member.id === currentUser.id ? " (você)" : ""), `${roleNames[member.role]} · ${roleDescriptions[member.role]}`);
+    const ownerLabel = member.is_owner ? " · Responsável" : "";
+    const item = row(member.identifier + (member.id === currentUser.id ? " (você)" : ""), `${roleNames[member.role]}${ownerLabel} · ${roleDescriptions[member.role]}`);
+    if (member.is_owner) item.querySelector(".team-info").append(textElement("span", "Responsável pela organização", "owner-badge"));
     const actions = textElement("div", "", "org-actions");
-    actions.append(roleControl(member), actionButton("Remover", async () => {
+    actions.append(roleControl(member));
+    if (data.organization.created_by === currentUser.id && member.role === "admin" && !member.is_owner) {
+      actions.append(actionButton("Tornar responsável", async () => {
+        if (!confirm(`Transferir a responsabilidade de ${currentOrg.name} para ${member.identifier}?`)) return;
+        await api(`/api/organizations/${currentOrg.id}/owner/${member.id}`, "PUT");
+        await loadOrganizations();
+        notify("Responsabilidade transferida. Você já pode sair deste workspace, se quiser.", true);
+      }));
+    }
+    if (!member.is_owner) actions.append(actionButton("Remover", async () => {
       if (!confirm(`Remover ${member.identifier} desta organização? As consultas da organização serão preservadas.`)) return;
       await api(`/api/organizations/${currentOrg.id}/members/${member.id}`, "DELETE");
       if (member.id === currentUser.id) location.href = "/organizations"; else { await loadTeam(); notify("Acesso removido desta organização.", true); }
@@ -74,7 +85,7 @@ async function loadTeam() {
     $("#invitations-list").append(item);
   }
   if (!data.invitations.length) $("#invitations-list").append(textElement("p", "Nenhum convite criado ainda.", "muted"));
-  const auditNames = { "organization.migrated": "Organização inicial criada", "organization.created": "Organização criada", "organization.signup": "Organização criada por cadastro", "organization.renamed": "Organização renomeada", "member.removed": "Membro removido", "member.role_changed": "Permissão alterada", "invitation.created": "Convite criado", "invitation.revoked": "Convite cancelado", "invitation.accepted": "Convite aceito" };
+  const auditNames = { "organization.migrated": "Organização inicial criada", "organization.created": "Organização criada", "organization.signup": "Organização criada por cadastro", "organization.renamed": "Organização renomeada", "organization.owner_transferred": "Responsabilidade transferida", "member.removed": "Membro removido", "member.role_changed": "Permissão alterada", "invitation.created": "Convite criado", "invitation.revoked": "Convite cancelado", "invitation.accepted": "Convite aceito" };
   $("#audit-list").replaceChildren(...data.audit.map((event) => row(auditNames[event.action] || event.action, `${event.actor} · ${new Date(event.created_at).toLocaleString("pt-BR")}${event.target ? " · " + event.target : ""}`)));
 }
 async function loadOrganizations() {
