@@ -98,6 +98,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Prepare seu workspace", script)
         self.assertIn("pending_invitation_count", script)
         self.assertIn(".onboarding-steps", styles)
+        self.assertIn("Uso nos últimos 30 dias", script)
+        self.assertIn('class="usage-chart"', script)
+        self.assertIn(".usage-chart", styles)
 
     def test_workspace_fetches_are_scoped_to_selected_organization(self):
         workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")

@@ -762,6 +762,11 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(dashboard["unlocked_companies"], 1)
         self.assertEqual(dashboard["active_jobs"], 1)
         self.assertEqual(dashboard["recent_lists"][0]["name"], "Prospects")
+        self.assertEqual(dashboard["usage"]["period_days"], 30)
+        self.assertEqual(dashboard["usage"]["unlocked_companies"], 1)
+        self.assertEqual(dashboard["usage"]["credits_spent"], 1)
+        self.assertGreaterEqual(dashboard["usage"]["active_days"], 1)
+        self.assertEqual(len(dashboard["usage"]["daily"]), 30)
         self.assertEqual(dashboard["organization_id"], self.other)
         self.assertEqual(dashboard["onboarding"], {"member_count": 1, "pending_invitation_count": 0})
 

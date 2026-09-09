@@ -1488,6 +1488,7 @@ class SaaSStore:
 
     def dashboard_summary(self, organization_id: int) -> dict[str, Any]:
         billing = self.billing_summary(organization_id, ledger_limit=5)
+        usage = self.usage_insights(organization_id)
         with self._lock:
             list_count = self._connection.execute(
                 "SELECT count(*) FROM company_lists WHERE organization_id=?",
@@ -1514,6 +1515,94 @@ class SaaSStore:
             "saved_search_count": saved_search_count,
             "recent_lists": recent_lists,
             "recent_searches": recent_searches,
+            "usage": usage,
+        }
+
+    def usage_insights(
+        self,
+        organization_id: int,
+        *,
+        days: int = 30,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Summarize recent customer activity from append-only operational facts."""
+        period_days = max(1, min(90, days))
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        end_date = current.astimezone(timezone.utc).date()
+        start_date = end_date - timedelta(days=period_days - 1)
+        start_key = start_date.isoformat()
+        end_key = end_date.isoformat()
+
+        with self._lock:
+            unlock_rows = self._connection.execute(
+                """SELECT substr(unlocked_at,1,10) AS activity_date,count(*) AS total
+                   FROM company_unlocks
+                   WHERE organization_id=? AND substr(unlocked_at,1,10) BETWEEN ? AND ?
+                   GROUP BY activity_date""",
+                (organization_id, start_key, end_key),
+            ).fetchall()
+            credit_rows = self._connection.execute(
+                """SELECT substr(created_at,1,10) AS activity_date,
+                          coalesce(sum(-delta),0) AS total
+                   FROM credit_ledger
+                   WHERE organization_id=? AND delta < 0
+                     AND substr(created_at,1,10) BETWEEN ? AND ?
+                   GROUP BY activity_date""",
+                (organization_id, start_key, end_key),
+            ).fetchall()
+            activity_rows = self._connection.execute(
+                """SELECT activity_date FROM (
+                       SELECT substr(occurred_at,1,10) AS activity_date
+                       FROM product_events
+                       WHERE organization_id=?
+                         AND event_name NOT LIKE 'workspace.%'
+                         AND event_name NOT LIKE 'billing.%'
+                         AND event_name NOT LIKE 'team.%'
+                         AND event_name NOT LIKE 'support.%'
+                       UNION
+                       SELECT substr(created_at,1,10) FROM saved_searches
+                        WHERE organization_id=?
+                       UNION
+                       SELECT substr(last_run_at,1,10) FROM saved_searches
+                        WHERE organization_id=? AND last_run_at IS NOT NULL
+                       UNION
+                       SELECT substr(created_at,1,10) FROM company_lists
+                        WHERE organization_id=?
+                       UNION
+                       SELECT substr(added_at,1,10) FROM company_list_items
+                        WHERE organization_id=?
+                       UNION
+                       SELECT substr(unlocked_at,1,10) FROM company_unlocks
+                        WHERE organization_id=?
+                   ) WHERE activity_date BETWEEN ? AND ?
+                   GROUP BY activity_date""",
+                (
+                    organization_id, organization_id, organization_id,
+                    organization_id, organization_id, organization_id,
+                    start_key, end_key,
+                ),
+            ).fetchall()
+
+        unlocks_by_day = {row["activity_date"]: row["total"] for row in unlock_rows}
+        credits_by_day = {row["activity_date"]: row["total"] for row in credit_rows}
+        daily = []
+        for offset in range(period_days):
+            date_key = (start_date + timedelta(days=offset)).isoformat()
+            daily.append({
+                "date": date_key,
+                "unlocked_companies": unlocks_by_day.get(date_key, 0),
+                "credits_spent": credits_by_day.get(date_key, 0),
+            })
+        return {
+            "period_days": period_days,
+            "start_date": start_key,
+            "end_date": end_key,
+            "unlocked_companies": sum(day["unlocked_companies"] for day in daily),
+            "credits_spent": sum(day["credits_spent"] for day in daily),
+            "active_days": len(activity_rows),
+            "daily": daily,
         }
 
     def grant_credits(

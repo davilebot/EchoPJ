@@ -172,6 +172,59 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(dashboard["saved_search_count"], 1)
         self.assertEqual(dashboard["unlocked_companies"], 1)
         self.assertEqual(dashboard["recent_lists"][0]["company_count"], 1)
+        self.assertEqual(dashboard["usage"]["period_days"], 30)
+        self.assertEqual(len(dashboard["usage"]["daily"]), 30)
+
+    def test_usage_insights_reports_recent_activity_without_crossing_tenants(self):
+        self.store.ensure_organization(30, initial_credits=5)
+        self.store.ensure_organization(31, initial_credits=5)
+        company_list = self.store.create_company_list(30, 40, name="Contas prioritárias")
+        self.store.add_companies(30, company_list["id"], 40, [COMPANY_A, COMPANY_B])
+        self.store.record_product_event(
+            30, 40, "search.executed", occurred_at="2026-09-08T14:00:00+00:00",
+        )
+        self.store.record_product_event(
+            30, 40, "search.executed", occurred_at="2026-08-10T14:00:00+00:00",
+        )
+        self.store.record_product_event(
+            31, 41, "search.executed", occurred_at="2026-09-08T15:00:00+00:00",
+        )
+        with self.store._connection:
+            self.store._connection.execute(
+                "UPDATE company_unlocks SET unlocked_at='2026-08-20T10:00:00+00:00' WHERE organization_id=30"
+            )
+            self.store._connection.execute(
+                "UPDATE credit_ledger SET created_at='2026-08-20T10:00:00+00:00' WHERE organization_id=30 AND delta < 0"
+            )
+            self.store._connection.execute(
+                "UPDATE company_lists SET created_at='2026-08-21T10:00:00+00:00',updated_at='2026-08-21T10:00:00+00:00' WHERE organization_id=30"
+            )
+            self.store._connection.execute(
+                "UPDATE company_list_items SET added_at='2026-08-21T10:00:00+00:00' WHERE organization_id=30"
+            )
+            self.store._connection.execute(
+                """UPDATE product_events SET occurred_at='2026-08-21T10:00:00+00:00'
+                   WHERE organization_id=30 AND event_name IN ('company_list.created','company_list.companies_added')"""
+            )
+
+        usage = self.store.usage_insights(
+            30, now=datetime(2026, 9, 9, 12, tzinfo=timezone.utc),
+        )
+        self.assertEqual((usage["start_date"], usage["end_date"]), ("2026-08-11", "2026-09-09"))
+        self.assertEqual(usage["unlocked_companies"], 2)
+        self.assertEqual(usage["credits_spent"], 2)
+        self.assertEqual(usage["active_days"], 3)
+        self.assertEqual(len(usage["daily"]), 30)
+        self.assertEqual(usage["daily"][9], {
+            "date": "2026-08-20", "unlocked_companies": 2, "credits_spent": 2,
+        })
+
+        other = self.store.usage_insights(
+            31, now=datetime(2026, 9, 9, 12, tzinfo=timezone.utc),
+        )
+        self.assertEqual(other["unlocked_companies"], 0)
+        self.assertEqual(other["credits_spent"], 0)
+        self.assertEqual(other["active_days"], 1)
 
     def test_payment_idempotency_key_cannot_cross_organizations(self):
         self.store.ensure_organization(11, initial_credits=0)

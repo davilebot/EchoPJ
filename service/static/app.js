@@ -1361,6 +1361,31 @@ async function loadSaaSOverview() {
     </section>`;
     const recentLists = data.recent_lists.length ? data.recent_lists.map((item) => `<button class="workspace-row" type="button" data-dashboard-list="${item.id}"><span><strong>${escapeHtml(item.name)}</strong><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma lista ainda</span><button type="button" data-switch-tab="search">Encontrar empresas</button></div>`;
     const recentSearches = data.recent_searches.length ? data.recent_searches.map((saved) => `<button class="workspace-row" type="button" data-dashboard-search="${saved.id}"><span><strong>${escapeHtml(saved.name)}</strong><small>${escapeHtml(filtersDescription(saved.filters))}</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>`).join("") : `<div class="workspace-empty"><span>Nenhuma busca salva</span><button type="button" data-switch-tab="search">Criar uma busca</button></div>`;
+    const usage = data.usage || {};
+    const usageDays = Array.isArray(usage.daily) ? usage.daily : [];
+    const unlockedInPeriod = Number(usage.unlocked_companies || 0);
+    const creditsSpentInPeriod = Number(usage.credits_spent || 0);
+    const activeDays = Number(usage.active_days || 0);
+    const usagePeak = Math.max(1, ...usageDays.map((day) => Number(day.unlocked_companies || 0)));
+    const usageBars = usageDays.map((day) => {
+      const unlocked = Number(day.unlocked_companies || 0);
+      const height = unlocked ? Math.max(12, Math.round(unlocked / usagePeak * 100)) : 3;
+      const label = `${formatBillingDate(day.date)}: ${unlocked.toLocaleString("pt-BR")} empresa${unlocked === 1 ? "" : "s"} desbloqueada${unlocked === 1 ? "" : "s"}`;
+      return `<span class="usage-bar${unlocked ? " has-usage" : ""}" title="${label}" aria-label="${label}"><i style="height:${height}%"></i></span>`;
+    }).join("");
+    let usageMessage = "As buscas, listas e exportações da equipe aparecerão aqui conforme o workspace for usado.";
+    if (activeDays && !unlockedInPeriod) usageMessage = `Sua equipe esteve ativa em ${activeDays.toLocaleString("pt-BR")} dia${activeDays === 1 ? "" : "s"}, sem novos desbloqueios no período.`;
+    if (unlockedInPeriod) {
+      const averageValue = unlockedInPeriod / Math.max(1, activeDays);
+      const average = averageValue.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+      usageMessage = data.profile.unlimited_credits
+        ? `Média de ${average} empresa${averageValue === 1 ? "" : "s"} por dia ativo. O uso interno da EchoHub não desconta créditos.`
+        : `Média de ${average} empresa${averageValue === 1 ? "" : "s"} por dia ativo e ${creditsSpentInPeriod.toLocaleString("pt-BR")} crédito${creditsSpentInPeriod === 1 ? "" : "s"} usado${creditsSpentInPeriod === 1 ? "" : "s"}.`;
+    }
+    const usageCard = `<section class="usage-card section-card"><div class="workspace-usage-head"><div><span class="eyebrow">RITMO DA EQUIPE</span><h2>Uso nos últimos 30 dias</h2><p>${usageMessage}</p></div><span class="usage-period">${formatBillingDate(usage.start_date)} — ${formatBillingDate(usage.end_date)}</span></div>
+      <div class="usage-kpis"><article><span>Empresas desbloqueadas</span><strong>${unlockedInPeriod.toLocaleString("pt-BR")}</strong></article><article><span>Dias com atividade</span><strong>${activeDays.toLocaleString("pt-BR")}</strong></article><article><span>Créditos usados</span><strong>${data.profile.unlimited_credits ? "Sem cobrança" : creditsSpentInPeriod.toLocaleString("pt-BR")}</strong></article></div>
+      <div class="usage-chart-wrap"><div class="usage-chart" role="img" aria-label="Empresas desbloqueadas por dia nos últimos 30 dias">${usageBars}</div><div class="usage-chart-labels"><span>${formatBillingDate(usage.start_date)}</span><span>Empresas desbloqueadas por dia</span><span>${formatBillingDate(usage.end_date)}</span></div></div>
+    </section>`;
     saasOverview.dataset.searches = JSON.stringify(data.recent_searches);
     saasOverview.innerHTML = `${onboarding}<div class="workspace-metrics">
       <button type="button" data-switch-tab="billing"><span>Créditos</span><strong>${data.profile.unlimited_credits ? "Ilimitados" : Number(data.profile.credit_balance).toLocaleString("pt-BR")}</strong><small>${data.profile.unlimited_credits ? "Plano interno EchoHub" : "Saldo compartilhado"}</small></button>
@@ -1369,6 +1394,7 @@ async function loadSaaSOverview() {
       <button type="button" data-switch-tab="saved-searches"><span>Buscas salvas</span><strong>${Number(data.saved_search_count).toLocaleString("pt-BR")}</strong><small>Segmentos reutilizáveis</small></button>
     </div>
     ${data.active_jobs ? `<button class="active-jobs-banner" type="button" data-switch-tab="history"><span class="spinner" aria-hidden="true"></span><span><strong>${data.active_jobs} processamento${data.active_jobs === 1 ? "" : "s"} em andamento</strong><small>Acompanhe o progresso e baixe os resultados quando quiser.</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>` : ""}
+    ${usageCard}
     <div class="workspace-columns"><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">LISTAS RECENTES</span><h2>Empresas organizadas</h2></div><button class="secondary compact" type="button" data-switch-tab="lists">Ver todas</button></div>${recentLists}</section><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">BUSCAS RECENTES</span><h2>Segmentos da equipe</h2></div><button class="secondary compact" type="button" data-switch-tab="saved-searches">Ver todas</button></div>${recentSearches}</section></div>`;
     saasOverviewLoading.classList.add("hidden");
     saasOverview.classList.remove("hidden");

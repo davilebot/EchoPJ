@@ -482,6 +482,27 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
 .workspace-metrics span { color: var(--text-secondary); font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
 .workspace-metrics strong { margin: 10px 0 3px; font-family: var(--font-display); font-size: clamp(22px, 3vw, 32px); font-weight: 600; letter-spacing: -.03em; }
 .workspace-metrics small { overflow: hidden; max-width: 100%; color: var(--text-tertiary); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.usage-card { display: grid; gap: 20px; overflow: hidden; }
+.workspace-usage-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.workspace-usage-head h2 { margin: 7px 0 5px; font-size: 20px; }
+.workspace-usage-head p { max-width: 680px; margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
+.usage-period { flex: 0 0 auto; padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--text-tertiary); background: var(--surface-soft); font-size: 8px; font-weight: 700; letter-spacing: .04em; }
+.usage-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block: 1px solid var(--border); }
+.usage-kpis article { min-width: 0; padding: 16px 18px; border-right: 1px solid var(--border); }
+.usage-kpis article:first-child { padding-left: 0; }
+.usage-kpis article:last-child { border-right: 0; }
+.usage-kpis span, .usage-kpis strong { display: block; }
+.usage-kpis span { color: var(--text-secondary); font-size: 9px; }
+.usage-kpis strong { overflow: hidden; margin-top: 6px; font-family: var(--font-display); font-size: 22px; font-weight: 600; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.usage-chart-wrap { min-width: 0; }
+.usage-chart { display: grid; height: 112px; grid-template-columns: repeat(30, minmax(3px, 1fr)); gap: clamp(2px, .45vw, 6px); align-items: end; padding-top: 6px; border-bottom: 1px solid var(--border-strong); }
+.usage-bar { display: flex; height: 100%; align-items: flex-end; border-radius: 4px 4px 0 0; }
+.usage-bar i { display: block; width: 100%; min-height: 3px; border-radius: 4px 4px 1px 1px; background: var(--border); transition: height .25s ease, background .15s ease; }
+.usage-bar.has-usage i { min-height: 12px; background: linear-gradient(180deg, var(--accent), var(--accent-strong)); }
+.usage-bar.has-usage:hover i { filter: brightness(1.08); }
+.usage-chart-labels { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; padding-top: 8px; color: var(--text-tertiary); font-size: 8px; }
+.usage-chart-labels span:nth-child(2) { text-align: center; }
+.usage-chart-labels span:last-child { text-align: right; }
 .workspace-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .workspace-feed { padding: 18px; }
 .workspace-feed-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
@@ -620,6 +641,7 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .onboarding-steps { grid-template-columns: 1fr; }
   .workspace-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-columns { grid-template-columns: 1fr; }
+  .workspace-usage-head { flex-direction: column; gap: 10px; }
   .quick-actions { grid-template-columns: 1fr; }
   .quick-action small { white-space: normal; }
   .two-column-layout, .batch-grid { grid-template-columns: 1fr; }
@@ -678,6 +700,11 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .resource-card-actions { grid-column: 1 / -1; }
   .list-detail-head, .billing-hero { flex-direction: column; }
   .billing-metrics, .workspace-metrics, .billing-offer-grid { grid-template-columns: 1fr; }
+  .usage-kpis { grid-template-columns: 1fr; border-bottom: 0; }
+  .usage-kpis article, .usage-kpis article:first-child { padding: 12px 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .usage-chart { gap: 2px; }
+  .usage-chart-labels span:nth-child(2) { display: none; }
+  .usage-chart-labels { grid-template-columns: 1fr 1fr; }
   .billing-return { align-items: flex-start; flex-direction: column; gap: 4px; }
   .billing-attention { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
   .billing-attention-tag { grid-column: 2; }

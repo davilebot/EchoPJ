@@ -28,7 +28,7 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - [x] buscas salvas com os filtros completos;
 - [x] navegação agrupada em “Buscar empresas”;
 - [x] telas responsivas de listas, buscas salvas e créditos;
-- [x] painel da organização com saldo, listas, buscas e processamentos;
+- [x] painel da organização com saldo, listas, buscas, processamentos e ritmo de uso dos últimos 30 dias;
 - [x] exportações debitadas e geradas no servidor, com trilha de auditoria;
 - [x] catálogo técnico restrito à organização interna.
 
