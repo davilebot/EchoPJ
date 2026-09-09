@@ -66,9 +66,12 @@ notificationList.addEventListener("click", async (event) => {
     const tab = item.dataset.notificationTab;
     notificationPanel.classList.add("hidden");
     notificationToggle.setAttribute("aria-expanded", "false");
-    if (tab === "support") {
+    if (tab === "support" || tab.startsWith("support:")) {
       const organization = new URLSearchParams(location.search).get("organization");
-      location.assign(`/help${organization ? `?organization=${encodeURIComponent(organization)}` : ""}`);
+      const target = new URL("/help", location.origin);
+      if (organization) target.searchParams.set("organization", organization);
+      if (tab.includes(":")) target.searchParams.set("ticket", tab.split(":", 2)[1]);
+      location.assign(`${target.pathname}${target.search}`);
       return;
     }
     if (tab) document.querySelector(`.tab-button[data-tab="${CSS.escape(tab)}"]`)?.click();

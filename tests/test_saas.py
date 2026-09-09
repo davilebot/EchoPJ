@@ -297,7 +297,9 @@ class SaaSStoreTests(unittest.TestCase):
             message="Recebemos o chamado e estamos verificando a exportação.",
         )
         self.assertEqual(answered["messages"][-1]["author_kind"], "support")
-        self.assertEqual(self.store.list_notifications(30, 41)["notifications"][0]["kind"], "support_reply")
+        notification = self.store.list_notifications(30, 41)["notifications"][0]
+        self.assertEqual(notification["kind"], "support_reply")
+        self.assertEqual(notification["action_tab"], f"support:{ticket['id']}")
         queue = self.store.admin_support_tickets(status="in_progress")
         self.assertEqual(queue["tickets"][0]["id"], ticket["id"])
         self.assertEqual(queue["counts"]["in_progress"], 1)

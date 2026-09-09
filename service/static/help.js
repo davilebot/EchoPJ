@@ -1,5 +1,6 @@
 const $ = (selector) => document.querySelector(selector);
 const organizationParam = new URLSearchParams(location.search).get("organization");
+const requestedSupportTicket = new URLSearchParams(location.search).get("ticket");
 let activeOrganization = null;
 let diagnosticText = "";
 let selectedSupportTicketId = null;
@@ -195,7 +196,10 @@ $("#copy-diagnostic").addEventListener("click", async () => {
   }
 });
 
-loadContext().then(loadTickets).catch((error) => {
+loadContext().then(async () => {
+  await loadTickets();
+  if (requestedSupportTicket) await openTicket(requestedSupportTicket);
+}).catch((error) => {
   $("#workspace-pill strong").textContent = "Contexto indisponível";
   $("#copy-status").textContent = error.message;
   $("#copy-diagnostic").disabled = true;

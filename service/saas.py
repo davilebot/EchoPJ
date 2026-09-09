@@ -1249,7 +1249,7 @@ class SaaSStore:
                     kind="support_reply",
                     title="Seu chamado recebeu uma resposta",
                     message=f"{ticket['subject'][:180]}",
-                    action_tab="support",
+                    action_tab=f"support:{ticket_id}",
                     deduplication_key=f"support-reply:{message_id}",
                 )
         result = self.support_ticket_detail(organization_id, ticket_id)

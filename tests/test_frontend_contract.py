@@ -99,7 +99,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('fetch("/api/notifications")', script)
         self.assertIn("/api/notifications/read-all", script)
         self.assertIn("data-notification-id", script)
-        self.assertIn('tab === "support"', script)
+        self.assertIn('tab.startsWith("support:")', script)
 
     def test_internal_admin_shows_product_funnel_and_customer_activity(self):
         html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
@@ -162,6 +162,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="support-tickets"', help_html)
         self.assertIn('id="support-dialog"', help_html)
         self.assertIn('api("/api/support/tickets"', help_script)
+        self.assertIn("requestedSupportTicket", help_script)
         self.assertIn("support-message", help_styles)
         self.assertIn('id="admin-support-tickets"', admin_html)
         self.assertIn('id="admin-support-dialog"', admin_html)
