@@ -12,7 +12,7 @@
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-search-complete-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-broad-search-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -162,10 +162,9 @@
               </section>
               <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
             </fieldset>
-            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Busca completa</strong><small>Carregamos até 10.000 empresas. Ver e filtrar não consome créditos.</small></div><div class="search-submit-actions"><button id="save-current-search" class="secondary" data-capability="manage-library" type="button">Salvar busca</button><button type="submit">Atualizar resultados</button></div></div>
           </form>
           <section class="search-preview-column" aria-label="Empresas encontradas">
-            <header class="search-preview-header"><div><span class="eyebrow">RESULTADOS AO VIVO</span><h2>Empresas disponíveis</h2><p>Você pode carregar e selecionar até 10.000 empresas por busca.</p></div><span id="search-preview-status" class="preview-status"><i aria-hidden="true"></i>Aguardando filtros</span></header>
+            <header class="search-preview-header"><div><span class="eyebrow">RESULTADOS AO VIVO</span><h2>Empresas disponíveis</h2><p>Você pode carregar e selecionar até 10.000 empresas por busca.</p></div><div class="search-preview-header-actions"><button id="save-current-search" class="secondary compact" data-capability="manage-library" type="button">Salvar busca</button><span id="search-preview-status" class="preview-status"><i aria-hidden="true"></i>Aguardando filtros</span></div></header>
             <nav id="search-result-tabs" class="search-result-tabs" aria-label="Separar empresas encontradas">
               <button class="active" type="button" data-search-view="total" aria-pressed="true"><span>Total</span><strong data-search-view-count="total">0</strong></button>
               <button type="button" data-search-view="new" aria-pressed="false"><span>Novo</span><strong data-search-view-count="new">0</strong></button>
@@ -274,7 +273,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-search-complete-1"></script>
+  <script src="/static/app.js?v=20260909-broad-search-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

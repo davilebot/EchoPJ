@@ -1289,7 +1289,7 @@ function setSearchPreviewStatus(label, state = "idle") {
 
 async function runCompanySearch({ preview = false, scroll = false } = {}) {
   const submitButton = companySearchForm.querySelector('button[type="submit"]');
-  const originalSubmitLabel = submitButton.textContent;
+  const originalSubmitLabel = submitButton?.textContent || "";
   let searchProgressTimer = null;
   const requestNumber = ++searchPreviewRequest;
   if (searchPreviewController) searchPreviewController.abort();
@@ -1298,7 +1298,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
   setSearchPreviewStatus("Atualizando", "loading");
-  if (!preview) {
+  if (!preview && submitButton) {
     submitButton.disabled = true;
     submitButton.textContent = "Buscando…";
   }
@@ -1333,7 +1333,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
     clearTimeout(searchProgressTimer);
     if (requestNumber !== searchPreviewRequest) return;
     companySearchForm.removeAttribute("aria-busy");
-    if (!preview) {
+    if (!preview && submitButton) {
       submitButton.disabled = false;
       submitButton.textContent = originalSubmitLabel;
     }
@@ -1361,8 +1361,10 @@ function scheduleCompanySearchPreview({ immediate = false } = {}) {
     });
     companySearchForm.removeAttribute("aria-busy");
     const submitButton = companySearchForm.querySelector('button[type="submit"]');
-    submitButton.disabled = false;
-    submitButton.textContent = "Atualizar resultados";
+    if (submitButton) {
+      submitButton.disabled = false;
+      submitButton.textContent = "Atualizar resultados";
+    }
     companySearchLoading.classList.add("hidden");
     companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Os resultados aparecerão aqui automaticamente.</p></div>`;
     setSearchPreviewStatus("Aguardando filtros");

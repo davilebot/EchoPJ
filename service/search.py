@@ -73,10 +73,13 @@ def _selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
 def build_search_query(
     filters: dict[str, Any],
     capabilities: SearchCapabilities,
+    *,
+    count_only: bool = False,
 ) -> tuple[str, list[Any]]:
     predicates: list[str] = []
     parameters: list[Any] = []
     joins: list[str] = []
+    filter_joins: list[str] = []
     statuses = filters.get("registration_statuses") or []
     active_only = not statuses or set(statuses) == {"ATIVA"}
 
@@ -91,6 +94,16 @@ def build_search_query(
         filters.get(field) is not None
         for field in ("active_branch_count_min", "active_branch_count_max")
     )
+    needs_company_for_inactive_filter = not active_only and (
+        bool(filters.get("company_sizes"))
+        or filters.get("share_capital_min") is not None
+        or filters.get("share_capital_max") is not None
+    )
+    needs_establishment_for_inactive_filter = not active_only and (
+        bool(filters.get("cnae") or filters.get("cnaes") or filters.get("excluded_cnaes"))
+        or filters.get("opened_from") is not None
+        or filters.get("opened_to") is not None
+    )
     if needs_simples and not capabilities.simples:
         raise SearchCapabilityUnavailable("Simples e MEI aguardam a carga complementar da Receita")
     if needs_company and not capabilities.company_details:
@@ -102,11 +115,14 @@ def build_search_query(
     if needs_branch_counts and not capabilities.branch_counts:
         raise SearchCapabilityUnavailable("o resumo de filiais ainda esta sendo preparado")
 
-    if capabilities.simples:
-        joins.append(
+    if capabilities.simples and needs_simples:
+        simples_join = (
             "LEFT JOIN rfb_simples s ON s.cnpj_root=e.cnpj_root "
             "AND s.dataset_version=e.dataset_version"
         )
+        joins.append(simples_join)
+        if needs_simples:
+            filter_joins.append(simples_join)
         simples_columns = "s.is_simples,s.is_mei"
     else:
         simples_columns = "NULL::boolean AS is_simples,NULL::boolean AS is_mei"
@@ -118,11 +134,14 @@ def build_search_query(
         "WHEN '05' THEN 'DEMAIS' "
         "ELSE coalesce(nullif(e.company_size,''),'NAO INFORMADO') END"
     )
-    if capabilities.company_details:
-        joins.append(
+    if capabilities.company_details and (needs_company or needs_company_for_inactive_filter):
+        company_join = (
             "LEFT JOIN rfb_company_details c ON c.cnpj_root=e.cnpj_root "
             "AND c.dataset_version=e.dataset_version"
         )
+        joins.append(company_join)
+        if needs_company or needs_company_for_inactive_filter:
+            filter_joins.append(company_join)
         legal_nature_column = "c.legal_nature_code"
         company_size_expression = f"coalesce(c.company_size,{base_company_size_expression})"
         company_size_filter_expression = "e.company_size" if active_only else "coalesce(c.company_size_code,e.company_size)"
@@ -132,11 +151,14 @@ def build_search_query(
         company_size_expression = base_company_size_expression
         company_size_filter_expression = "e.company_size"
         share_capital_expression = "e.share_capital"
-    if capabilities.establishment_details:
-        joins.append(
+    if capabilities.establishment_details and (needs_establishment or needs_establishment_for_inactive_filter):
+        establishment_join = (
             "LEFT JOIN rfb_establishment_details x ON x.cnpj=e.cnpj "
             "AND x.dataset_version=e.dataset_version"
         )
+        joins.append(establishment_join)
+        if needs_establishment or needs_establishment_for_inactive_filter:
+            filter_joins.append(establishment_join)
         detail_columns = "x.branch_type_code,x.email,x.phone1_area_code,x.phone1"
         if active_only:
             opened_expression = "e.opened_at"
@@ -167,11 +189,14 @@ def build_search_query(
             for field in ("street_type", "street", "street_number", "address_extra", "district")
         }
 
-    if capabilities.branch_counts:
-        joins.append(
+    if capabilities.branch_counts and needs_branch_counts:
+        branch_counts_join = (
             "LEFT JOIN rfb_company_branch_counts b ON b.cnpj_root=e.cnpj_root "
             "AND b.dataset_version=e.dataset_version"
         )
+        joins.append(branch_counts_join)
+        if needs_branch_counts:
+            filter_joins.append(branch_counts_join)
         branch_count_columns = (
             "coalesce(b.branch_count,0) AS branch_count,"
             "coalesce(b.active_branch_count,0) AS active_branch_count"
@@ -336,9 +361,25 @@ def build_search_query(
         predicates.append("coalesce(b.active_branch_count,0)<=%s")
         parameters.append(filters["active_branch_count_max"])
 
+    if count_only:
+        return f"""
+            SELECT count(*) AS total_count
+            FROM rfb_establishments e
+            {' '.join(filter_joins)}
+            WHERE {' AND '.join(predicates)}
+        """, parameters
+
     limit = int(filters["limit"])
     parameters.append(limit)
     sql = f"""
+        WITH matched AS MATERIALIZED (
+          SELECT e.*
+          FROM rfb_establishments e
+          {' '.join(filter_joins)}
+          WHERE {' AND '.join(predicates)}
+          ORDER BY e.cnpj
+          LIMIT %s
+        )
         SELECT
           e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
           e.registration_status_date,{opened_expression} AS opened_at,
@@ -352,11 +393,9 @@ def build_search_query(
           {address_expressions['district']} AS district,
           e.dataset_version,{simples_columns},{legal_nature_column},{detail_columns},
           {branch_count_columns}
-        FROM rfb_establishments e
+        FROM matched e
         {' '.join(joins)}
-        WHERE {' AND '.join(predicates)}
         ORDER BY e.cnpj
-        LIMIT %s
     """
     return sql, parameters
 
@@ -370,10 +409,4 @@ def build_search_count_query(
     Keeping the count separate lets PostgreSQL stop the ordered result query at
     10,000 rows while still reporting the exact size of the full filtered set.
     """
-    search_sql, parameters = build_search_query(filters, capabilities)
-    from_marker = "FROM rfb_establishments e"
-    order_marker = "ORDER BY e.cnpj"
-    from_and_where = search_sql[
-        search_sql.index(from_marker):search_sql.rindex(order_marker)
-    ]
-    return f"SELECT count(*) AS total_count\n{from_and_where}", parameters[:-1]
+    return build_search_query(filters, capabilities, count_only=True)

@@ -85,6 +85,9 @@ class FrontendContractTests(unittest.TestCase):
     def test_search_loads_ten_thousand_and_supports_flexible_selection(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertNotIn('id="search-limit"', self.html)
+        self.assertNotIn('class="search-submit-bar"', self.html)
+        self.assertNotIn("Busca completa", self.html)
+        self.assertIn('id="save-current-search"', self.html)
         self.assertIn("limit: 10000", script)
         self.assertIn('id="select-all-results"', script)
         self.assertIn('id="selection-quantity"', script)

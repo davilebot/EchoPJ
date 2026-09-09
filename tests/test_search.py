@@ -94,6 +94,35 @@ class SearchSqlTests(unittest.TestCase):
         self.assertNotIn("LIMIT %s", count_sql)
         self.assertEqual(count_parameters, parameters[:-1])
 
+    def test_broad_search_limits_base_rows_before_result_joins(self):
+        filters = CompanySearchRequest(regions=["SE"]).model_dump()
+        capabilities = SearchCapabilities(
+            simples=True,
+            company_details=True,
+            establishment_details=True,
+            branch_counts=True,
+        )
+        sql, _ = build_search_query(filters, capabilities)
+        count_sql, _ = build_search_count_query(filters, capabilities)
+        matched_sql = sql.split("SELECT\n          e.cnpj", 1)[0]
+        self.assertIn("WITH matched AS MATERIALIZED", matched_sql)
+        self.assertNotIn("LEFT JOIN rfb_simples", matched_sql)
+        self.assertNotIn("LEFT JOIN rfb_company_details", matched_sql)
+        self.assertNotIn("LEFT JOIN rfb_establishment_details", matched_sql)
+        self.assertNotIn("LEFT JOIN rfb_company_branch_counts", matched_sql)
+        self.assertNotIn("LEFT JOIN", count_sql)
+
+    def test_auxiliary_filter_join_is_kept_inside_limited_match(self):
+        filters = CompanySearchRequest(simples=True, active_branch_count_min=2).model_dump()
+        capabilities = SearchCapabilities(simples=True, branch_counts=True)
+        sql, _ = build_search_query(filters, capabilities)
+        count_sql, _ = build_search_count_query(filters, capabilities)
+        matched_sql = sql.split("SELECT\n          e.cnpj", 1)[0]
+        self.assertIn("LEFT JOIN rfb_simples", matched_sql)
+        self.assertIn("LEFT JOIN rfb_company_branch_counts", matched_sql)
+        self.assertIn("LEFT JOIN rfb_simples", count_sql)
+        self.assertIn("LEFT JOIN rfb_company_branch_counts", count_sql)
+
     def test_exact_cnae_uses_equality(self):
         filters = CompanySearchRequest(cnae="6201501").model_dump()
         sql, parameters = build_search_query(filters, SearchCapabilities())
