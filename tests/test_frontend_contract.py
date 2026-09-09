@@ -38,7 +38,7 @@ class FrontendContractTests(unittest.TestCase):
             "lists-grid", "saved-searches-grid", "billing-summary", "credit-indicator",
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
-            "search-templates", "workspace-access-notice", "search-excluded-cnae-picker",
+            "search-templates", "workspace-access-notice", "search-excluded-cnae-picker", "sidebar-toggle",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 

@@ -10,9 +10,12 @@
     try {
       const savedTheme = localStorage.getItem("echopjs-theme");
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
+      if (localStorage.getItem("echopjs-sidebar-collapsed") === "true") {
+        document.documentElement.dataset.sidebarCollapsed = "true";
+      }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-broad-search-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-sidebar-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -22,6 +25,7 @@
         <img class="brand-logo brand-logo-light" src="/static/assets/echo-wordmark-dark.png" alt="Echo">
         <img class="brand-logo brand-logo-dark" src="/static/assets/echo-wordmark-light.png" alt="Echo">
         <span class="product-name">PJs</span>
+        <button id="sidebar-toggle" class="icon-button sidebar-toggle" type="button" aria-label="Recolher menu lateral" aria-expanded="true" title="Recolher menu lateral"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></button>
       </div>
       <div class="workspace-card workspace-selector" aria-label="Organização atual">
         <label for="workspace-organization">Organização</label>
@@ -30,24 +34,24 @@
       </div>
       <nav class="tabs sidebar-nav" aria-label="Navegação principal">
         <span class="nav-section-label">Workspace</span>
-        <button class="tab-button active" data-tab="overview" data-view-title="Visão geral" type="button" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Visão geral</span></button>
+        <button class="tab-button active" data-tab="overview" data-view-title="Visão geral" type="button" aria-label="Visão geral" title="Visão geral" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Visão geral</span></button>
         <div class="nav-group">
           <div class="nav-group-title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><span>Buscar empresas</span></div>
           <div class="nav-submenu">
-            <button class="tab-button nav-subitem" data-tab="search" data-view-title="Busca com filtros" type="button" title="Busca com filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Busca com filtros</span></button>
-            <button class="tab-button nav-subitem" data-tab="batch" data-view-title="Consultar CNPJs" type="button" title="Consultar CNPJs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>Consultar CNPJs</span></button>
-            <button class="tab-button nav-subitem" data-tab="consulta" data-view-title="Identificar CNPJ" type="button" title="Identificar CNPJ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="m14 14 5 5"/></svg><span>Identificar CNPJ</span></button>
+            <button class="tab-button nav-subitem" data-tab="search" data-view-title="Busca com filtros" type="button" aria-label="Busca com filtros" title="Busca com filtros"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg><span>Busca com filtros</span></button>
+            <button class="tab-button nav-subitem" data-tab="batch" data-view-title="Consultar CNPJs" type="button" aria-label="Consultar CNPJs" title="Consultar CNPJs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h9"/></svg><span>Consultar CNPJs</span></button>
+            <button class="tab-button nav-subitem" data-tab="consulta" data-view-title="Identificar CNPJ" type="button" aria-label="Identificar CNPJ" title="Identificar CNPJ"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="m14 14 5 5"/></svg><span>Identificar CNPJ</span></button>
           </div>
         </div>
         <span class="nav-section-label nav-section-secondary">Biblioteca</span>
-        <button class="tab-button" data-tab="lists" data-view-title="Listas de empresas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="3" cy="6" r=".6"/><circle cx="3" cy="12" r=".6"/><circle cx="3" cy="18" r=".6"/></svg><span>Listas</span></button>
-        <button class="tab-button" data-tab="saved-searches" data-view-title="Buscas salvas" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg><span>Buscas salvas</span></button>
+        <button class="tab-button" data-tab="lists" data-view-title="Listas de empresas" type="button" aria-label="Listas de empresas" title="Listas de empresas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="3" cy="6" r=".6"/><circle cx="3" cy="12" r=".6"/><circle cx="3" cy="18" r=".6"/></svg><span>Listas</span></button>
+        <button class="tab-button" data-tab="saved-searches" data-view-title="Buscas salvas" type="button" aria-label="Buscas salvas" title="Buscas salvas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4V4Z"/></svg><span>Buscas salvas</span></button>
         <span class="nav-section-label nav-section-secondary">Operação e conta</span>
-        <button class="tab-button" data-tab="history" data-view-title="Processamentos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Processamentos</span></button>
-        <button class="tab-button" data-tab="billing" data-view-title="Plano e créditos" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg><span>Plano e créditos</span></button>
+        <button class="tab-button" data-tab="history" data-view-title="Processamentos" type="button" aria-label="Processamentos" title="Processamentos"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Processamentos</span></button>
+        <button class="tab-button" data-tab="billing" data-view-title="Plano e créditos" type="button" aria-label="Plano e créditos" title="Plano e créditos"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg><span>Plano e créditos</span></button>
         <a id="help-link" class="tab-button" href="/help" title="Ajuda e suporte"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.7 2c-1 .6-1.5 1.1-1.5 2.3M12 17h.01"/></svg><span>Ajuda e suporte</span></a>
         <a id="admin-link" class="tab-button hidden" data-internal-admin href="/admin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="M9 12h6M12 9v6"/></svg><span>Administração</span></a>
-        <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" data-internal-only type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
+        <button class="tab-button" data-tab="data" data-view-title="Dados técnicos" data-internal-only type="button" aria-label="Dados técnicos" title="Dados técnicos"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg><span>Dados técnicos</span></button>
       </nav>
       <div class="sidebar-footer">
         <div class="dataset-status"><span aria-hidden="true"></span><strong>Base da Receita</strong></div>
@@ -273,7 +277,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-broad-search-2"></script>
+  <script src="/static/app.js?v=20260909-sidebar-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

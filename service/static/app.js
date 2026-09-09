@@ -16,6 +16,7 @@ window.fetch = async (input, init = {}) => {
 
 const themeToggle = document.querySelector("#theme-toggle");
 const themeColor = document.querySelector('meta[name="theme-color"]');
+const sidebarToggle = document.querySelector("#sidebar-toggle");
 
 function applyTheme(theme) {
   const resolvedTheme = theme === "dark" ? "dark" : "light";
@@ -30,6 +31,20 @@ function applyTheme(theme) {
 
 applyTheme(document.documentElement.dataset.theme);
 themeToggle.addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+
+function applySidebarState(collapsed) {
+  if (collapsed) document.documentElement.dataset.sidebarCollapsed = "true";
+  else delete document.documentElement.dataset.sidebarCollapsed;
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.setAttribute("aria-label", collapsed ? "Expandir menu lateral" : "Recolher menu lateral");
+  sidebarToggle.title = collapsed ? "Expandir menu lateral" : "Recolher menu lateral";
+  try {
+    localStorage.setItem("echopjs-sidebar-collapsed", String(collapsed));
+  } catch (_) {}
+}
+
+applySidebarState(document.documentElement.dataset.sidebarCollapsed === "true");
+sidebarToggle.addEventListener("click", () => applySidebarState(document.documentElement.dataset.sidebarCollapsed !== "true"));
 
 const form = document.querySelector("#match-form");
 const loading = document.querySelector("#loading");
