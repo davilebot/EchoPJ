@@ -10,12 +10,14 @@
     try {
       const savedTheme = localStorage.getItem("echopjs-theme");
       document.documentElement.dataset.theme = savedTheme === "dark" ? "dark" : "light";
-      if (localStorage.getItem("echopjs-sidebar-collapsed") === "true") {
+      const savedSidebarState = localStorage.getItem("echopjs-sidebar-collapsed");
+      const compactViewport = window.matchMedia("(min-width: 701px) and (max-width: 1100px)").matches;
+      if (savedSidebarState === "true" || (savedSidebarState === null && compactViewport)) {
         document.documentElement.dataset.sidebarCollapsed = "true";
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-sidebar-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-sidebar-2">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -277,7 +279,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-sidebar-1"></script>
+  <script src="/static/app.js?v=20260909-sidebar-2"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

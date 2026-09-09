@@ -688,21 +688,6 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
 .saas-toast { position: fixed; z-index: 1000; right: 24px; bottom: 24px; max-width: min(420px, calc(100% - 32px)); padding: 13px 16px; border: 1px solid color-mix(in srgb, var(--accent-strong) 38%, var(--border)); border-radius: 11px; color: var(--text); background: var(--surface-raised); box-shadow: var(--shadow-md); font-size: 11px; font-weight: 650; opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease; }
 .saas-toast.visible { opacity: 1; transform: translateY(0); }
 
-@media (max-width: 1100px) {
-  :root { --sidebar-width: 78px; }
-  .sidebar { padding-inline: 10px; }
-  .brand-lockup { justify-content: center; padding: 0; }
-  .brand-logo { width: 46px; object-fit: cover; object-position: left center; }
-  .product-name, .workspace-card > span:nth-child(2), .workspace-chevron, .tab-button > span, .nav-group-title > span, .nav-section-label, .sidebar-footer { display: none; }
-  .workspace-card { display: flex; justify-content: center; margin-inline: 0; padding: 8px; }
-  .tab-button { justify-content: center; padding: 10px; }
-  .nav-group-title { justify-content: center; padding: 9px; }
-  .nav-submenu { margin: 0; padding: 0; border: 0; }
-  .tab-button.active::after { position: absolute; right: 4px; margin: 0; }
-  .tab-button { position: relative; }
-  .sidebar-toggle { display: none; }
-}
-
 @media (max-width: 900px) {
   .search-workbench { grid-template-columns: 1fr; }
   .search-form, .search-preview-column { position: static; max-height: none; overflow: visible; }
