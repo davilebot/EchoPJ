@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260909-invite-reissue-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-billing-email-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -59,6 +59,10 @@
       <section class="admin-catalog" aria-labelledby="admin-events-title">
         <div class="admin-section-heading"><div><h2 id="admin-events-title">Eventos de cobrança</h2><p class="muted">Confirmações e exceções recebidas do provedor, sem armazenar o payload completo.</p></div></div>
         <div class="admin-table-wrap"><table><thead><tr><th>Recebido</th><th>Evento</th><th>Objeto</th><th>Processamento</th><th>Detalhe</th></tr></thead><tbody id="admin-billing-events"><tr><td colspan="5">Carregando eventos…</td></tr></tbody></table></div>
+      </section>
+      <section class="admin-catalog" aria-labelledby="admin-billing-email-title">
+        <div class="admin-section-heading"><div><span class="eyebrow">COMUNICAÇÃO FINANCEIRA</span><h2 id="admin-billing-email-title">Avisos aos clientes</h2><p id="admin-billing-email-summary" class="muted">Carregando entregas…</p></div></div>
+        <div class="admin-table-wrap"><table><thead><tr><th>Última tentativa</th><th>Empresa</th><th>Destinatário</th><th>Aviso</th><th>Tentativas</th><th>Status</th></tr></thead><tbody id="admin-billing-emails"><tr><td colspan="6">Carregando avisos…</td></tr></tbody></table></div>
       </section>
     </section>
   </main>
@@ -143,6 +147,6 @@
       <form id="admin-privacy-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Registre o estágio e uma orientação que também ficará visível para o titular.</p></div></div><label>Status<select id="admin-privacy-edit-status"><option value="requested">Recebida</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovada para processamento</option><option value="canceled">Cancelada</option><option value="closed">Encerrada</option></select></label><label>Nota de tratamento<textarea id="admin-privacy-note" maxlength="2000" rows="4" placeholder="Ex.: Precisamos confirmar a transferência do workspace antes da exclusão"></textarea></label><button type="submit">Salvar tratamento</button></form>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-invite-reissue-1"></script>
+  <script src="/static/admin.js?v=20260909-billing-email-1"></script>
 </body>
 </html>

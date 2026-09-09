@@ -62,6 +62,7 @@ from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
 from .mail import mail_available, send_invitation, send_password_reset, send_signup_verification
+from .billing_notifications import BillingEmailDispatcher
 from .saas import SaaSError, SaaSStore
 from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
 from .legal import LegalDocuments
@@ -101,6 +102,13 @@ asaas_client = AsaasClient(
     settings.asaas_api_key,
     timeout=settings.asaas_timeout_seconds,
 )
+billing_email_dispatcher = BillingEmailDispatcher(
+    settings,
+    saas_store,
+    auth_store,
+    enabled=settings.saas_billing_email_notifications_enabled and mail_available(settings),
+    interval_seconds=settings.saas_billing_email_interval_minutes * 60,
+)
 
 
 def current_billing_catalog() -> BillingCatalog:
@@ -131,7 +139,9 @@ SESSION_COOKIE = "echopjs_session"
 async def lifespan(_: FastAPI):
     repository.open()
     job_runner.start()
+    billing_email_dispatcher.start()
     yield
+    billing_email_dispatcher.stop()
     job_runner.stop()
     repository.close()
     website_checker.close()
@@ -1372,6 +1382,10 @@ def admin_overview(
     catalog["metrics"] = saas_store.admin_metrics()
     catalog["funnel"] = funnel
     catalog["billing_events"] = saas_store.admin_billing_events(limit=20)
+    catalog["billing_emails"] = {
+        **billing_email_dispatcher.status(),
+        **saas_store.admin_billing_email_deliveries(limit=20),
+    }
     return catalog
 
 

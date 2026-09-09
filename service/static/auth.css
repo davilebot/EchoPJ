@@ -186,6 +186,7 @@ summary { cursor: pointer; font-size: 14px; }
 .stage-value { color: #c4b5fd; background: rgba(109, 40, 217, .2); }
 .stage-converted, .stage-internal { color: var(--accent); background: rgba(13, 148, 136, .18); }
 .status-past_due, .status-overdue, .status-refund_pending, .status-review, .status-pending { color: #ffd166; background: rgba(146, 64, 14, .3); }
+.status-sending { color: var(--warning); background: rgba(146, 64, 14, .3); }
 .status-canceled, .status-suspended, .status-inactive, .status-failed, .status-refunded, .status-chargeback { color: var(--danger); background: rgba(153, 27, 27, .22); }
 .admin-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; color: var(--muted); font-size: 11px; }
 .admin-pagination > div { display: flex; gap: 8px; }

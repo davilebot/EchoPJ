@@ -60,6 +60,13 @@ SAAS_BILLING_CATALOG_JSON=[]
 255 caracteres. O catálogo é uma lista JSON. Este exemplo mostra somente o
 formato; preço e créditos devem ser aprovados antes de usar:
 
+Os avisos financeiros por e-mail reutilizam o SMTP seguro da conta e ficam
+desativados por padrão. Depois de validar o remetente, configure
+`SAAS_BILLING_EMAIL_NOTIFICATIONS_ENABLED=true`. O dispatcher consulta os ciclos
+a cada `SAAS_BILLING_EMAIL_INTERVAL_MINUTES`, envia apenas aos administradores e
+registra uma única entrega por destinatário, tipo de aviso e ciclo. Falhas podem
+ser tentadas novamente até cinco vezes, com intervalo mínimo de uma hora.
+
 ```json
 [
   {

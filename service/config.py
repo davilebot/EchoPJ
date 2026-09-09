@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     saas_billing_enabled: bool = False
     saas_billing_provider: str = "asaas"
     saas_billing_catalog_json: str = ""
+    saas_billing_email_notifications_enabled: bool = False
+    saas_billing_email_interval_minutes: int = 360
     asaas_api_url: str = "https://api-sandbox.asaas.com"
     asaas_api_key: str = ""
     asaas_webhook_token: str = ""

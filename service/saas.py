@@ -237,6 +237,23 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_billing_webhook_received
                 ON billing_webhook_events(received_at DESC);
+            CREATE TABLE IF NOT EXISTS billing_email_deliveries (
+                organization_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                recipient TEXT NOT NULL,
+                kind TEXT NOT NULL CHECK(kind IN ('renewal','due','past_due')),
+                cycle_key TEXT NOT NULL,
+                plan_name TEXT NOT NULL,
+                due_date TEXT,
+                status TEXT NOT NULL CHECK(status IN ('sending','sent','failed')),
+                attempts INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_attempt_at TEXT NOT NULL,
+                sent_at TEXT,
+                PRIMARY KEY(organization_id,user_id,kind,cycle_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_billing_email_status_attempt
+                ON billing_email_deliveries(status,last_attempt_at);
             CREATE TABLE IF NOT EXISTS billing_catalog_versions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 revision INTEGER NOT NULL UNIQUE,
@@ -1246,6 +1263,142 @@ class SaaSStore:
                    FROM billing_webhook_events ORDER BY received_at DESC LIMIT ?""",
                 (max(1, min(500, limit)),),
             ).fetchall()]
+
+    def billing_email_candidates(self, *, now: datetime | None = None) -> list[dict[str, Any]]:
+        current_day = (now or datetime.now(timezone.utc)).date()
+        with self._lock:
+            rows = self._connection.execute(
+                """SELECT s.organization_id,s.provider,s.provider_subscription_id,s.plan_name,
+                          s.status,s.next_due_date,s.updated_at
+                   FROM billing_subscriptions s
+                   JOIN organization_profiles p ON p.organization_id=s.organization_id
+                   WHERE s.status IN ('active','past_due') AND p.unlimited_credits=0
+                   ORDER BY s.organization_id,s.updated_at DESC"""
+            ).fetchall()
+        candidates = []
+        seen = set()
+        for row in rows:
+            if row["organization_id"] in seen:
+                continue
+            seen.add(row["organization_id"])
+            try:
+                due_day = datetime.fromisoformat(
+                    str(row["next_due_date"] or "").replace("Z", "+00:00")
+                ).date()
+            except ValueError:
+                due_day = None
+            kind = None
+            if row["status"] == "past_due":
+                kind = "past_due"
+            elif due_day:
+                days_until_due = (due_day - current_day).days
+                if 1 <= days_until_due <= 7:
+                    kind = "renewal"
+                elif days_until_due == 0:
+                    kind = "due"
+            if not kind:
+                continue
+            cycle_reference = due_day.isoformat() if due_day else str(row["updated_at"])
+            candidates.append({
+                "organization_id": row["organization_id"],
+                "kind": kind,
+                "cycle_key": f"{row['provider']}:{row['provider_subscription_id']}:{cycle_reference}",
+                "plan_name": row["plan_name"],
+                "due_date": due_day.strftime("%d/%m/%Y") if due_day else None,
+            })
+        return candidates
+
+    def claim_billing_email_delivery(
+        self,
+        organization_id: int,
+        user_id: int,
+        *,
+        recipient: str,
+        kind: str,
+        cycle_key: str,
+        plan_name: str,
+        due_date: str | None,
+        now: datetime | None = None,
+    ) -> bool:
+        if kind not in {"renewal", "due", "past_due"}:
+            raise SaaSError("Tipo de aviso financeiro inválido.", 422)
+        current = now or datetime.now(timezone.utc)
+        timestamp = current.isoformat()
+        with self._transaction():
+            row = self._connection.execute(
+                """SELECT status,attempts,last_attempt_at FROM billing_email_deliveries
+                   WHERE organization_id=? AND user_id=? AND kind=? AND cycle_key=?""",
+                (organization_id, user_id, kind, cycle_key),
+            ).fetchone()
+            if not row:
+                self._connection.execute(
+                    """INSERT INTO billing_email_deliveries(
+                         organization_id,user_id,recipient,kind,cycle_key,plan_name,due_date,
+                         status,attempts,created_at,last_attempt_at
+                       ) VALUES(?,?,?,?,?,?,?,'sending',1,?,?)""",
+                    (
+                        organization_id, user_id, recipient[:320], kind, cycle_key[:500],
+                        plan_name[:120], due_date, timestamp, timestamp,
+                    ),
+                )
+                return True
+            if row["status"] == "sent" or row["attempts"] >= 5:
+                return False
+            try:
+                last_attempt = datetime.fromisoformat(row["last_attempt_at"])
+            except ValueError:
+                last_attempt = current - timedelta(hours=2)
+            if last_attempt > current - timedelta(hours=1):
+                return False
+            self._connection.execute(
+                """UPDATE billing_email_deliveries
+                   SET recipient=?,plan_name=?,due_date=?,status='sending',attempts=attempts+1,
+                       last_attempt_at=?
+                   WHERE organization_id=? AND user_id=? AND kind=? AND cycle_key=?""",
+                (
+                    recipient[:320], plan_name[:120], due_date, timestamp,
+                    organization_id, user_id, kind, cycle_key,
+                ),
+            )
+            return True
+
+    def complete_billing_email_delivery(
+        self,
+        organization_id: int,
+        user_id: int,
+        *,
+        kind: str,
+        cycle_key: str,
+        sent: bool,
+        now: datetime | None = None,
+    ) -> None:
+        timestamp = (now or datetime.now(timezone.utc)).isoformat()
+        with self._lock, self._connection:
+            self._connection.execute(
+                """UPDATE billing_email_deliveries
+                   SET status=?,sent_at=CASE WHEN ? THEN ? ELSE sent_at END,last_attempt_at=?
+                   WHERE organization_id=? AND user_id=? AND kind=? AND cycle_key=?""",
+                (
+                    "sent" if sent else "failed", int(sent), timestamp, timestamp,
+                    organization_id, user_id, kind, cycle_key,
+                ),
+            )
+
+    def admin_billing_email_deliveries(self, *, limit: int = 50) -> dict[str, Any]:
+        with self._lock:
+            deliveries = [dict(row) for row in self._connection.execute(
+                """SELECT organization_id,recipient,kind,plan_name,due_date,status,attempts,
+                          created_at,last_attempt_at,sent_at
+                   FROM billing_email_deliveries
+                   ORDER BY last_attempt_at DESC LIMIT ?""",
+                (max(1, min(200, limit)),),
+            ).fetchall()]
+            counts = {
+                row["status"]: row["total"] for row in self._connection.execute(
+                    "SELECT status,count(*) AS total FROM billing_email_deliveries GROUP BY status"
+                ).fetchall()
+            }
+        return {"deliveries": deliveries, "counts": counts}
 
     def credit_estimate(self, organization_id: int, cnpjs: list[str]) -> dict[str, Any]:
         unique = list(dict.fromkeys(cnpjs))

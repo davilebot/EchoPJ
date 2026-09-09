@@ -510,6 +510,19 @@ class OrganizationStoreMixin:
             )]
             return {"organization": org, "members": members, "invitations": invites, "audit": audit}
 
+    def organization_administrator_contacts(self, org_id):
+        """Return billing recipients without exposing password or session data."""
+        with self._lock:
+            return [dict(row) for row in self._connection.execute(
+                """SELECT u.id AS user_id,u.identifier AS email,o.name AS organization_name
+                   FROM memberships m
+                   JOIN users u ON u.id=m.user_id
+                   JOIN organizations o ON o.id=m.organization_id
+                   WHERE m.organization_id=? AND m.role='admin'
+                   ORDER BY u.id""",
+                (org_id,),
+            ).fetchall()]
+
     def transfer_organization_ownership(self, actor_id, org_id, new_owner_id):
         with self._org_transaction():
             organization = self._membership(actor_id, org_id, admin=True)

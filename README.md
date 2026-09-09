@@ -88,6 +88,10 @@ estão em [`.env.example`](.env.example).
   exige `SMTP_HOST`, `SMTP_FROM` e, quando aplicável, `SMTP_USERNAME`/`SMTP_PASSWORD`
   no arquivo de segredos do servidor. Padrão: `SMTP_PORT=465`, `SMTP_SSL=true`;
   para STARTTLS use porta 587 e `SMTP_SSL=false`. Conexões sem TLS não são aceitas.
+  Avisos financeiros usam a mesma conexão e permanecem desligados até definir
+  `SAAS_BILLING_EMAIL_NOTIFICATIONS_ENABLED=true`. Somente administradores da
+  organização recebem renovação próxima, vencimento do dia e pagamento pendente;
+  o painel interno mostra envio, falha e número de tentativas.
 - `APP_PUBLIC_URL` define o endereço confiável dos links (padrão: endereço publicado).
   Credenciais SMTP nunca devem entrar no repositório.
 - “Esqueci minha senha” envia um link de uso único, armazenado somente como hash,

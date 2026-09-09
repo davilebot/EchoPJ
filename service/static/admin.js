@@ -92,6 +92,19 @@ function renderBillingEvents(events) {
   target.innerHTML = events.length ? events.map((event) => `<tr><td>${formatDate(event.received_at)}</td><td><strong>${escapeHtml(event.event_type)}</strong><small>${escapeHtml(event.provider)}</small></td><td>${escapeHtml(event.object_id || "—")}</td><td><span class="admin-status status-${escapeHtml(event.processing_status)}">${escapeHtml(event.processing_status)}</span></td><td>${escapeHtml(event.detail || "Processado sem ressalvas")}</td></tr>`).join("") : `<tr><td colspan="5"><div class="admin-empty"><strong>Nenhum evento recebido.</strong><span>Os webhooks aparecerão aqui quando a cobrança for ativada.</span></div></td></tr>`;
 }
 
+function renderBillingEmails(data) {
+  const deliveries = data?.deliveries || [];
+  const counts = data?.counts || {};
+  const lastRun = data?.last_run_at ? ` · último ciclo ${formatDate(data.last_run_at)}` : "";
+  document.querySelector("#admin-billing-email-summary").textContent = data?.enabled
+    ? `${Number(counts.sent || 0).toLocaleString("pt-BR")} enviados · ${Number(counts.failed || 0).toLocaleString("pt-BR")} com falha${lastRun}`
+    : "Envio automático aguardando ativação e SMTP.";
+  const kindLabels = { renewal: "Renovação próxima", due: "Vence hoje", past_due: "Pagamento pendente" };
+  const statusLabels = { sending: "Enviando", sent: "Enviado", failed: "Falhou" };
+  const target = document.querySelector("#admin-billing-emails");
+  target.innerHTML = deliveries.length ? deliveries.map((delivery) => `<tr><td>${formatDate(delivery.last_attempt_at)}</td><td>#${Number(delivery.organization_id).toLocaleString("pt-BR")}<small>${escapeHtml(delivery.plan_name)}</small></td><td>${escapeHtml(delivery.recipient)}</td><td>${escapeHtml(kindLabels[delivery.kind] || delivery.kind)}${delivery.due_date ? `<small>${escapeHtml(delivery.due_date)}</small>` : ""}</td><td>${Number(delivery.attempts).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(delivery.status)}">${escapeHtml(statusLabels[delivery.status] || delivery.status)}</span></td></tr>`).join("") : `<tr><td colspan="6"><div class="admin-empty"><strong>Nenhum aviso financeiro processado.</strong><span>Renovações e pendências aparecerão aqui após a ativação.</span></div></td></tr>`;
+}
+
 function renderOperations(data) {
   const ready = data.readiness.ready;
   const backup = data.backup || {};
@@ -324,6 +337,7 @@ async function loadOrganizations() {
     renderMetrics(data);
     renderFunnel(data.funnel);
     renderBillingEvents(data.billing_events || []);
+    renderBillingEmails(data.billing_emails || {});
     renderOrganizations(data);
   } catch (error) {
     adminRows.innerHTML = "";

@@ -275,6 +275,8 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(overview["funnel"]["registered_organizations"], 1)
         self.assertEqual(overview["funnel"]["activated_organizations"], 1)
         self.assertEqual(overview["funnel"]["retained_organizations"], 1)
+        self.assertFalse(overview["billing_emails"]["enabled"])
+        self.assertEqual(overview["billing_emails"]["deliveries"], [])
         other = next(item for item in overview["organizations"] if item["id"] == self.other)
         self.assertEqual(other["activity"]["stage"], "activated")
 

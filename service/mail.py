@@ -67,3 +67,35 @@ def send_signup_verification(settings, *, email, link, valid_hours):
         "Se você não iniciou este cadastro, ignore esta mensagem."
     )
     return _send_message(settings, message)
+
+
+def send_billing_alert(settings, *, email, organization_name, kind, plan_name, due_date, link):
+    content = {
+        "renewal": (
+            "Sua assinatura do EchoPJs renova em breve",
+            f"A assinatura {plan_name} de {organization_name} tem renovação prevista para {due_date}.",
+            "Confira o plano e acompanhe a cobrança pelo link abaixo.",
+        ),
+        "due": (
+            "Renovação do EchoPJs prevista para hoje",
+            f"A assinatura {plan_name} de {organization_name} tem renovação prevista para hoje, {due_date}.",
+            "A confirmação aparecerá no histórico financeiro assim que for processada.",
+        ),
+        "past_due": (
+            "Pagamento pendente no EchoPJs",
+            f"A renovação da assinatura {plan_name} de {organization_name} ainda não foi confirmada.",
+            "Abra o histórico financeiro para consultar a cobrança e regularizar o próximo ciclo.",
+        ),
+    }
+    if kind not in content:
+        return "failed"
+    subject, introduction, guidance = content[kind]
+    message = EmailMessage()
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message["Subject"] = subject
+    message.set_content(
+        f"{introduction}\n\n{guidance}\n{link}\n\n"
+        "Se outra pessoa cuida da cobrança, encaminhe esta mensagem ao administrador responsável."
+    )
+    return _send_message(settings, message)

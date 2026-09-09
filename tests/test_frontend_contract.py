@@ -128,6 +128,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("last_activity_at", script)
         self.assertIn("renderFunnel(data.funnel)", script)
         self.assertIn(".admin-funnel-stages", styles)
+        self.assertIn('id="admin-billing-emails"', html)
+        self.assertIn("renderBillingEmails(data.billing_emails", script)
 
     def test_internal_admin_can_prepare_a_customer_pilot_in_one_flow(self):
         html = (STATIC_DIR / "admin.html").read_text(encoding="utf-8")
