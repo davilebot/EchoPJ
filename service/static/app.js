@@ -655,7 +655,9 @@ async function loadSearchCapabilities() {
     const data = await response.json();
     searchCapabilities = data.filters;
     document.querySelectorAll("[data-capability]").forEach((field) => {
-      field.disabled = !data.filters[field.dataset.capability];
+      if (Object.prototype.hasOwnProperty.call(data.filters, field.dataset.capability)) {
+        field.disabled = !data.filters[field.dataset.capability];
+      }
     });
     partnerAgePicker.setDisabled(!data.filters.partners, data.filters.partners ? "Todas as faixas etárias" : "Sócios ainda indisponíveis");
     const filterCapabilities = ["simples_mei", "legal_nature", "establishment_details", "branch_counts", "partners"];

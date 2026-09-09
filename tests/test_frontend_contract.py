@@ -80,6 +80,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("scheduleCompanySearchPreview", script)
         self.assertIn("saved_lists", script)
         self.assertIn("company-list-tags", script)
+        self.assertIn("hasOwnProperty.call(data.filters, field.dataset.capability)", script)
         self.assertIn(".search-preview-column { position: sticky", styles)
 
     def test_search_loads_ten_thousand_and_supports_flexible_selection(self):
