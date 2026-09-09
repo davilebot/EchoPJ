@@ -8,6 +8,7 @@ from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 from service.search import (
     SearchCapabilities,
     SearchCapabilityUnavailable,
+    build_search_candidate_query,
     build_search_count_query,
     build_search_query,
 )
@@ -139,6 +140,12 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("ORDER BY e.share_capital,e.cnpj", sql)
         self.assertEqual(len(parameters[0]), 27)
         self.assertEqual(parameters[-3:-1], [Decimal("60000"), Decimal("100000")])
+
+        candidate_sql, candidate_parameters = build_search_candidate_query(filters, SearchCapabilities())
+        self.assertIn("SELECT e.uf,e.cnpj,e.share_capital", candidate_sql)
+        self.assertNotIn("WITH matched AS MATERIALIZED", candidate_sql)
+        self.assertIn("ORDER BY e.share_capital,e.cnpj", candidate_sql)
+        self.assertEqual(candidate_parameters, parameters)
 
     def test_complete_cnae_can_include_secondary_activities(self):
         filters = CompanySearchRequest(cnae="6201501", cnae_scope="any").model_dump()

@@ -76,6 +76,7 @@ def build_search_query(
     capabilities: SearchCapabilities,
     *,
     count_only: bool = False,
+    candidate_only: bool = False,
 ) -> tuple[str, list[Any]]:
     predicates: list[str] = []
     parameters: list[Any] = []
@@ -382,6 +383,15 @@ def build_search_query(
     limit = int(filters["limit"])
     order_expression = "e.share_capital,e.cnpj" if active_only and capital_filtered else "e.cnpj"
     parameters.append(limit)
+    if candidate_only:
+        return f"""
+            SELECT e.uf,e.cnpj,e.share_capital
+            FROM rfb_establishments e
+            {' '.join(filter_joins)}
+            WHERE {' AND '.join(predicates)}
+            ORDER BY {order_expression}
+            LIMIT %s
+        """, parameters
     sql = f"""
         WITH matched AS MATERIALIZED (
           SELECT e.*
@@ -421,3 +431,11 @@ def build_search_count_query(
     10,000 rows while still reporting the exact size of the full filtered set.
     """
     return build_search_query(filters, capabilities, count_only=True)
+
+
+def build_search_candidate_query(
+    filters: dict[str, Any],
+    capabilities: SearchCapabilities,
+) -> tuple[str, list[Any]]:
+    """Build a lightweight ordered query used to merge partition results."""
+    return build_search_query(filters, capabilities, candidate_only=True)
