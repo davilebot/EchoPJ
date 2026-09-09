@@ -12,7 +12,7 @@ from plataforma_receita.matcher import decide
 from plataforma_receita.normalization import digits, normalize
 from plataforma_receita.rfb_layout import COMPANY_SIZE_LABELS
 
-from .search import SearchCapabilities, build_search_count_query, build_search_query
+from .search import ALL_STATES, SearchCapabilities, build_search_count_query, build_search_query
 from .explorer import FIELD_GROUPS, RELATION_CATALOG, RELATION_CATALOG_BY_NAME, cnpj_root_bounds
 
 
@@ -191,17 +191,42 @@ class Repository:
         started = monotonic()
         capabilities = self.search_capabilities()
         sql, parameters = build_search_query(filters, capabilities)
-        count_sql, count_parameters = build_search_count_query(filters, capabilities)
         partners_by_root: dict[str, list[dict[str, Any]]] = {}
+        statuses = filters.get("registration_statuses") or []
+        active_only = not statuses or set(statuses) == {"ATIVA"}
+        nationwide_capital_filter = active_only and not any((
+            filters.get("region"), filters.get("regions"), filters.get("ufs"),
+        )) and any(filters.get(field) is not None for field in ("share_capital_min", "share_capital_max"))
+        if nationwide_capital_filter:
+            def count_state(state: str) -> int:
+                state_filters = {**filters, "region": None, "regions": [], "ufs": [state]}
+                state_sql, state_parameters = build_search_count_query(state_filters, capabilities)
+                with self.pool.connection() as connection:
+                    connection.execute(
+                        "SELECT set_config('statement_timeout',%s,true)",
+                        (str(max(60_000, self.statement_timeout_ms * 10)),),
+                    )
+                    row = connection.execute(state_sql, state_parameters).fetchone()
+                    return int(row["total_count"]) if row else 0
+
+            with ThreadPoolExecutor(max_workers=min(self.database_workers, len(ALL_STATES))) as executor:
+                total_count = sum(executor.map(count_state, ALL_STATES))
+        else:
+            count_sql, count_parameters = build_search_count_query(filters, capabilities)
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(60_000, self.statement_timeout_ms * 10)),),
+                )
+                count_row = connection.execute(count_sql, count_parameters).fetchone()
+                total_count = int(count_row["total_count"]) if count_row else 0
         with self.pool.connection() as connection:
             connection.execute(
                 "SELECT set_config('statement_timeout',%s,true)",
                 (str(max(60_000, self.statement_timeout_ms * 10)),),
             )
-            count_row = connection.execute(count_sql, count_parameters).fetchone()
             rows = connection.execute(sql, parameters).fetchall()
         limit = int(filters["limit"])
-        total_count = int(count_row["total_count"]) if count_row else 0
         has_more = total_count > len(rows)
         duration_ms = round((monotonic() - started) * 1000)
         results = []

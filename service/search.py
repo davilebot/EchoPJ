@@ -19,6 +19,7 @@ REGION_STATES = {
     "SE": ("ES", "MG", "RJ", "SP"),
     "S": ("PR", "RS", "SC"),
 }
+ALL_STATES = tuple(sorted({state for states in REGION_STATES.values() for state in states}))
 
 COMPANY_SIZE_CODES = {
     "NAO INFORMADO": "00",
@@ -82,6 +83,10 @@ def build_search_query(
     filter_joins: list[str] = []
     statuses = filters.get("registration_statuses") or []
     active_only = not statuses or set(statuses) == {"ATIVA"}
+    capital_filtered = (
+        filters.get("share_capital_min") is not None
+        or filters.get("share_capital_max") is not None
+    )
 
     needs_simples = filters.get("simples") is not None or filters.get("mei") is not None
     needs_company = bool(filters.get("legal_nature_code"))
@@ -216,6 +221,11 @@ def build_search_query(
     if states:
         predicates.append("e.uf=ANY(%s)")
         parameters.append(list(states))
+    elif active_only and capital_filtered:
+        # The partition indexes start with UF. Making the nationwide scope
+        # explicit lets PostgreSQL seek directly into the capital range.
+        predicates.append("e.uf=ANY(%s)")
+        parameters.append(list(ALL_STATES))
 
     municipality_pairs: dict[str, list[str]] = {}
     municipalities: list[str] = []
@@ -370,6 +380,7 @@ def build_search_query(
         """, parameters
 
     limit = int(filters["limit"])
+    order_expression = "e.share_capital,e.cnpj" if active_only and capital_filtered else "e.cnpj"
     parameters.append(limit)
     sql = f"""
         WITH matched AS MATERIALIZED (
@@ -377,7 +388,7 @@ def build_search_query(
           FROM rfb_establishments e
           {' '.join(filter_joins)}
           WHERE {' AND '.join(predicates)}
-          ORDER BY e.cnpj
+          ORDER BY {order_expression}
           LIMIT %s
         )
         SELECT
@@ -395,7 +406,7 @@ def build_search_query(
           {branch_count_columns}
         FROM matched e
         {' '.join(joins)}
-        ORDER BY e.cnpj
+        ORDER BY {order_expression}
     """
     return sql, parameters
 

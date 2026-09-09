@@ -129,6 +129,17 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("e.primary_cnae=%s", sql)
         self.assertEqual(parameters[-2], "6201501")
 
+    def test_nationwide_capital_filter_uses_partition_index_order(self):
+        filters = CompanySearchRequest(
+            share_capital_min=60000,
+            share_capital_max=100000,
+        ).model_dump()
+        sql, parameters = build_search_query(filters, SearchCapabilities())
+        self.assertIn("e.uf=ANY(%s)", sql)
+        self.assertIn("ORDER BY e.share_capital,e.cnpj", sql)
+        self.assertEqual(len(parameters[0]), 27)
+        self.assertEqual(parameters[-3:-1], [Decimal("60000"), Decimal("100000")])
+
     def test_complete_cnae_can_include_secondary_activities(self):
         filters = CompanySearchRequest(cnae="6201501", cnae_scope="any").model_dump()
         sql, parameters = build_search_query(filters, SearchCapabilities())

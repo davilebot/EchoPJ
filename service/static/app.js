@@ -662,6 +662,15 @@ function optionalNumber(value) {
   return value === "" ? null : Number(value);
 }
 
+function capitalDigits(value) {
+  return String(value || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 15);
+}
+
+function optionalCapitalNumber(value) {
+  const digits = capitalDigits(value);
+  return digits ? Number(digits) : null;
+}
+
 async function loadSearchCapabilities() {
   if (searchCapabilitiesLoaded) return searchCapabilities;
   try {
@@ -746,8 +755,8 @@ function companySearchPayload() {
       .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
     registration_statuses: statusPicker.values(),
     company_sizes: sizePicker.values(),
-    share_capital_min: optionalNumber(document.querySelector("#search-capital-min").value),
-    share_capital_max: optionalNumber(document.querySelector("#search-capital-max").value),
+    share_capital_min: optionalCapitalNumber(document.querySelector("#search-capital-min").value),
+    share_capital_max: optionalCapitalNumber(document.querySelector("#search-capital-max").value),
     opened_from: document.querySelector("#search-opened-from").value || null,
     opened_to: document.querySelector("#search-opened-to").value || null,
     regions: regionPicker.values(),
@@ -1405,6 +1414,8 @@ companySearchForm.addEventListener("submit", (event) => {
 
 companySearchForm.addEventListener("input", (event) => {
   if (event.target.closest(".multi-picker-search")) return;
+  const capitalInput = event.target.closest("[data-capital-input]");
+  if (capitalInput) capitalInput.value = capitalDigits(capitalInput.value);
   scheduleCompanySearchPreview();
 });
 companySearchForm.addEventListener("change", (event) => {
@@ -1771,6 +1782,13 @@ function setInputValue(selector, value) {
   if (input) input.value = value ?? "";
 }
 
+function setCapitalInputValue(selector, value) {
+  const input = document.querySelector(selector);
+  if (!input) return;
+  const numericValue = Number(value);
+  input.value = Number.isFinite(numericValue) && numericValue >= 0 ? String(Math.trunc(numericValue)) : "";
+}
+
 async function applySearchFilters(filters) {
   await Promise.all([loadSearchCapabilities(), loadCnaeOptions()]);
   cnaePicker.setSelected(filters.cnaes || []);
@@ -1786,8 +1804,8 @@ async function applySearchFilters(filters) {
   setInputValue("#search-cnae-scope", filters.cnae_scope || "primary");
   setInputValue("#search-name", filters.company_name);
   setInputValue("#search-excluded-names", (filters.excluded_company_names || []).join("\n"));
-  setInputValue("#search-capital-min", filters.share_capital_min);
-  setInputValue("#search-capital-max", filters.share_capital_max);
+  setCapitalInputValue("#search-capital-min", filters.share_capital_min);
+  setCapitalInputValue("#search-capital-max", filters.share_capital_max);
   setInputValue("#search-opened-from", filters.opened_from);
   setInputValue("#search-opened-to", filters.opened_to);
   setInputValue("#search-postal-codes", (filters.postal_code_prefixes || []).join("\n"));

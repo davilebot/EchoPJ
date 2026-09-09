@@ -155,7 +155,7 @@
               </section>
               <section class="filter-group filter-grid">
                 <div class="filter-group-title"><strong>Capital e maturidade</strong><small>Refine por investimento declarado e data de abertura.</small></div>
-                <label>Capital social mínimo<input id="search-capital-min" type="number" min="0" step="0.01" placeholder="R$ 0,00"></label><label>Capital social máximo<input id="search-capital-max" type="number" min="0" step="0.01" placeholder="Sem limite"></label>
+                <label>Capital social mínimo<input id="search-capital-min" data-capital-input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="15" autocomplete="off" placeholder="Ex.: 60000"><span class="input-help">Somente números, sem pontos ou vírgulas.</span></label><label>Capital social máximo<input id="search-capital-max" data-capital-input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="15" autocomplete="off" placeholder="Ex.: 100000"><span class="input-help">Somente números, sem pontos ou vírgulas.</span></label>
                 <label>Abertura a partir de<input id="search-opened-from" type="date"></label><label>Abertura até<input id="search-opened-to" type="date"></label>
               </section>
               <aside class="network-note"><strong>Buscando franquias ou unidades de uma rede?</strong><p>Digite a marca no campo de nome e combine com CNAE e localização. Franqueados com outra razão social podem não aparecer.</p></aside>
@@ -296,7 +296,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-premium-charcoal-1"></script>
+  <script src="/static/app.js?v=20260909-capital-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

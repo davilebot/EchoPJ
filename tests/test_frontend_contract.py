@@ -72,6 +72,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('data-search-view="saved"', self.html)
         self.assertIn("select { appearance: none", styles)
         self.assertIn(".multi-picker-trigger::after", styles)
+        self.assertIn('id="search-capital-min" data-capital-input type="text" inputmode="numeric"', self.html)
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        self.assertIn("function capitalDigits(value)", script)
+        self.assertIn("share_capital_min: optionalCapitalNumber", script)
 
     def test_search_preview_updates_automatically_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
