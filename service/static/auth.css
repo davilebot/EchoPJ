@@ -165,7 +165,7 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-catalog-actions > button { flex: none; min-height: 42px; }
 .admin-search { display: grid; min-width: min(100%, 440px); grid-template-columns: 1fr auto; gap: 8px; }
 .admin-table-wrap { max-width: 100%; min-width: 0; overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
-.admin-table-wrap table { width: 100%; min-width: 1040px; border-collapse: collapse; font-size: 11px; }
+.admin-table-wrap table { width: 100%; min-width: 1160px; border-collapse: collapse; font-size: 11px; }
 .admin-table-wrap th, .admin-table-wrap td { padding: 13px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 .admin-table-wrap th { color: var(--muted); background: var(--surface-soft); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
 .admin-table-wrap tr:last-child td { border-bottom: 0; }
@@ -190,6 +190,20 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-dialog-header h2 { margin: 7px 0 4px; font-size: 28px; }
 .dialog-close { width: 38px; min-height: 38px; padding: 0; color: var(--text); border: 1px solid var(--border); background: var(--surface-soft); font-size: 22px; }
 .admin-detail-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 22px 0; }
+.admin-provisioning { margin: 0 0 18px; padding: 18px; border: 1px solid rgba(59, 253, 231, .25); border-radius: 12px; background: rgba(59, 253, 231, .05); }
+.admin-provisioning-header { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.admin-provisioning-header h3 { margin: 5px 0 0; }
+.admin-provisioning > p { margin: 10px 0 14px; }
+.admin-provisioning-facts { display: grid; grid-template-columns: 1.2fr 1.2fr 1fr; gap: 8px; }
+.admin-provisioning-facts span { min-width: 0; padding: 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+.admin-provisioning-facts small, .admin-provisioning-facts strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-provisioning-facts small { color: var(--muted); font-size: 8px; text-transform: uppercase; }
+.admin-provisioning-facts strong { margin-top: 5px; font-size: 10px; }
+.admin-provisioning-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
+.admin-provisioning-actions .secondary-button { display: grid; min-height: 42px; place-items: center; text-decoration: none; }
+.pilot-waiting_acceptance { color: var(--warning); background: rgba(146, 64, 14, .28); }
+.pilot-transfer_pending, .pilot-action_needed, .pilot-invitation_action_needed { color: #7dd3fc; background: rgba(3, 105, 161, .22); }
+.pilot-delivered, .pilot-active, .pilot-internal { color: var(--success); background: rgba(22, 101, 52, .22); }
 .admin-dialog form { margin-top: 16px; padding: 20px; border: 1px solid var(--border); border-radius: 12px; background: #141418; }
 .admin-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .admin-customer-dialog { width: min(calc(100% - 28px), 700px); }
@@ -255,6 +269,7 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-launch-checklist { grid-template-columns: 1fr; }
   .admin-support-filter { min-width: 100%; grid-template-columns: 1fr 1fr auto; }
   .admin-support-diagnostic { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-provisioning-facts { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 520px) {
   .admin-card, .admin-dialog-card { padding: 20px; }
@@ -262,6 +277,8 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-funnel-stages { grid-template-columns: 1fr; }
   .admin-funnel-stages p { min-height: 0; }
   .admin-form-grid, .admin-detail-metrics { grid-template-columns: 1fr; }
+  .admin-provisioning-header, .admin-provisioning-actions { align-items: stretch; flex-direction: column; }
+  .admin-provisioning-facts { grid-template-columns: 1fr; }
   .admin-customer-actions { grid-template-columns: 1fr; }
   .admin-subscription-summary { flex-direction: column; }
   .admin-search { grid-template-columns: 1fr; }

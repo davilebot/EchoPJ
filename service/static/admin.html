@@ -6,7 +6,7 @@
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#111114">
   <title>Administração — EchoPJs</title>
-  <link rel="stylesheet" href="/static/auth.css?v=20260909-pilot-1">
+  <link rel="stylesheet" href="/static/auth.css?v=20260909-lifecycle-1">
 </head>
 <body>
   <main class="auth-shell org-shell admin-shell">
@@ -40,7 +40,7 @@
       </section>
       <section class="admin-catalog">
         <div class="admin-section-heading"><div><h2>Empresas clientes</h2><p class="muted">Busque uma empresa ou abra um piloto com acesso e créditos preparados.</p></div><div class="admin-catalog-actions"><button id="admin-create-customer" type="button">Criar piloto</button><form id="admin-search-form" class="admin-search"><label><span class="sr-only">Buscar empresa ou usuário</span><input id="admin-search" type="search" maxlength="120" placeholder="Buscar empresa ou e-mail"></label><button class="secondary-button" type="submit">Buscar</button></form></div></div>
-        <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="9">Carregando empresas…</td></tr></tbody></table></div>
+        <div class="admin-table-wrap"><table><thead><tr><th>Empresa</th><th>Responsável</th><th>Equipe</th><th>Ativação</th><th>Última atividade</th><th>Implantação</th><th>Plano</th><th>Créditos</th><th>Status</th><th></th></tr></thead><tbody id="admin-organizations"><tr><td colspan="10">Carregando empresas…</td></tr></tbody></table></div>
         <div class="admin-pagination"><span id="admin-range">—</span><div><button id="admin-previous" class="secondary-button" type="button">Anterior</button><button id="admin-next" class="secondary-button" type="button">Próxima</button></div></div>
       </section>
       <section class="admin-catalog admin-support-queue" aria-labelledby="admin-support-title">
@@ -84,6 +84,12 @@
       <div class="admin-dialog-header"><div><span class="eyebrow">EMPRESA CLIENTE</span><h2 id="admin-organization-name">Carregando…</h2><p id="admin-organization-meta" class="muted"></p></div><button id="admin-dialog-close" class="dialog-close" type="button" aria-label="Fechar">×</button></div>
       <p id="admin-dialog-message" class="auth-message hidden" role="status"></p>
       <div id="admin-detail-metrics" class="admin-detail-metrics"></div>
+      <section id="admin-provisioning" class="admin-provisioning hidden" aria-labelledby="admin-provisioning-title">
+        <div class="admin-provisioning-header"><div><span class="eyebrow">IMPLANTAÇÃO DO PILOTO</span><h3 id="admin-provisioning-title">Acompanhamento do acesso</h3></div><span id="admin-provisioning-status" class="admin-stage"></span></div>
+        <p id="admin-provisioning-detail" class="muted"></p>
+        <div class="admin-provisioning-facts"><span><small>Responsável indicado</small><strong id="admin-provisioning-email">—</strong></span><span><small>Responsável atual</small><strong id="admin-provisioning-owner">—</strong></span><span><small>Convite</small><strong id="admin-provisioning-invite">—</strong></span></div>
+        <div class="admin-provisioning-actions"><button id="admin-transfer-responsibility" class="hidden" type="button">Transferir responsabilidade</button><a id="admin-open-team" class="secondary-button" href="/organizations">Abrir equipe e convites</a></div>
+      </section>
       <form id="admin-billing-form">
         <div class="admin-section-heading"><div><h3>Plano e acesso</h3><p class="muted">O código do plano pode acompanhar o catálogo comercial definido depois.</p></div></div>
         <div class="admin-form-grid"><label>Código do plano<input id="admin-plan" maxlength="50" pattern="[a-z0-9][a-z0-9_-]*" required></label><label>Status<select id="admin-status"><option value="trialing">Em teste</option><option value="active">Ativo</option><option value="past_due">Pagamento pendente</option><option value="canceled">Cancelado</option><option value="suspended">Suspenso</option></select></label></div>
@@ -119,6 +125,6 @@
       <form id="admin-privacy-form"><div class="admin-section-heading"><div><h3>Tratamento</h3><p class="muted">Registre o estágio e uma orientação que também ficará visível para o titular.</p></div></div><label>Status<select id="admin-privacy-edit-status"><option value="requested">Recebida</option><option value="in_review">Em análise</option><option value="waiting_user">Aguardando usuário</option><option value="approved">Aprovada para processamento</option><option value="canceled">Cancelada</option><option value="closed">Encerrada</option></select></label><label>Nota de tratamento<textarea id="admin-privacy-note" maxlength="2000" rows="4" placeholder="Ex.: Precisamos confirmar a transferência do workspace antes da exclusão"></textarea></label><button type="submit">Salvar tratamento</button></form>
     </section>
   </dialog>
-  <script src="/static/admin.js?v=20260909-pilot-1"></script>
+  <script src="/static/admin.js?v=20260909-lifecycle-1"></script>
 </body>
 </html>

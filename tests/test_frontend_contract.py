@@ -132,6 +132,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('/api/admin/customer-workspaces', script)
         self.assertIn("copyCustomerInvitation", script)
         self.assertIn(".admin-customer-result", styles)
+        self.assertIn('id="admin-provisioning"', html)
+        self.assertIn('id="admin-transfer-responsibility"', html)
+        self.assertIn("provisioning.status", script)
+        self.assertIn("pilot-transfer_pending", styles)
 
     def test_billing_catalog_checkout_and_admin_audit_have_complete_ui(self):
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")

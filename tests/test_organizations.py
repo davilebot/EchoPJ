@@ -68,6 +68,17 @@ class OrganizationTests(unittest.TestCase):
         )
         actions = {item["action"] for item in self.store.organization_team(self.owner, organization["id"])["audit"]}
         self.assertTrue({"organization.provisioned", "invitation.created"}.issubset(actions))
+        waiting = self.store.admin_organization(organization["id"])["provisioning"]
+        self.assertEqual(waiting["status"], "waiting_acceptance")
+        self.assertEqual(waiting["responsible_email"], "cliente@example.com")
+        found = self.store.admin_organization_catalog("cliente@example.com")
+        self.assertEqual((found["total"], found["organizations"][0]["id"]), (1, organization["id"]))
+        customer, _ = self.store.accept_invitation(invitation["token"], "customer-password-long")
+        accepted = self.store.admin_organization(organization["id"])["provisioning"]
+        self.assertEqual(accepted["status"], "transfer_pending")
+        self.assertEqual(accepted["responsible_user_id"], customer["id"])
+        self.store.transfer_organization_ownership(self.owner, organization["id"], customer["id"])
+        self.assertEqual(self.store.admin_organization(organization["id"])["provisioning"]["status"], "delivered")
         with self.assertRaises(OrganizationError):
             self.store.provision_customer_workspace(self.owner, "Inválido", "owner@example.com")
 

@@ -491,6 +491,12 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(pilot["invitation"]["role"], "admin")
         self.assertNotIn("token", pilot["invitation"])
         self.assertIn("/invite#token=", pilot["invitation"]["link"])
+        status, overview, _ = self.request(
+            "/api/admin/overview?query=cliente.piloto%40example.com", token=self.owner_token,
+            headers=internal_headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(overview["organizations"][0]["provisioning"]["status"], "waiting_acceptance")
         token = pilot["invitation"]["link"].split("#token=")[1]
         preview = self.request("/api/invitations/preview", "POST", {"token": token})[1]
         self.assertEqual(preview["organization_name"], "Cliente Piloto")
@@ -502,6 +508,12 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(accepted["organization_id"], organization_id)
         client = self.auth.authenticate("cliente.piloto@example.com", "client-password-long")
+        before_transfer = self.request(
+            f"/api/admin/organizations/{organization_id}", token=self.owner_token,
+            headers=internal_headers,
+        )[1]
+        self.assertEqual(before_transfer["provisioning"]["status"], "transfer_pending")
+        self.assertEqual(before_transfer["provisioning"]["responsible_user_id"], client["id"])
         status, transferred, _ = self.request(
             f"/api/organizations/{organization_id}/owner/{client['id']}", "PUT",
             token=self.owner_token,
@@ -513,6 +525,7 @@ class OrganizationAPITests(unittest.TestCase):
             headers=internal_headers,
         )[1]
         self.assertEqual(detail["owner_email"], "cliente.piloto@example.com")
+        self.assertEqual(detail["provisioning"]["status"], "delivered")
 
     def test_jobs_created_are_bound_to_actor_and_org(self):
         payload = {"filename": "test.csv", "items": [{"local_id": "1", "name": "Example", "uf": "SP"}], "check_website": False}

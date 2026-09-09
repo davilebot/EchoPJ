@@ -231,8 +231,12 @@ class OrganizationStoreMixin:
                 JOIN users search_user ON search_user.id=search_membership.user_id
                 WHERE search_membership.organization_id=o.id
                   AND lower(search_user.identifier) LIKE ?
+            ) OR EXISTS (
+                SELECT 1 FROM invitations search_invitation
+                WHERE search_invitation.organization_id=o.id
+                  AND lower(search_invitation.email) LIKE ?
             )"""
-            parameters.extend((pattern, pattern))
+            parameters.extend((pattern, pattern, pattern))
         limit = max(1, min(int(limit), 100))
         offset = max(0, int(offset))
         with self._lock:
@@ -250,6 +254,8 @@ class OrganizationStoreMixin:
                     ORDER BY o.created_at DESC,o.id DESC LIMIT ? OFFSET ?""",
                 (*parameters, limit, offset),
             ).fetchall()]
+            for organization in organizations:
+                organization["provisioning"] = self._admin_provisioning(organization)
             user_count = self._connection.execute("SELECT count(*) FROM users").fetchone()[0]
             pending_signups = self._connection.execute(
                 "SELECT count(*) FROM pending_signups WHERE used_at IS NULL AND expires_at>?",
@@ -292,9 +298,69 @@ class OrganizationStoreMixin:
                    FROM organizations o JOIN users owner ON owner.id=o.created_by WHERE o.id=?""",
                 (organization_id,),
             ).fetchone()
-        if not row:
-            raise OrganizationError("Organização não encontrada.", 404)
-        return dict(row)
+            if not row:
+                raise OrganizationError("Organização não encontrada.", 404)
+            organization = dict(row)
+            organization["provisioning"] = self._admin_provisioning(organization)
+            return organization
+
+    def _admin_provisioning(self, organization):
+        """Describe a pilot handoff without exposing invitation secrets."""
+        marker = self._connection.execute(
+            """SELECT target,created_at FROM organization_audit
+               WHERE organization_id=? AND action='organization.provisioned'
+               ORDER BY id DESC LIMIT 1""",
+            (organization["id"],),
+        ).fetchone()
+        if not marker:
+            return {
+                "kind": "standard",
+                "status": "active",
+                "label": "Operação ativa",
+                "detail": "Workspace criado fora do fluxo guiado de piloto.",
+            }
+        responsible_email = marker["target"].strip().casefold()
+        invitation = self._connection.execute(
+            """SELECT id,email,created_at,expires_at,accepted_at,revoked_at,
+               CASE WHEN accepted_at IS NOT NULL THEN 'accepted'
+                    WHEN revoked_at IS NOT NULL THEN 'revoked'
+                    WHEN expires_at<=? THEN 'expired' ELSE 'pending' END AS status
+               FROM invitations WHERE organization_id=? AND email=? COLLATE NOCASE
+               ORDER BY id DESC LIMIT 1""",
+            (now_iso(), organization["id"], responsible_email),
+        ).fetchone()
+        member = self._connection.execute(
+            """SELECT u.id,m.role FROM memberships m JOIN users u ON u.id=m.user_id
+               WHERE m.organization_id=? AND u.identifier=? COLLATE NOCASE""",
+            (organization["id"], responsible_email),
+        ).fetchone()
+        current_owner = str(organization.get("owner_email") or "").casefold()
+        if current_owner == responsible_email:
+            status, label = "delivered", "Entregue ao cliente"
+            detail = "O responsável indicado já controla este workspace."
+        elif member and member["role"] == "admin":
+            status, label = "transfer_pending", "Transferir responsabilidade"
+            detail = "O cliente aceitou e já é administrador. Falta concluir a transferência."
+        elif invitation and invitation["status"] == "pending":
+            status, label = "waiting_acceptance", "Aguardando aceite"
+            detail = "O convite do responsável ainda não foi aceito."
+        elif invitation and invitation["status"] in {"expired", "revoked"}:
+            status, label = "invitation_action_needed", "Renovar convite"
+            detail = "O convite do responsável expirou ou foi cancelado. Gere outro acesso."
+        else:
+            status, label = "action_needed", "Revisar implantação"
+            detail = "O responsável indicado ainda não possui acesso administrativo."
+        return {
+            "kind": "pilot",
+            "status": status,
+            "label": label,
+            "detail": detail,
+            "responsible_email": responsible_email,
+            "responsible_user_id": member["id"] if member else None,
+            "responsible_role": member["role"] if member else None,
+            "started_at": marker["created_at"],
+            "invitation": dict(invitation) if invitation else None,
+        }
 
     def _membership(self, user_id, org_id, *, admin=False):
         row = self._connection.execute(

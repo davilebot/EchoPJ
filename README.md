@@ -113,7 +113,9 @@ estão em [`.env.example`](.env.example).
   organização interna ativa com créditos ilimitados.
 - O botão **Criar piloto** prepara o workspace do cliente, define os créditos
   iniciais e gera o convite de administrador em uma única operação. Depois da
-  aceitação, a EchoHub transfere a responsabilidade na área de organizações.
+  aceitação, o painel sinaliza a transferência pendente e permite entregar a
+  responsabilidade ao cliente diretamente. O catálogo mostra cada etapa e também
+  encontra pilotos pelo e-mail convidado, mesmo antes do aceite.
 - O painel interno mede cadastro, ativação, entrada em plano comercial, uso em
   dias distintos e atividade nos últimos 30 dias. Eventos de produto guardam
   apenas o tipo da ação, identificadores técnicos e contagens; filtros e dados

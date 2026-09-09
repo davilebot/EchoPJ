@@ -226,10 +226,13 @@ function renderOrganizations(data) {
   adminRows.innerHTML = data.organizations.length ? data.organizations.map((organization) => {
     const billing = organization.billing;
     const activity = organization.activity || {};
+    const provisioning = organization.provisioning || { status: "active", label: "Operação ativa" };
     const stage = billing.is_internal ? "internal" : activity.stage;
     const activityDate = activity.last_activity_at ? formatDate(activity.last_activity_at) : "Sem atividade";
-    return `<tr><td><strong>${escapeHtml(organization.name)}</strong><small>#${organization.id} · ${formatDate(organization.created_at)}</small></td><td>${escapeHtml(organization.owner_email)}</td><td>${organization.member_count.toLocaleString("pt-BR")}</td><td><span class="admin-stage stage-${escapeHtml(stage)}">${escapeHtml(stageLabel(stage))}</span></td><td><strong>${activityDate}</strong><small>${escapeHtml(activitySummary(activity))}</small></td><td>${escapeHtml(planLabel(billing.plan_code))}</td><td>${billing.unlimited_credits ? "Ilimitados" : Number(billing.credit_balance).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(billing.subscription_status)}">${escapeHtml(statusLabel(billing.subscription_status))}</span></td><td><button class="secondary-button admin-open" type="button" data-organization-id="${organization.id}">Abrir</button></td></tr>`;
-  }).join("") : `<tr><td colspan="9"><div class="admin-empty"><strong>Nenhuma empresa encontrada.</strong><span>Tente outro nome ou e-mail.</span></div></td></tr>`;
+    const provisioningStatus = billing.is_internal ? "internal" : provisioning.status;
+    const provisioningLabel = billing.is_internal ? "Equipe EchoHub" : provisioning.label;
+    return `<tr><td><strong>${escapeHtml(organization.name)}</strong><small>#${organization.id} · ${formatDate(organization.created_at)}</small></td><td>${escapeHtml(organization.owner_email)}</td><td>${organization.member_count.toLocaleString("pt-BR")}</td><td><span class="admin-stage stage-${escapeHtml(stage)}">${escapeHtml(stageLabel(stage))}</span></td><td><strong>${activityDate}</strong><small>${escapeHtml(activitySummary(activity))}</small></td><td><span class="admin-stage pilot-${escapeHtml(provisioningStatus)}">${escapeHtml(provisioningLabel)}</span></td><td>${escapeHtml(planLabel(billing.plan_code))}</td><td>${billing.unlimited_credits ? "Ilimitados" : Number(billing.credit_balance).toLocaleString("pt-BR")}</td><td><span class="admin-status status-${escapeHtml(billing.subscription_status)}">${escapeHtml(statusLabel(billing.subscription_status))}</span></td><td><button class="secondary-button admin-open" type="button" data-organization-id="${organization.id}">Abrir</button></td></tr>`;
+  }).join("") : `<tr><td colspan="10"><div class="admin-empty"><strong>Nenhuma empresa encontrada.</strong><span>Tente outro nome ou e-mail.</span></div></td></tr>`;
   const start = data.total ? data.offset + 1 : 0;
   const end = Math.min(data.offset + data.organizations.length, data.total);
   document.querySelector("#admin-range").textContent = `${start}–${end} de ${data.total.toLocaleString("pt-BR")}`;
@@ -239,7 +242,7 @@ function renderOrganizations(data) {
 
 async function loadOrganizations() {
   adminMessage.classList.add("hidden");
-  adminRows.innerHTML = `<tr><td colspan="7">Carregando empresas…</td></tr>`;
+  adminRows.innerHTML = `<tr><td colspan="10">Carregando empresas…</td></tr>`;
   const query = document.querySelector("#admin-search").value.trim();
   try {
     const data = await adminFetch(`/api/admin/overview?query=${encodeURIComponent(query)}&limit=${pageSize}&offset=${adminOffset}`);
@@ -264,6 +267,25 @@ function renderOrganizationDetail(data) {
   document.querySelector("#admin-status").value = profile.subscription_status;
   document.querySelector("#admin-unlimited").checked = profile.unlimited_credits;
   document.querySelector("#admin-credit-form").classList.toggle("hidden", profile.unlimited_credits);
+  const provisioning = data.provisioning || { kind: "standard" };
+  const provisioningCard = document.querySelector("#admin-provisioning");
+  provisioningCard.classList.toggle("hidden", provisioning.kind !== "pilot");
+  if (provisioning.kind === "pilot") {
+    document.querySelector("#admin-provisioning-status").className = `admin-stage pilot-${provisioning.status}`;
+    document.querySelector("#admin-provisioning-status").textContent = provisioning.label;
+    document.querySelector("#admin-provisioning-detail").textContent = provisioning.detail;
+    document.querySelector("#admin-provisioning-email").textContent = provisioning.responsible_email;
+    document.querySelector("#admin-provisioning-owner").textContent = data.owner_email;
+    const invitation = provisioning.invitation;
+    const invitationLabels = { pending: "Aguardando até", accepted: "Aceito em", expired: "Expirou em", revoked: "Cancelado em" };
+    document.querySelector("#admin-provisioning-invite").textContent = invitation
+      ? `${invitationLabels[invitation.status] || "Atualizado em"} ${formatDate(invitation.accepted_at || invitation.revoked_at || invitation.expires_at)}`
+      : "Nenhum convite ativo";
+    const transfer = document.querySelector("#admin-transfer-responsibility");
+    transfer.classList.toggle("hidden", provisioning.status !== "transfer_pending" || !provisioning.responsible_user_id);
+    transfer.dataset.userId = provisioning.responsible_user_id || "";
+    document.querySelector("#admin-open-team").href = `/organizations?organization=${encodeURIComponent(data.id)}`;
+  }
   const subscription = data.commercial.subscription;
   const cancellation = data.commercial.cancellation;
   document.querySelector("#admin-subscription-summary").innerHTML = subscription ? `<div><span class="admin-status status-${escapeHtml(subscription.status)}">${escapeHtml(statusLabel(subscription.status))}</span><strong>${escapeHtml(subscription.plan_name)}</strong><small>${Number(subscription.credits_per_cycle).toLocaleString("pt-BR")} créditos · ${escapeHtml(subscription.cycle)}${subscription.next_due_date ? ` · próxima cobrança ${formatDate(subscription.next_due_date)}` : ""}</small></div>${cancellation ? `<div><small>Último cancelamento</small><strong>${escapeHtml(cancellation.status)}</strong><span>${escapeHtml(cancellation.reason || cancellation.detail || "Sem motivo informado")}</span></div>` : ""}` : `<span class="muted">Nenhuma assinatura recorrente conciliada.</span>`;
@@ -366,6 +388,21 @@ document.querySelector("#admin-privacy-filter").addEventListener("submit", (even
 document.querySelector("#admin-privacy-requests").addEventListener("click", (event) => { const button = event.target.closest("[data-privacy-request-id]"); if (button) openPrivacyRequest(button.dataset.privacyRequestId); });
 document.querySelector("#admin-privacy-close").addEventListener("click", () => adminPrivacyDialog.close());
 adminPrivacyDialog.addEventListener("click", (event) => { if (event.target === adminPrivacyDialog) adminPrivacyDialog.close(); });
+
+document.querySelector("#admin-transfer-responsibility").addEventListener("click", async (event) => {
+  const message = document.querySelector("#admin-dialog-message");
+  const targetUserId = event.currentTarget.dataset.userId;
+  if (!selectedOrganizationId || !targetUserId) return;
+  message.classList.add("hidden");
+  event.currentTarget.disabled = true;
+  try {
+    await adminFetch(`/api/organizations/${selectedOrganizationId}/owner/${encodeURIComponent(targetUserId)}`, { method: "PUT" });
+    renderOrganizationDetail(await adminFetch(`/api/admin/organizations/${selectedOrganizationId}`));
+    notify("Responsabilidade transferida ao cliente.", message, true);
+    await loadOrganizations();
+  } catch (error) { notify(error.message, message); }
+  finally { event.currentTarget.disabled = false; }
+});
 
 document.querySelector("#admin-billing-form").addEventListener("submit", async (event) => {
   event.preventDefault();
