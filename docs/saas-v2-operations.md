@@ -34,6 +34,32 @@ Essas metas são o ponto de partida para a homologação. Busca ampla e
 processamento em lote têm perfil diferente e devem ser medidos separadamente em
 um teste de carga com uma cópia representativa da base.
 
+## Teste de carga limitado
+
+`ops/load_test_v2.py` mede três cenários sem criar listas, exportar dados ou
+consumir créditos:
+
+- `health`: prontidão completa da aplicação;
+- `dashboard`: carregamento autenticado do workspace;
+- `search`: busca por empresas ativas em SP, com prévia limitada a 20 linhas.
+
+O utilitário aceita no máximo 20 requisições de busca e concorrência 20. A senha
+é lida por variável de ambiente e não aparece no relatório. Exemplo:
+
+```bash
+export ECHOPJS_LOAD_PASSWORD='senha-da-conta-de-homologacao'
+python ops/load_test_v2.py \
+  --base-url https://echopjs-saas-v2.ztnbow.easypanel.host \
+  --scenario dashboard --requests 40 --concurrency 4 \
+  --username conta-de-homologacao@exemplo.com --organization-id 1
+unset ECHOPJS_LOAD_PASSWORD
+```
+
+O processo termina com código diferente de zero se houver mais de 1% de erros
+ou se o p95 ultrapassar 2 segundos. Para `search`, execute uma carga curta fora
+do horário de pico e ajuste `--max-p95-ms` somente quando houver uma meta
+documentada específica para a busca.
+
 Alertas externos ainda exigem um destino operacional, como e-mail, Slack ou um
 serviço de uptime. Até essa configuração, o Docker reinicia o processo quando o
 healthcheck falha e o painel interno concentra o diagnóstico disponível.

@@ -64,7 +64,8 @@ atual permanece na branch `main` e não recebe estas mudanças.
 - cópia criptografada fora do VPS e alertas externos para o canal operacional escolhido;
 - [x] metas iniciais de disponibilidade, latência, erro e recuperação documentadas;
 - [x] processo de atendimento dentro do produto, com chamado por organização, histórico, prioridade, fila interna e notificação de resposta;
-- testes de carga com base representativa;
+- [x] teste controlado de prontidão, dashboard e busca contra a base real, com limites reproduzíveis e relatório versionado;
+- teste de carga específico para processamento em lote e checkout depois da homologação do provedor;
 - [x] página institucional responsiva do produto, com proposta de valor, fluxos, créditos, equipe, segurança e CTAs adaptados à disponibilidade do cadastro;
 - domínio comercial e documentação jurídica para clientes.
 
