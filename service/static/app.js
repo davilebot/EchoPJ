@@ -79,6 +79,8 @@ let lastCompanySearchPayload = null;
 let activeSavedSearchId = null;
 let activeSavedSearchFilters = null;
 let selectedCompanyCnpjs = new Set();
+let searchSelectionEstimateTimer = null;
+let searchSelectionEstimateRequest = 0;
 let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -1100,9 +1102,13 @@ function renderCompanySearch(data) {
       <div><strong>${escapeHtml(data.dataset_version || "—")}</strong><span>Versão da Receita</span></div>
     </div>
     <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
-    ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><span id="selection-count">0 selecionadas</span></div>
+    ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><button id="download-company-search" class="secondary compact" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>
+    <div id="selection-action-bar" class="selection-action-bar" aria-label="Ações das empresas selecionadas">
+      <div class="selection-action-copy"><strong id="selection-count">0 selecionadas</strong><small id="selection-credit-summary" aria-live="polite">Selecione empresas para salvar em uma lista ou baixar o CSV.</small></div>
+      <div class="selection-action-buttons"><button id="save-selected-company-search" data-capability="manage-library" type="button" disabled>Salvar em uma lista</button><button id="download-selected-company-search" class="secondary" data-capability="export" type="button" disabled>Baixar selecionadas</button></div>
+    </div>
     <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="save-selected-company-search" data-capability="manage-library" type="button" disabled>Salvar selecionadas em uma lista</button><button id="download-selected-company-search" class="secondary" data-capability="export" type="button" disabled>Baixar selecionadas</button><button id="download-company-search" class="secondary" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    ` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
   const downloadAllButton = document.querySelector("#download-company-search");
   downloadAllButton?.addEventListener("click", () => runButtonAction(downloadAllButton, "Preparando CSV…", () => downloadCompanySearch(lastCompanySearch)));
@@ -1120,16 +1126,52 @@ function renderCompanySearch(data) {
     companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = false; });
     updateSearchSelection();
   });
+  updateSearchSelection();
 }
 
 function updateSearchSelection() {
   const count = selectedCompanyCnpjs.size;
   const label = document.querySelector("#selection-count");
+  const creditSummary = document.querySelector("#selection-credit-summary");
   const button = document.querySelector("#download-selected-company-search");
   const saveButton = document.querySelector("#save-selected-company-search");
   if (label) label.textContent = `${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}`;
   if (button) button.disabled = count === 0;
   if (saveButton) saveButton.disabled = count === 0;
+  if (button) button.textContent = count ? `Baixar ${count.toLocaleString("pt-BR")} selecionada${count === 1 ? "" : "s"}` : "Baixar selecionadas";
+  if (saveButton) saveButton.textContent = count ? `Salvar ${count.toLocaleString("pt-BR")} em lista` : "Salvar em uma lista";
+
+  clearTimeout(searchSelectionEstimateTimer);
+  const requestId = ++searchSelectionEstimateRequest;
+  if (!creditSummary) return;
+  creditSummary.classList.remove("insufficient");
+  if (!count) {
+    creditSummary.textContent = "Selecione empresas para salvar em uma lista ou baixar o CSV.";
+    return;
+  }
+  creditSummary.textContent = "Calculando o consumo de créditos…";
+  const cnpjs = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)).map((company) => company.cnpj);
+  searchSelectionEstimateTimer = setTimeout(async () => {
+    try {
+      const estimate = await estimateCredits(cnpjs);
+      if (requestId !== searchSelectionEstimateRequest || !creditSummary.isConnected) return;
+      if (estimate.unlimited_credits) {
+        creditSummary.textContent = "Créditos ilimitados neste workspace.";
+      } else if (!estimate.credits_required) {
+        creditSummary.textContent = "Todos os CNPJs selecionados já estão desbloqueados. Nenhum crédito será usado.";
+      } else {
+        const repeated = estimate.already_unlocked
+          ? ` · ${estimate.already_unlocked.toLocaleString("pt-BR")} já desbloqueada${estimate.already_unlocked === 1 ? "" : "s"}`
+          : "";
+        creditSummary.textContent = `${estimate.credits_required.toLocaleString("pt-BR")} crédito${estimate.credits_required === 1 ? " será usado" : "s serão usados"}${repeated}.`;
+        creditSummary.classList.toggle("insufficient", !estimate.can_complete);
+      }
+    } catch (_) {
+      if (requestId === searchSelectionEstimateRequest && creditSummary.isConnected) {
+        creditSummary.textContent = "O consumo será confirmado antes de concluir a ação.";
+      }
+    }
+  }, 220);
 }
 
 async function downloadCompanySearch(companies, filename = "empresas-echopjs.csv") {
@@ -1145,8 +1187,19 @@ async function downloadCompanySearch(companies, filename = "empresas-echopjs.csv
 
 companySearchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const submitButton = companySearchForm.querySelector('button[type="submit"]');
+  const originalSubmitLabel = submitButton.textContent;
+  let searchProgressTimer = null;
   companySearchResult.classList.add("hidden");
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Consultando a base da Receita…</strong><small>Aplicando os filtros aos dados publicados.</small></span>`;
   companySearchLoading.classList.remove("hidden");
+  companySearchForm.setAttribute("aria-busy", "true");
+  submitButton.disabled = true;
+  submitButton.textContent = "Buscando…";
+  searchProgressTimer = setTimeout(() => {
+    const detail = companySearchLoading.querySelector("small");
+    if (detail) detail.textContent = "Filtros amplos podem levar alguns segundos. A busca continua normalmente.";
+  }, 3500);
   try {
     lastCompanySearchPayload = companySearchPayload();
     const response = await fetch("/api/search", {
@@ -1165,8 +1218,13 @@ companySearchForm.addEventListener("submit", async (event) => {
   } catch (error) {
     companySearchResult.innerHTML = `<div class="error"><strong>Não foi possível buscar as empresas.</strong><p>${escapeHtml(error.message)}</p></div>`;
   } finally {
+    clearTimeout(searchProgressTimer);
+    companySearchForm.removeAttribute("aria-busy");
+    submitButton.disabled = false;
+    submitButton.textContent = originalSubmitLabel;
     companySearchLoading.classList.add("hidden");
     companySearchResult.classList.remove("hidden");
+    companySearchResult.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 });
 

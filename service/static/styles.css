@@ -392,7 +392,17 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
 .queued-message p { color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .preview-toolbar, .save-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0; }
 .preview-toolbar > div, .save-actions { display: flex; gap: 8px; }
-.preview-toolbar span { color: var(--text-secondary); font-size: 9px; font-weight: 600; }
+.search-progress { display: flex; align-items: center; gap: 12px; color: var(--text-secondary); }
+.search-progress strong, .search-progress small { display: block; }
+.search-progress strong { color: var(--text); font-size: 12px; }
+.search-progress small { margin-top: 3px; font-size: 9px; }
+.selection-action-bar { position: sticky; z-index: 8; top: 70px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 14px 0; padding: 13px 14px; border: 1px solid color-mix(in srgb, var(--accent-strong) 34%, var(--border)); border-radius: 11px; background: color-mix(in srgb, var(--surface-raised) 94%, var(--accent-soft)); box-shadow: var(--shadow-md); }
+.selection-action-copy { min-width: 0; }
+.selection-action-copy strong, .selection-action-copy small { display: block; }
+.selection-action-copy strong { font-size: 11px; }
+.selection-action-copy small { margin-top: 3px; color: var(--text-secondary); font-size: 9px; line-height: 1.4; }
+.selection-action-copy small.insufficient { color: var(--danger); }
+.selection-action-buttons { display: flex; flex: 0 0 auto; gap: 8px; }
 .row-selector { width: 15px; height: 15px; padding: 0; accent-color: var(--accent-strong); }
 .save-actions { justify-content: flex-end; }
 
@@ -642,6 +652,8 @@ th { color: var(--text-secondary); background: var(--surface-soft); font-size: 8
   .summary, .search-summary, .explorer-summary, .detail-grid, .partners-list, .relation-grid, .field-catalog, .candidates { grid-template-columns: 1fr; }
   .preview-toolbar, .save-actions { align-items: stretch; flex-direction: column; }
   .preview-toolbar > div, .save-actions { flex-direction: column; }
+  .selection-action-bar { top: 120px; align-items: stretch; flex-direction: column; }
+  .selection-action-buttons { display: grid; grid-template-columns: 1fr; }
   .resource-card { grid-template-columns: 38px minmax(0, 1fr); align-items: start; }
   .resource-card-actions { grid-column: 1 / -1; }
   .list-detail-head, .billing-hero { flex-direction: column; }

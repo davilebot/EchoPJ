@@ -76,6 +76,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('downloadCsvResponse("/api/exports/cnpj-lookup"', script)
         self.assertNotIn("downloadCompleteCompanyCsv", script)
 
+    def test_search_keeps_selection_actions_visible_and_explains_credit_use(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        action_bar = script.index('id="selection-action-bar"')
+        results_table = script.index('<div class="table-wrap"><table>', action_bar)
+        self.assertLess(action_bar, results_table)
+        self.assertIn('id="selection-credit-summary"', script)
+        self.assertIn("searchSelectionEstimateRequest", script)
+        self.assertIn('companySearchForm.setAttribute("aria-busy", "true")', script)
+        self.assertIn(".selection-action-bar { position: sticky", styles)
+
     def test_internal_admin_entry_is_role_gated(self):
         workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")
         self.assertIn("data-internal-admin", self.html)
