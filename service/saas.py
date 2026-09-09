@@ -100,6 +100,8 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_company_list_items_org_added
                 ON company_list_items(organization_id, added_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_company_list_items_org_cnpj
+                ON company_list_items(organization_id, cnpj);
             CREATE TABLE IF NOT EXISTS notifications (
                 id TEXT PRIMARY KEY,
                 organization_id INTEGER NOT NULL,
@@ -2452,21 +2454,89 @@ class SaaSStore:
             ).fetchone()
         return self._company_list(row) if row else None
 
-    def company_list_detail(self, organization_id: int, list_id: str) -> dict[str, Any] | None:
+    def company_list_memberships(
+        self,
+        organization_id: int,
+        cnpjs: list[str],
+    ) -> dict[str, list[dict[str, str]]]:
+        """Return the organization lists that contain each requested company."""
+        normalized = list(dict.fromkeys(str(cnpj).strip() for cnpj in cnpjs if str(cnpj).strip()))
+        memberships: dict[str, list[dict[str, str]]] = {}
+        with self._lock:
+            for start in range(0, len(normalized), 500):
+                chunk = normalized[start:start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = self._connection.execute(
+                    f"""SELECT i.cnpj,l.id,l.name
+                        FROM company_list_items i
+                        JOIN company_lists l ON l.id=i.list_id
+                        WHERE i.organization_id=? AND l.organization_id=?
+                          AND i.cnpj IN ({placeholders})
+                        ORDER BY l.updated_at DESC,l.name COLLATE NOCASE""",
+                    (organization_id, organization_id, *chunk),
+                ).fetchall()
+                for row in rows:
+                    memberships.setdefault(row["cnpj"], []).append({
+                        "id": row["id"],
+                        "name": row["name"],
+                    })
+        return memberships
+
+    def company_list_detail(
+        self,
+        organization_id: int,
+        list_id: str,
+        *,
+        query: str = "",
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> dict[str, Any] | None:
         company_list = self.company_list(organization_id, list_id)
         if not company_list:
             return None
+        clean_query = " ".join(query.split()).casefold()[:120]
+        clauses = ["list_id=?", "organization_id=?"]
+        parameters: list[Any] = [list_id, organization_id]
+        if clean_query:
+            digits = "".join(character for character in clean_query if character.isdigit())
+            clauses.append(
+                """(lower(coalesce(json_extract(company_json,'$.legal_name'),'')) LIKE ?
+                    OR lower(coalesce(json_extract(company_json,'$.trade_name'),'')) LIKE ?
+                    OR lower(coalesce(json_extract(company_json,'$.municipality'),'')) LIKE ?
+                    OR lower(coalesce(json_extract(company_json,'$.uf'),'')) LIKE ?
+                    OR cnpj LIKE ?)"""
+            )
+            needle = f"%{clean_query}%"
+            parameters.extend((needle, needle, needle, needle, f"%{digits or clean_query}%"))
+        where = " AND ".join(clauses)
+        page_limit = max(1, min(250, int(limit))) if limit is not None else None
+        page_offset = max(0, int(offset))
         with self._lock:
+            filtered_count = self._connection.execute(
+                f"SELECT count(*) FROM company_list_items WHERE {where}", parameters,
+            ).fetchone()[0]
+            if page_limit is not None and filtered_count and page_offset >= filtered_count:
+                page_offset = ((filtered_count - 1) // page_limit) * page_limit
+            paging_sql = " LIMIT ? OFFSET ?" if page_limit is not None else ""
+            paging_parameters = (*parameters, page_limit, page_offset) if page_limit is not None else parameters
             rows = self._connection.execute(
-                """SELECT cnpj,company_json,added_by,added_at
-                   FROM company_list_items
-                   WHERE list_id=? AND organization_id=? ORDER BY added_at DESC""",
-                (list_id, organization_id),
+                f"""SELECT cnpj,company_json,added_by,added_at
+                   FROM company_list_items WHERE {where}
+                   ORDER BY added_at DESC,cnpj ASC{paging_sql}""",
+                paging_parameters,
             ).fetchall()
         company_list["companies"] = [
             {**json.loads(row["company_json"]), "added_at": row["added_at"], "added_by": row["added_by"]}
             for row in rows
         ]
+        company_list["query"] = clean_query
+        company_list["filtered_count"] = filtered_count
+        company_list["pagination"] = {
+            "limit": page_limit or max(1, filtered_count),
+            "offset": page_offset,
+            "has_previous": page_offset > 0,
+            "has_next": bool(page_limit is not None and page_offset + page_limit < filtered_count),
+        }
         return company_list
 
     def update_company_list(
@@ -2495,7 +2565,7 @@ class SaaSStore:
                 subject_id=list_id,
                 occurred_at=now,
             )
-        result = self.company_list_detail(organization_id, list_id)
+        result = self.company_list(organization_id, list_id)
         assert result is not None
         return result
 

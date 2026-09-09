@@ -640,6 +640,13 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 403)
         self.assertIn("perfil permite consultar", response["detail"])
+        self.assertEqual(
+            self.request(
+                f"/api/company-lists/{company_list['id']}/export.csv",
+                token=viewer_token, headers=headers,
+            )[0],
+            403,
+        )
         self.assertEqual(self.saas.billing_summary(self.other)["profile"]["credit_balance"], 2)
 
     def test_csrf_blocked_and_sensitive_input_not_echoed(self):
@@ -677,6 +684,43 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 429)
         self.assertIn("processamentos em andamento", blocked["detail"])
         self.assertEqual(response_headers[b"retry-after"], b"30")
+
+    def test_search_preview_marks_saved_companies_with_organization_lists(self):
+        company = {
+            "cnpj": "11222333000181",
+            "legal_name": "Empresa Exemplo Ltda",
+            "primary_cnae": "6201501",
+            "primary_cnae_description": "Desenvolvimento de programas",
+            "municipality": "São Paulo",
+            "uf": "SP",
+        }
+        company_list = self.saas.create_company_list(self.org, self.owner["id"], name="Prospecção SaaS")
+        self.saas.add_companies(self.org, company_list["id"], self.owner["id"], [company])
+        capabilities = MagicMock()
+        capabilities.as_dict.return_value = {"establishment_details": True}
+        self.main.repository.search_companies.return_value = ([company], capabilities, 12, False)
+        self.main.repository.current_version.return_value = "2026-08"
+
+        status, data, _ = self.request(
+            "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(data["preview"])
+        self.assertEqual(data["limit"], 40)
+        self.assertEqual(data["segments"], {"total": 1, "new": 0, "saved": 1})
+        self.assertTrue(data["results"][0]["saved"])
+        self.assertEqual(data["results"][0]["saved_lists"][0]["name"], "Prospecção SaaS")
+        filters = self.main.repository.search_companies.call_args.args[0]
+        self.assertEqual(filters["limit"], 40)
+
+        status, foreign_data, _ = self.request(
+            "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,
+            {"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(foreign_data["segments"], {"total": 1, "new": 1, "saved": 0})
+        self.assertEqual(foreign_data["results"][0]["saved_lists"], [])
 
     def test_admin_pages_and_membership_free_invite_page(self):
         self.assertEqual(self.request("/organizations")[0], 303)
@@ -760,6 +804,21 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(result["credits_spent"], 2)
+        status, filtered, _ = self.request(
+            f"/api/company-lists/{company_list['id']}?q=Empresa%20A&limit=1",
+            token=self.owner_token, headers={"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(filtered["filtered_count"], 1)
+        self.assertEqual(filtered["companies"][0]["legal_name"], "Empresa A")
+        status, exported, export_headers = self.request(
+            f"/api/company-lists/{company_list['id']}/export.csv",
+            token=self.owner_token, headers={"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Empresa A", exported)
+        self.assertIn("Empresa B", exported)
+        self.assertEqual(export_headers[b"x-credits-spent"], b"0")
         billing = self.request(
             "/api/billing/summary", token=self.owner_token,
             headers={"x-organization-id": str(self.other)},

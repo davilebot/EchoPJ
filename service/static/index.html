@@ -100,11 +100,12 @@
         </section>
 
         <section id="search-tab" class="tab-panel hidden">
-          <div class="page-heading"><span class="eyebrow">PROSPECÇÃO</span><h1>Encontrar empresas</h1><p>Construa uma lista sob medida combinando atividade, perfil e localização.</p></div>
-          <form id="company-search-form" class="search-form">
+          <div class="page-heading search-page-heading"><span class="eyebrow">PROSPECÇÃO</span><h1>Encontrar empresas</h1><p>Refine os critérios na lateral e acompanhe a prévia das empresas enquanto monta seu segmento.</p></div>
+          <div class="search-workbench">
+          <form id="company-search-form" class="search-form" aria-label="Filtros da busca de empresas">
             <div class="filter-form-header">
-              <div><span class="eyebrow">CONSTRUTOR DE LISTAS</span><h2>Defina o perfil das empresas</h2><p>Comece pelo essencial e refine somente o que fizer sentido para sua prospecção.</p></div>
-              <div class="filter-guidance"><span aria-hidden="true"></span>Você não precisa preencher todos os campos</div>
+              <div><span class="eyebrow">FILTROS</span><h2>Perfil das empresas</h2><p>A prévia é atualizada à medida que você escolhe os critérios.</p></div>
+              <div class="filter-guidance"><span aria-hidden="true"></span>Prévia automática</div>
             </div>
             <section id="search-templates" class="search-templates" aria-labelledby="search-templates-title">
               <div class="search-templates-heading"><div><span class="eyebrow">MODELOS PRONTOS</span><h2 id="search-templates-title">Comece com um segmento</h2></div><p>Escolha uma base e ajuste atividade ou localização antes de buscar.</p></div>
@@ -160,9 +161,19 @@
               </section>
               <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
             </fieldset>
-            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Pronto para gerar sua lista?</strong><small>Você poderá selecionar e salvar as empresas na próxima etapa.</small></div><label class="result-limit">Quantidade de empresas<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><div class="search-submit-actions"><button id="save-current-search" class="secondary" data-capability="manage-library" type="button">Salvar busca</button><button type="submit">Encontrar empresas</button></div></div>
+            <div class="search-submit-bar"><div class="search-submit-copy"><strong>Gerar lista completa</strong><small>A prévia mostra até 40 empresas sem consumir créditos.</small></div><label class="result-limit">Quantidade<input id="search-limit" type="number" min="1" max="10000" step="1" value="500" inputmode="numeric"><span class="input-help">Entre 1 e 10.000.</span></label><div class="search-submit-actions"><button id="save-current-search" class="secondary" data-capability="manage-library" type="button">Salvar busca</button><button type="submit">Buscar agora</button></div></div>
           </form>
-          <section id="search-loading" class="search-progress hidden" role="status" aria-live="polite"></section><section id="search-result" class="hidden"></section>
+          <section class="search-preview-column" aria-label="Prévia das empresas encontradas">
+            <header class="search-preview-header"><div><span class="eyebrow">PRÉVIA AO VIVO</span><h2>Empresas disponíveis</h2><p>Os números abaixo representam o recorte carregado na prévia.</p></div><span id="search-preview-status" class="preview-status"><i aria-hidden="true"></i>Aguardando filtros</span></header>
+            <nav id="search-result-tabs" class="search-result-tabs" aria-label="Separar empresas da prévia">
+              <button class="active" type="button" data-search-view="total" aria-pressed="true"><span>Total</span><strong data-search-view-count="total">0</strong></button>
+              <button type="button" data-search-view="new" aria-pressed="false"><span>Novo</span><strong data-search-view-count="new">0</strong></button>
+              <button type="button" data-search-view="saved" aria-pressed="false"><span>Salvo</span><strong data-search-view-count="saved">0</strong></button>
+            </nav>
+            <section id="search-loading" class="search-progress hidden" role="status" aria-live="polite"></section>
+            <section id="search-result" class="search-result-panel"><div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. A prévia aparecerá aqui automaticamente.</p></div></section>
+          </section>
+          </div>
         </section>
 
         <section id="consulta-tab" class="tab-panel hidden">

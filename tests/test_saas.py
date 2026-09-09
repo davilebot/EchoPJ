@@ -132,6 +132,58 @@ class SaaSStoreTests(unittest.TestCase):
             )
         self.assertEqual(raised.exception.status, 404)
 
+    def test_company_list_detail_supports_search_and_bounded_pages(self):
+        self.store.ensure_organization(36, unlimited=True)
+        company_list = self.store.create_company_list(36, 62, name="Carteira nacional")
+        companies = [
+            {
+                "cnpj": f"{index:014d}",
+                "legal_name": f"Cliente {index:03d}",
+                "trade_name": f"Marca {index:03d}",
+                "municipality": "Recife" if index % 10 == 0 else "São Paulo",
+                "uf": "PE" if index % 10 == 0 else "SP",
+            }
+            for index in range(1, 76)
+        ]
+        self.store.add_companies(36, company_list["id"], 62, companies)
+
+        page = self.store.company_list_detail(36, company_list["id"], limit=20, offset=20)
+        self.assertEqual(page["company_count"], 75)
+        self.assertEqual(page["filtered_count"], 75)
+        self.assertEqual(len(page["companies"]), 20)
+        self.assertTrue(page["pagination"]["has_previous"])
+        self.assertTrue(page["pagination"]["has_next"])
+
+        searched = self.store.company_list_detail(
+            36, company_list["id"], query="Cliente 042", limit=20,
+        )
+        self.assertEqual(searched["filtered_count"], 1)
+        self.assertEqual(searched["companies"][0]["cnpj"], "00000000000042")
+        last_page = self.store.company_list_detail(
+            36, company_list["id"], limit=20, offset=999,
+        )
+        self.assertEqual(last_page["pagination"]["offset"], 60)
+        self.assertEqual(len(last_page["companies"]), 15)
+
+    def test_company_list_memberships_are_scoped_to_the_organization(self):
+        self.store.ensure_organization(37, unlimited=True)
+        self.store.ensure_organization(38, unlimited=True)
+        first = self.store.create_company_list(37, 63, name="Prospecção SP")
+        second = self.store.create_company_list(37, 63, name="Contatar hoje")
+        foreign = self.store.create_company_list(38, 64, name="Lista de outro cliente")
+        company = {"cnpj": "11222333000181", "legal_name": "Empresa Exemplo"}
+        self.store.add_companies(37, first["id"], 63, [company])
+        self.store.add_companies(37, second["id"], 63, [company])
+        self.store.add_companies(38, foreign["id"], 64, [company])
+
+        memberships = self.store.company_list_memberships(37, [company["cnpj"], "00000000000000"])
+        self.assertEqual(
+            {item["name"] for item in memberships[company["cnpj"]]},
+            {"Prospecção SP", "Contatar hoje"},
+        )
+        self.assertNotIn("00000000000000", memberships)
+        self.assertNotIn("Lista de outro cliente", str(memberships))
+
     def test_saved_search_records_last_run_and_can_be_deleted(self):
         self.store.ensure_organization(6)
         saved = self.store.create_saved_search(

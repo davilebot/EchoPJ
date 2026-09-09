@@ -65,9 +65,22 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("filter-form-header", self.html)
         self.assertGreaterEqual(self.html.count('class="filter-group filter-grid"'), 5)
         styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
-        self.assertIn(".search-form { display: grid; grid-template-columns: minmax(0, 1fr)", styles)
+        self.assertIn(".search-workbench { display: grid; grid-template-columns:", styles)
+        self.assertIn('id="search-result-tabs"', self.html)
+        self.assertIn('data-search-view="total"', self.html)
+        self.assertIn('data-search-view="new"', self.html)
+        self.assertIn('data-search-view="saved"', self.html)
         self.assertIn("select { appearance: none", styles)
         self.assertIn(".multi-picker-trigger::after", styles)
+
+    def test_search_preview_updates_automatically_and_shows_list_memberships(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertIn('fetch(preview ? "/api/search/preview" : "/api/search"', script)
+        self.assertIn("scheduleCompanySearchPreview", script)
+        self.assertIn("saved_lists", script)
+        self.assertIn("company-list-tags", script)
+        self.assertIn(".search-preview-column { position: sticky", styles)
 
     def test_downloads_use_server_credit_enforcement(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
@@ -115,6 +128,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('method: listId ? "PUT" : "POST"', script)
         self.assertIn("openEditListDialog", script)
         self.assertIn('id="list-dialog-submit"', self.html)
+        self.assertIn("data-list-search-form", script)
+        self.assertIn("data-list-offset", script)
+        self.assertIn("/export.csv", script)
+        self.assertNotIn("listDetail.dataset.companies", script)
 
     def test_workspace_fetches_are_scoped_to_selected_organization(self):
         workspace = (STATIC_DIR / "workspace.js").read_text(encoding="utf-8")

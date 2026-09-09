@@ -83,6 +83,11 @@ let activeSavedSearchName = null;
 let selectedCompanyCnpjs = new Set();
 let searchSelectionEstimateTimer = null;
 let searchSelectionEstimateRequest = 0;
+let activeCompanySearchView = "total";
+let lastCompanySearchData = null;
+let searchPreviewTimer = null;
+let searchPreviewController = null;
+let searchPreviewRequest = 0;
 let lastBulkCnpjLookup = [];
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
@@ -1083,39 +1088,59 @@ bulkCnpjForm.addEventListener("submit", async (event) => {
   }
 });
 
-function renderCompanySearch(data) {
-  lastCompanySearch = data.results;
-  selectedCompanyCnpjs = new Set();
-  const preview = data.results.slice(0, 100);
-  const rows = preview.map((company) => `<tr>
-    <td><input class="row-selector" type="checkbox" data-select-company="${escapeHtml(company.cnpj)}" aria-label="Selecionar ${escapeHtml(company.legal_name || company.cnpj)}"></td>
+function companySearchViewResults() {
+  if (activeCompanySearchView === "new") return lastCompanySearch.filter((company) => !company.saved);
+  if (activeCompanySearchView === "saved") return lastCompanySearch.filter((company) => company.saved);
+  return lastCompanySearch;
+}
+
+function updateCompanySearchTabs(data) {
+  const segments = data.segments || {
+    total: data.results.length,
+    new: data.results.filter((company) => !company.saved).length,
+    saved: data.results.filter((company) => company.saved).length,
+  };
+  document.querySelectorAll("[data-search-view-count]").forEach((element) => {
+    const value = Number(segments[element.dataset.searchViewCount] || 0);
+    element.textContent = value.toLocaleString("pt-BR");
+  });
+  document.querySelectorAll("[data-search-view]").forEach((button) => {
+    const active = button.dataset.searchView === activeCompanySearchView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
+function savedListsMarkup(company) {
+  const lists = company.saved_lists || [];
+  if (!lists.length) return '<span class="empty-list-cell" aria-label="Não salva em nenhuma lista"></span>';
+  return `<span class="company-list-tags">${lists.map((list) => `<span title="${escapeHtml(list.name)}">${escapeHtml(list.name)}</span>`).join("")}</span>`;
+}
+
+function renderCompanySearchView() {
+  if (!lastCompanySearchData) return;
+  const data = lastCompanySearchData;
+  const visible = companySearchViewResults().slice(0, 100);
+  const rows = visible.map((company) => `<tr>
+    <td><input class="row-selector" type="checkbox" data-select-company="${escapeHtml(company.cnpj)}" aria-label="Selecionar ${escapeHtml(company.legal_name || company.cnpj)}" ${selectedCompanyCnpjs.has(company.cnpj) ? "checked" : ""}></td>
     <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
-    <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
-    <td>${escapeHtml(company.primary_cnae || "—")}</td>
+    <td><span class="company-name-cell"><strong>${escapeHtml(company.legal_name || company.trade_name || "—")}</strong>${company.trade_name && company.trade_name !== company.legal_name ? `<small>${escapeHtml(company.trade_name)}</small>` : ""}</span></td>
+    <td><span class="company-cnae-cell"><strong>${escapeHtml(company.primary_cnae || "—")}</strong><small>${escapeHtml(company.primary_cnae_description || "")}</small></span></td>
     <td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td>
     <td>${escapeHtml(companySizeLabel(company.company_size))}</td>
-    <td>${escapeHtml(formatMoney(company.share_capital))}</td>
-    <td>${escapeHtml(company.opened_at || "—")}</td>
-    <td>${escapeHtml(company.registration_status || "—")}</td>
-    <td>${Number(company.active_branch_count || 0).toLocaleString("pt-BR")}</td>
-    <td>${Number(company.partner_count || 0).toLocaleString("pt-BR")}</td>
+    <td>${savedListsMarkup(company)}</td>
   </tr>`).join("");
-  const limitNotice = data.has_more
-    ? `A busca atingiu o limite de ${data.limit.toLocaleString("pt-BR")}. Refine os filtros para ver outro recorte.`
-    : "Todos os resultados encontrados dentro deste recorte foram retornados.";
-  companySearchResult.innerHTML = `<div class="search-summary">
-      <div><strong>${data.returned.toLocaleString("pt-BR")}</strong><span>CNPJs retornados</span></div>
-      <div><strong>${(data.timing_ms / 1000).toFixed(1)}s</strong><span>Tempo de consulta</span></div>
-      <div><strong>${escapeHtml(data.dataset_version || "—")}</strong><span>Versão da Receita</span></div>
-    </div>
-    <p class="search-notice">${escapeHtml(limitNotice)} Esta é uma prévia dos primeiros ${Math.min(100, data.returned)} resultados. Nada é salvo automaticamente.</p>
-    ${data.results.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar prévia</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div><button id="download-company-search" class="secondary compact" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button></div>
+  const viewLabels = { total: "nesta prévia", new: "que ainda não estão em listas", saved: "já salvas em listas" };
+  const loadedLabel = `${data.returned.toLocaleString("pt-BR")}${data.has_more ? "+" : ""}`;
+  companySearchResult.innerHTML = `<div class="search-result-context"><span><strong>${loadedLabel}</strong> empresas carregadas</span><span>${(data.timing_ms / 1000).toFixed(1)}s · Receita ${escapeHtml(data.dataset_version || "—")}</span></div>
+    ${visible.length ? `<div class="preview-toolbar"><div><button id="select-preview" class="secondary compact" type="button">Selecionar visíveis</button><button id="clear-preview-selection" class="secondary compact" type="button">Limpar seleção</button></div>${data.preview ? "" : `<button id="download-company-search" class="secondary compact" data-capability="export" type="button">Baixar todas (${data.returned.toLocaleString("pt-BR")})</button>`}</div>
     <div id="selection-action-bar" class="selection-action-bar" aria-label="Ações das empresas selecionadas">
       <div class="selection-action-copy"><strong id="selection-count">0 selecionadas</strong><small id="selection-credit-summary" aria-live="polite">Selecione empresas para salvar em uma lista ou baixar o CSV.</small></div>
       <div class="selection-action-buttons"><button id="save-selected-company-search" data-capability="manage-library" type="button" disabled>Salvar em uma lista</button><button id="download-selected-company-search" class="secondary" data-capability="export" type="button" disabled>Baixar selecionadas</button></div>
     </div>
-    <div class="table-wrap"><table><thead><tr><th>Salvar</th><th>CNPJ</th><th>Razão social</th><th>CNAE</th><th>Município/UF</th><th>Porte</th><th>Capital</th><th>Abertura</th><th>Situação</th><th>Filiais ativas</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    ` : `<div class="empty-state"><strong>Nenhuma empresa encontrada.</strong><p>Altere ou remova algum filtro e tente novamente.</p></div>`}`;
+    <div class="table-wrap search-results-table"><table><thead><tr><th>Selecionar</th><th>CNPJ</th><th>Empresa</th><th>CNAE principal</th><th>Município/UF</th><th>Porte</th><th>Listas</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="search-notice">Mostrando ${visible.length.toLocaleString("pt-BR")} empresa${visible.length === 1 ? "" : "s"} ${viewLabels[activeCompanySearchView]}. Nada é salvo automaticamente.</p>
+    ` : `<div class="empty-state"><strong>Nenhuma empresa ${activeCompanySearchView === "saved" ? "salva" : activeCompanySearchView === "new" ? "nova" : "encontrada"} nesta prévia.</strong><p>${activeCompanySearchView === "total" ? "Altere ou remova algum filtro e tente novamente." : "Escolha outra categoria ou ajuste os filtros."}</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
   const downloadAllButton = document.querySelector("#download-company-search");
   downloadAllButton?.addEventListener("click", () => runButtonAction(downloadAllButton, "Preparando CSV…", () => downloadCompanySearch(lastCompanySearch)));
@@ -1124,7 +1149,7 @@ function renderCompanySearch(data) {
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas.csv")
   )));
   document.querySelector("#select-preview")?.addEventListener("click", () => {
-    preview.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
+    visible.forEach((company) => selectedCompanyCnpjs.add(company.cnpj));
     companySearchResult.querySelectorAll("[data-select-company]").forEach((checkbox) => { checkbox.checked = true; });
     updateSearchSelection();
   });
@@ -1134,6 +1159,14 @@ function renderCompanySearch(data) {
     updateSearchSelection();
   });
   updateSearchSelection();
+}
+
+function renderCompanySearch(data) {
+  lastCompanySearch = data.results;
+  lastCompanySearchData = data;
+  selectedCompanyCnpjs = new Set();
+  updateCompanySearchTabs(data);
+  renderCompanySearchView();
 }
 
 function updateSearchSelection() {
@@ -1192,47 +1225,115 @@ async function downloadCompanySearch(companies, filename = "empresas-echopjs.csv
   }, filename);
 }
 
-companySearchForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+function hasMeaningfulCompanyFilters(payload) {
+  return Boolean(
+    payload.cnaes.length || (payload.company_name && payload.company_name.trim().length >= 3) || payload.excluded_company_names.length
+    || payload.company_sizes.length || payload.share_capital_min !== null || payload.share_capital_max !== null
+    || payload.opened_from || payload.opened_to || payload.regions.length || payload.ufs.length
+    || payload.municipalities.length || payload.postal_code_prefixes.length || payload.partner_age_ranges.length
+    || payload.simples !== null || payload.mei !== null || payload.legal_nature_code || payload.branch_type
+    || payload.has_email !== null || payload.has_phone !== null || payload.active_branch_count_min !== null
+    || payload.active_branch_count_max !== null
+    || payload.registration_statuses.length !== 1 || payload.registration_statuses[0] !== "ATIVA"
+  );
+}
+
+function setSearchPreviewStatus(label, state = "idle") {
+  const status = document.querySelector("#search-preview-status");
+  status.className = `preview-status ${state}`;
+  status.innerHTML = `<i aria-hidden="true"></i>${escapeHtml(label)}`;
+}
+
+async function runCompanySearch({ preview = false, scroll = false } = {}) {
   const submitButton = companySearchForm.querySelector('button[type="submit"]');
   const originalSubmitLabel = submitButton.textContent;
   let searchProgressTimer = null;
-  companySearchResult.classList.add("hidden");
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Consultando a base da Receita…</strong><small>Aplicando os filtros aos dados publicados.</small></span>`;
+  const requestNumber = ++searchPreviewRequest;
+  if (searchPreviewController) searchPreviewController.abort();
+  searchPreviewController = new AbortController();
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>${preview ? "Atualizando a prévia…" : "Consultando a base da Receita…"}</strong><small>Aplicando os filtros aos dados publicados.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
-  submitButton.disabled = true;
-  submitButton.textContent = "Buscando…";
+  setSearchPreviewStatus(preview ? "Atualizando" : "Gerando lista", "loading");
+  if (!preview) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Buscando…";
+  }
   searchProgressTimer = setTimeout(() => {
     const detail = companySearchLoading.querySelector("small");
     if (detail) detail.textContent = "Filtros amplos podem levar alguns segundos. A busca continua normalmente.";
   }, 3500);
   try {
-    lastCompanySearchPayload = companySearchPayload();
-    const response = await fetch("/api/search", {
+    const payload = companySearchPayload();
+    if (!preview) lastCompanySearchPayload = payload;
+    const response = await fetch(preview ? "/api/search/preview" : "/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(lastCompanySearchPayload),
+      body: JSON.stringify(payload),
+      signal: searchPreviewController.signal,
     });
     if (!response.ok) throw new Error((await response.json()).detail || "Falha na busca");
     const data = await response.json();
+    if (requestNumber !== searchPreviewRequest) return;
     renderCompanySearch(data);
-    if (activeSavedSearchId && JSON.stringify(lastCompanySearchPayload) === activeSavedSearchFilters) {
+    setSearchPreviewStatus("Prévia atualizada", "ready");
+    if (!preview && activeSavedSearchId && JSON.stringify(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.returned }),
       }).catch(() => {});
     }
   } catch (error) {
+    if (error.name === "AbortError") return;
     companySearchResult.innerHTML = `<div class="error"><strong>Não foi possível buscar as empresas.</strong><p>${escapeHtml(error.message)}</p></div>`;
+    setSearchPreviewStatus("Falha na prévia", "error");
   } finally {
     clearTimeout(searchProgressTimer);
+    if (requestNumber !== searchPreviewRequest) return;
     companySearchForm.removeAttribute("aria-busy");
-    submitButton.disabled = false;
-    submitButton.textContent = originalSubmitLabel;
+    if (!preview) {
+      submitButton.disabled = false;
+      submitButton.textContent = originalSubmitLabel;
+    }
     companySearchLoading.classList.add("hidden");
-    companySearchResult.classList.remove("hidden");
-    companySearchResult.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (scroll) companySearchResult.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+function scheduleCompanySearchPreview({ immediate = false } = {}) {
+  clearTimeout(searchPreviewTimer);
+  const payload = companySearchPayload();
+  if (!hasMeaningfulCompanyFilters(payload)) {
+    if (searchPreviewController) searchPreviewController.abort();
+    setSearchPreviewStatus("Aguardando filtros");
+    return;
+  }
+  setSearchPreviewStatus("Filtros alterados", "pending");
+  searchPreviewTimer = setTimeout(() => runCompanySearch({ preview: true }), immediate ? 0 : 650);
+}
+
+companySearchForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  clearTimeout(searchPreviewTimer);
+  runCompanySearch({ preview: false, scroll: true });
+});
+
+companySearchForm.addEventListener("input", (event) => {
+  if (event.target.closest(".multi-picker-search") || event.target.id === "search-limit") return;
+  scheduleCompanySearchPreview();
+});
+companySearchForm.addEventListener("change", (event) => {
+  if (event.target.closest(".multi-picker-options") || event.target.id === "search-limit") return;
+  scheduleCompanySearchPreview();
+});
+[cnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker]
+  .forEach((picker) => picker.onChange(() => scheduleCompanySearchPreview()));
+
+document.querySelector("#search-result-tabs").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-search-view]");
+  if (!button || !lastCompanySearchData) return;
+  activeCompanySearchView = button.dataset.searchView;
+  updateCompanySearchTabs(lastCompanySearchData);
+  renderCompanySearchView();
 });
 
 function showToast(message) {
@@ -1608,6 +1709,7 @@ async function applySavedSearch(saved) {
   guidance.innerHTML = `<span aria-hidden="true"></span>Busca salva: ${escapeHtml(saved.name)}`;
   companySearchForm.scrollIntoView({ behavior: "smooth", block: "start" });
   showToast(`Critérios de “${saved.name}” carregados.`);
+  scheduleCompanySearchPreview({ immediate: true });
 }
 
 function supportedTemplateFilters(template) {
@@ -1634,11 +1736,11 @@ async function applySearchTemplate(templateKey) {
   await loadSearchCapabilities();
   await applySearchFilters(supportedTemplateFilters(template));
   setActiveSavedSearch();
-  companySearchResult.classList.add("hidden");
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Modelo aplicado: ${escapeHtml(template.name)}`;
   document.querySelector(".filter-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast(`Modelo “${template.name}” aplicado. Ajuste CNAE ou localização e faça a busca.`);
+  showToast(`Modelo “${template.name}” aplicado. A prévia está sendo atualizada.`);
+  scheduleCompanySearchPreview({ immediate: true });
 }
 
 document.querySelector("#search-templates").addEventListener("click", async (event) => {
@@ -1693,19 +1795,30 @@ async function loadCompanyLists() {
   }
 }
 
-async function loadCompanyListDetail(listId) {
+async function loadCompanyListDetail(listId, query = "", offset = 0) {
   listDetail.innerHTML = `<div class="loading-inline">Abrindo lista…</div>`;
   listDetail.classList.remove("hidden");
   try {
-    const response = await fetch(`/api/company-lists/${listId}`);
+    const parameters = new URLSearchParams({ limit: "50", offset: String(Math.max(0, Number(offset) || 0)) });
+    if (query.trim()) parameters.set("q", query.trim());
+    const response = await fetch(`/api/company-lists/${listId}?${parameters}`);
     if (!response.ok) throw new Error(await responseError(response, "Não foi possível abrir a lista."));
     const data = await response.json();
     const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" data-capability="manage-library" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
+    const page = data.pagination;
+    const firstItem = data.filtered_count ? page.offset + 1 : 0;
+    const lastItem = Math.min(page.offset + data.companies.length, data.filtered_count);
+    const resultLabel = data.query
+      ? `${Number(data.filtered_count).toLocaleString("pt-BR")} de ${Number(data.company_count).toLocaleString("pt-BR")} empresa${data.company_count === 1 ? "" : "s"}`
+      : `${Number(data.company_count).toLocaleString("pt-BR")} empresa${data.company_count === 1 ? "" : "s"}`;
+    const pagination = data.filtered_count > page.limit ? `<div class="list-pagination"><button class="secondary compact" type="button" data-list-offset="${Math.max(0, page.offset - page.limit)}" ${page.has_previous ? "" : "disabled"}>Anterior</button><span>${firstItem.toLocaleString("pt-BR")}–${lastItem.toLocaleString("pt-BR")} de ${Number(data.filtered_count).toLocaleString("pt-BR")}</span><button class="secondary compact" type="button" data-list-offset="${page.offset + page.limit}" ${page.has_next ? "" : "disabled"}>Próxima</button></div>` : "";
     listDetail.dataset.listId = listId;
-    listDetail.dataset.companies = JSON.stringify(data.companies);
+    listDetail.dataset.listQuery = data.query || "";
+    listDetail.dataset.listOffset = String(page.offset);
     listDetail.dataset.list = JSON.stringify({ id: data.id, name: data.name, description: data.description });
-    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="manage-library" type="button" data-edit-list>Editar</button><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.companies.length ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
-      ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
+    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="manage-library" type="button" data-edit-list>Editar</button><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.company_count ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
+      ${data.company_count ? `<div class="list-detail-toolbar"><form data-list-search-form><label><span class="sr-only">Buscar dentro da lista</span><input data-list-query type="search" maxlength="120" value="${escapeHtml(data.query || "")}" placeholder="Buscar por empresa, CNPJ ou cidade"></label><button class="secondary compact" type="submit">Buscar</button>${data.query ? `<button class="secondary compact" type="button" data-clear-list-search>Limpar</button>` : ""}</form><span>${resultLabel}</span></div>` : ""}
+      ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${pagination}` : data.query ? `<div class="empty-state"><strong>Nenhuma empresa encontrada nesta lista.</strong><p>Tente outro nome, CNPJ, município ou estado.</p><button class="secondary" type="button" data-clear-list-search>Limpar busca</button></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
     listDetail.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     listDetail.innerHTML = `<div class="error"><strong>Não foi possível abrir a lista.</strong><p>${escapeHtml(error.message)}</p></div>`;
@@ -1746,8 +1859,10 @@ async function openSaveListDialog() {
 async function removeCompanyFromList(listId, cnpj) {
   const response = await fetch(`/api/company-lists/${listId}/companies/${encodeURIComponent(cnpj)}`, { method: "DELETE" });
   if (!response.ok) throw new Error(await responseError(response, "Não foi possível remover a empresa."));
+  const query = listDetail.dataset.listQuery || "";
+  const offset = Number(listDetail.dataset.listOffset || 0);
   await loadCompanyLists();
-  await loadCompanyListDetail(listId);
+  await loadCompanyListDetail(listId, query, offset);
   showToast("Empresa removida da lista. O desbloqueio continua disponível para a organização.");
 }
 
@@ -1870,6 +1985,26 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
   const result = await response.json();
   saveListDialog.close();
   updateCreditIndicator({ unlimited_credits: result.unlimited_credits, credit_balance: result.credit_balance });
+  const selectedOption = document.querySelector("#target-list").selectedOptions[0];
+  const listName = newName || (selectedOption?.textContent || "").replace(/\s+\(\d+\)$/, "");
+  lastCompanySearch.forEach((company) => {
+    if (!selectedCompanyCnpjs.has(company.cnpj)) return;
+    company.saved = true;
+    company.saved_lists = company.saved_lists || [];
+    if (!company.saved_lists.some((list) => list.id === listId)) {
+      company.saved_lists.unshift({ id: listId, name: listName });
+    }
+  });
+  if (lastCompanySearchData) {
+    const savedCount = lastCompanySearch.filter((company) => company.saved).length;
+    lastCompanySearchData.segments = {
+      total: lastCompanySearch.length,
+      new: lastCompanySearch.length - savedCount,
+      saved: savedCount,
+    };
+    updateCompanySearchTabs(lastCompanySearchData);
+    renderCompanySearchView();
+  }
   showToast(`${result.added.toLocaleString("pt-BR")} empresa${result.added === 1 ? "" : "s"} adicionada${result.added === 1 ? "" : "s"} à lista.`);
 });
 
@@ -1948,8 +2083,22 @@ listsGrid.addEventListener("click", (event) => {
   if (openButton) loadCompanyListDetail(openButton.dataset.openList);
 });
 
+listDetail.addEventListener("submit", (event) => {
+  const form = event.target.closest("[data-list-search-form]");
+  if (!form) return;
+  event.preventDefault();
+  loadCompanyListDetail(listDetail.dataset.listId, form.querySelector("[data-list-query]").value, 0);
+});
+
 listDetail.addEventListener("click", async (event) => {
   const listId = listDetail.dataset.listId;
+  if (event.target.closest("[data-clear-list-search]")) {
+    await loadCompanyListDetail(listId);
+  }
+  const pageButton = event.target.closest("[data-list-offset]");
+  if (pageButton && !pageButton.disabled) {
+    await loadCompanyListDetail(listId, listDetail.dataset.listQuery || "", Number(pageButton.dataset.listOffset));
+  }
   if (event.target.closest("[data-edit-list]")) {
     openEditListDialog(JSON.parse(listDetail.dataset.list || "{}"));
   }
@@ -1966,7 +2115,7 @@ listDetail.addEventListener("click", async (event) => {
   }
   const downloadButton = event.target.closest("[data-download-list]");
   if (downloadButton) {
-    await runButtonAction(downloadButton, "Preparando CSV…", () => downloadCompanySearch(JSON.parse(listDetail.dataset.companies || "[]"), "lista-empresas.csv"));
+    await runButtonAction(downloadButton, "Preparando CSV…", () => downloadCsvResponse(`/api/company-lists/${listId}/export.csv`, {}, "lista-empresas.csv"));
   }
   if (event.target.closest("[data-delete-list]")) {
     if (!window.confirm("Excluir esta lista e remover todas as empresas dela?")) return;

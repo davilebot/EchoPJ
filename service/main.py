@@ -1615,11 +1615,45 @@ def create_company_list(payload: CompanyListRequest, user: dict = Depends(requir
 
 
 @app.get("/api/company-lists/{list_id}")
-def get_company_list(list_id: str, user: dict = Depends(require_organization)) -> dict:
-    company_list = saas_store.company_list_detail(user["organization_id"], list_id)
+def get_company_list(
+    list_id: str,
+    q: str = Query(default="", max_length=120),
+    limit: int = Query(default=50, ge=1, le=250),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(require_organization),
+) -> dict:
+    company_list = saas_store.company_list_detail(
+        user["organization_id"], list_id, query=q, limit=limit, offset=offset,
+    )
     if not company_list:
         raise HTTPException(status_code=404, detail="Lista não encontrada.")
     return company_list
+
+
+@app.get("/api/company-lists/{list_id}/export.csv")
+def export_company_list(list_id: str, user: dict = Depends(require_organization)) -> Response:
+    require_capability(user, "export", "exportar listas")
+    enforce_heavy_rate_limit(user, "exports")
+    company_list = saas_store.company_list_detail(user["organization_id"], list_id)
+    if not company_list:
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    content = export_companies_csv(company_list["companies"])
+    credit = saas_store.credit_estimate(user["organization_id"], [])
+    saas_store.record_product_event(
+        user["organization_id"], user["id"], "company_list.exported",
+        subject_type="company_list", subject_id=list_id,
+        metadata={"company_count": company_list["company_count"]},
+    )
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="lista-empresas.csv"',
+            "X-Credits-Spent": "0",
+            "X-Credit-Balance": str(credit["credit_balance"]),
+            "X-Unlimited-Credits": str(credit["unlimited_credits"]).lower(),
+        },
+    )
 
 
 @app.put("/api/company-lists/{list_id}")
@@ -1834,11 +1868,17 @@ def search_municipality_options(
     }
 
 
-@app.post("/api/search")
-def search_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
-    enforce_heavy_rate_limit(user, "search")
+def _company_search_response(
+    payload: CompanySearchRequest,
+    user: dict,
+    *,
+    preview: bool,
+) -> dict:
+    filters = payload.model_dump()
+    if preview:
+        filters["limit"] = min(payload.limit, 40)
     try:
-        results, capabilities, duration_ms, has_more = repository.search_companies(payload.model_dump())
+        results, capabilities, duration_ms, has_more = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except QueryCanceled as error:
@@ -1846,22 +1886,54 @@ def search_companies(payload: CompanySearchRequest, user: dict = Depends(require
             status_code=408,
             detail="A busca ficou ampla demais. Acrescente uma regiao, UF ou CNAE e tente novamente.",
         ) from error
+    memberships = saas_store.company_list_memberships(
+        user["organization_id"],
+        [company["cnpj"] for company in results],
+    )
+    enriched_results = []
+    for company in results:
+        saved_lists = memberships.get(company["cnpj"], [])
+        enriched_results.append({
+            **company,
+            "saved": bool(saved_lists),
+            "saved_lists": saved_lists,
+        })
+    saved_count = sum(1 for company in enriched_results if company["saved"])
     response = {
-        "results": results,
-        "returned": len(results),
-        "limit": payload.limit,
+        "results": enriched_results,
+        "returned": len(enriched_results),
+        "limit": filters["limit"],
         "has_more": has_more,
+        "preview": preview,
+        "segments": {
+            "total": len(enriched_results),
+            "new": len(enriched_results) - saved_count,
+            "saved": saved_count,
+        },
         "dataset_version": repository.current_version(),
         "capabilities": capabilities.as_dict(),
         "timing_ms": duration_ms,
     }
-    saas_store.record_product_event(
-        user["organization_id"],
-        user["id"],
-        "search.executed",
-        metadata={"returned": len(results), "limit": payload.limit},
-    )
+    if not preview:
+        saas_store.record_product_event(
+            user["organization_id"],
+            user["id"],
+            "search.executed",
+            metadata={"returned": len(enriched_results), "limit": payload.limit},
+        )
     return response
+
+
+@app.post("/api/search")
+def search_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "search")
+    return _company_search_response(payload, user, preview=False)
+
+
+@app.post("/api/search/preview")
+def preview_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "search-preview")
+    return _company_search_response(payload, user, preview=True)
 
 
 @app.get("/api/explorer/overview")
