@@ -313,6 +313,48 @@ class OrganizationAPITests(unittest.TestCase):
             403,
         )
 
+    def test_internal_admin_can_draft_and_publish_versioned_billing_catalog(self):
+        headers = {"x-organization-id": str(self.org)}
+        offer = {
+            "code": "growth", "name": "Crescimento", "kind": "subscription",
+            "price_cents": 14990, "credits": 1000, "cycle": "MONTHLY",
+            "description": "Créditos mensais para prospecção recorrente.",
+            "features": ["1.000 créditos por mês", "Saldo compartilhado"],
+            "highlighted": True,
+        }
+        self.assertEqual(self.request(
+            "/api/admin/billing/catalog", token=self.member_token,
+            headers=headers,
+        )[0], 403)
+        status, draft_state, _ = self.request(
+            "/api/admin/billing/catalog/draft", "PUT", {"offers": [offer]},
+            self.owner_token, headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(draft_state["draft"]["revision"], 1)
+        self.assertEqual(draft_state["active"]["offers"], [])
+        self.assertFalse(self.request("/api/billing/catalog")[1]["configured"])
+        duplicate_highlight = {**offer, "code": "scale", "name": "Escala"}
+        self.assertEqual(self.request(
+            "/api/admin/billing/catalog/draft", "PUT", {"offers": [offer, duplicate_highlight]},
+            self.owner_token, headers,
+        )[0], 422)
+        status, published, _ = self.request(
+            "/api/admin/billing/catalog/publish", "POST", token=self.owner_token, headers=headers,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(published["source"], "published")
+        self.assertIsNone(published["draft"])
+        public = self.request("/api/billing/catalog")[1]
+        self.assertTrue(public["configured"])
+        self.assertEqual((public["offers"][0]["code"], public["offers"][0]["price_cents"]), ("growth", 14990))
+        revised = {**offer, "price_cents": 17990}
+        self.assertEqual(self.request(
+            "/api/admin/billing/catalog/draft", "PUT", {"offers": [revised]},
+            self.owner_token, headers,
+        )[1]["draft"]["revision"], 2)
+        self.assertEqual(self.request("/api/billing/catalog")[1]["offers"][0]["price_cents"], 14990)
+
     def test_checkout_is_admin_only_and_webhook_grants_once_after_payment(self):
         catalog = BillingCatalog(json.dumps([{
             "code": "growth", "name": "Crescimento", "kind": "subscription",

@@ -61,6 +61,8 @@ class BillingCatalog:
             offer = self._parse_offer(item)
             if offer.code in self._offers:
                 raise PaymentError(f"O plano {offer.code} aparece mais de uma vez no catálogo.", 500)
+            if offer.highlighted and any(existing.highlighted for existing in self._offers.values()):
+                raise PaymentError("O catálogo pode destacar somente uma oferta.", 500)
             self._offers[offer.code] = offer
 
     @staticmethod

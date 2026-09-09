@@ -159,6 +159,14 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-launch-checklist strong { margin-top: 3px; font-size: 11px; }
 .admin-launch-checklist p { margin: 4px 0 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
 .admin-launch-checklist a { color: var(--accent); font-size: 9px; font-weight: 750; text-decoration: none; }
+.admin-commercial-catalog { margin-top: 18px; padding: 22px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.admin-commercial-catalog .admin-section-heading { margin-bottom: 14px; }
+.admin-catalog-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.admin-catalog-summary article { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.admin-catalog-summary strong, .admin-catalog-summary span, .admin-catalog-summary small { display: block; }
+.admin-catalog-summary strong { font-size: 15px; }
+.admin-catalog-summary span { margin-top: 5px; color: var(--muted); font-size: 9px; }
+.admin-catalog-summary small { margin-top: 7px; overflow: hidden; color: var(--accent); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
 .admin-section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
 .admin-section-heading h2, .admin-section-heading h3 { margin: 0 0 5px; }
 .admin-catalog-actions { display: flex; align-items: end; gap: 8px; }
@@ -215,6 +223,17 @@ summary { cursor: pointer; font-size: 14px; }
 .admin-customer-result input[readonly] { cursor: text; color: var(--text); background: #101014; }
 .admin-customer-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .admin-customer-actions .secondary-button { display: grid; min-height: 44px; place-items: center; text-decoration: none; }
+.admin-catalog-dialog { width: min(calc(100% - 28px), 920px); }
+.admin-catalog-offers { display: grid; gap: 12px; }
+.admin-catalog-offer { padding: 16px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); }
+.admin-catalog-offer-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 13px; }
+.admin-catalog-offer-header strong { font-size: 12px; }
+.admin-remove-offer { width: auto; min-height: 34px; padding: 6px 10px; color: var(--danger); border: 1px solid rgba(255, 133, 133, .25); background: rgba(153, 27, 27, .1); }
+.admin-offer-grid { display: grid; grid-template-columns: 1.1fr .8fr .8fr .8fr; gap: 10px; }
+.admin-offer-grid .wide { grid-column: span 2; }
+.admin-offer-grid .full { grid-column: 1 / -1; }
+.admin-offer-grid textarea { min-height: 86px; resize: vertical; }
+.admin-catalog-form-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
 .admin-ledger { margin-top: 24px; }
 .admin-ledger h3 { margin-bottom: 12px; }
 .admin-subscription-summary { display: flex; justify-content: space-between; gap: 14px; margin-bottom: 12px; padding: 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
@@ -267,6 +286,8 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-search { min-width: 100%; }
   .admin-operations-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-launch-checklist { grid-template-columns: 1fr; }
+  .admin-catalog-summary { grid-template-columns: 1fr; }
+  .admin-offer-grid { grid-template-columns: 1fr 1fr; }
   .admin-support-filter { min-width: 100%; grid-template-columns: 1fr 1fr auto; }
   .admin-support-diagnostic { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .admin-provisioning-facts { grid-template-columns: 1fr 1fr; }
@@ -280,6 +301,8 @@ summary { cursor: pointer; font-size: 14px; }
   .admin-provisioning-header, .admin-provisioning-actions { align-items: stretch; flex-direction: column; }
   .admin-provisioning-facts { grid-template-columns: 1fr; }
   .admin-customer-actions { grid-template-columns: 1fr; }
+  .admin-offer-grid, .admin-catalog-form-actions { grid-template-columns: 1fr; }
+  .admin-offer-grid .wide, .admin-offer-grid .full { grid-column: auto; }
   .admin-subscription-summary { flex-direction: column; }
   .admin-search { grid-template-columns: 1fr; }
   .admin-pagination { align-items: stretch; flex-direction: column; }

@@ -235,6 +235,20 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_billing_webhook_received
                 ON billing_webhook_events(received_at DESC);
+            CREATE TABLE IF NOT EXISTS billing_catalog_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                revision INTEGER NOT NULL UNIQUE,
+                status TEXT NOT NULL CHECK(status IN ('draft','published','archived')),
+                catalog_json TEXT NOT NULL,
+                created_by INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                published_by INTEGER,
+                published_at TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_catalog_one_draft
+                ON billing_catalog_versions(status) WHERE status='draft';
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_catalog_one_published
+                ON billing_catalog_versions(status) WHERE status='published';
             CREATE TABLE IF NOT EXISTS support_tickets (
                 id TEXT PRIMARY KEY,
                 organization_id INTEGER NOT NULL,
@@ -275,6 +289,74 @@ class SaaSStore:
     def health_check(self) -> bool:
         with self._lock:
             return self._connection.execute("SELECT 1").fetchone()[0] == 1
+
+    @staticmethod
+    def _catalog_version(row: sqlite3.Row | None) -> dict[str, Any] | None:
+        return dict(row) if row else None
+
+    def billing_catalog_state(self) -> dict[str, Any]:
+        with self._lock:
+            draft = self._connection.execute(
+                "SELECT * FROM billing_catalog_versions WHERE status='draft' LIMIT 1"
+            ).fetchone()
+            published = self._connection.execute(
+                "SELECT * FROM billing_catalog_versions WHERE status='published' LIMIT 1"
+            ).fetchone()
+            history = self._connection.execute(
+                """SELECT revision,status,created_by,created_at,published_by,published_at
+                   FROM billing_catalog_versions ORDER BY revision DESC LIMIT 20"""
+            ).fetchall()
+        return {
+            "draft": self._catalog_version(draft),
+            "published": self._catalog_version(published),
+            "history": [dict(row) for row in history],
+        }
+
+    def published_billing_catalog_json(self) -> str | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT catalog_json FROM billing_catalog_versions WHERE status='published' LIMIT 1"
+            ).fetchone()
+        return row["catalog_json"] if row else None
+
+    def save_billing_catalog_draft(self, actor_id: int, catalog_json: str) -> dict[str, Any]:
+        now = utc_now()
+        with self._transaction():
+            self._connection.execute("DELETE FROM billing_catalog_versions WHERE status='draft'")
+            revision = self._connection.execute(
+                "SELECT COALESCE(max(revision),0)+1 FROM billing_catalog_versions"
+            ).fetchone()[0]
+            catalog_id = self._connection.execute(
+                """INSERT INTO billing_catalog_versions(
+                     revision,status,catalog_json,created_by,created_at
+                   ) VALUES(?,'draft',?,?,?)""",
+                (revision, catalog_json, actor_id, now),
+            ).lastrowid
+            row = self._connection.execute(
+                "SELECT * FROM billing_catalog_versions WHERE id=?", (catalog_id,)
+            ).fetchone()
+        return dict(row)
+
+    def publish_billing_catalog(self, actor_id: int) -> dict[str, Any]:
+        now = utc_now()
+        with self._transaction():
+            draft = self._connection.execute(
+                "SELECT * FROM billing_catalog_versions WHERE status='draft' LIMIT 1"
+            ).fetchone()
+            if not draft:
+                raise SaaSError("Salve um rascunho válido antes de publicar o catálogo.", 409)
+            self._connection.execute(
+                "UPDATE billing_catalog_versions SET status='archived' WHERE status='published'"
+            )
+            self._connection.execute(
+                """UPDATE billing_catalog_versions
+                   SET status='published',published_at=?,published_by=? WHERE id=?""",
+                (now, actor_id, draft["id"]),
+            )
+            row = self._connection.execute(
+                "SELECT * FROM billing_catalog_versions WHERE id=?", (draft["id"],)
+            ).fetchone()
+        return dict(row)
 
     @contextmanager
     def _transaction(self):

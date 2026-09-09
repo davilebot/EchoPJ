@@ -24,6 +24,7 @@ from .matching import MatchingService
 from .models import (
     AccountUpdateRequest,
     BatchRequest,
+    BillingCatalogDraftRequest,
     CompanyLookupRequest,
     CustomerWorkspaceRequest,
     CompanySearchRequest,
@@ -99,6 +100,13 @@ asaas_client = AsaasClient(
     settings.asaas_api_key,
     timeout=settings.asaas_timeout_seconds,
 )
+
+
+def current_billing_catalog() -> BillingCatalog:
+    published = saas_store.published_billing_catalog_json()
+    return BillingCatalog(published) if published is not None else billing_catalog
+
+
 if legacy_organization_id:
     saas_store.ensure_organization(
         legacy_organization_id,
@@ -854,6 +862,7 @@ def billing_summary(user: dict = Depends(require_organization)) -> dict:
 
 @app.get("/api/billing/catalog")
 def billing_catalog_public() -> dict:
+    catalog = current_billing_catalog()
     webhook_ready = 32 <= len(settings.asaas_webhook_token) <= 255
     provider_ready = (
         settings.saas_billing_provider == "asaas"
@@ -863,8 +872,8 @@ def billing_catalog_public() -> dict:
     return {
         "provider": settings.saas_billing_provider,
         "enabled": bool(settings.saas_billing_enabled and provider_ready),
-        "configured": bool(billing_catalog.offers()),
-        "offers": [offer.public() for offer in billing_catalog.offers()],
+        "configured": bool(catalog.offers()),
+        "offers": [offer.public() for offer in catalog.offers()],
         "payment_methods": ["Pix", "Cartão de crédito"],
     }
 
@@ -888,7 +897,7 @@ def create_billing_checkout(
     client_key = request.headers.get("idempotency-key")
     if client_key and (len(client_key) > 120 or not all(character.isalnum() or character in "-_:" for character in client_key)):
         raise HTTPException(status_code=422, detail="Chave de repetição inválida.")
-    offer = billing_catalog.get(payload.plan_code)
+    offer = current_billing_catalog().get(payload.plan_code)
     if offer.kind == "subscription":
         blocker = saas_store.subscription_purchase_blocker(
             user["organization_id"], client_key=client_key,
@@ -984,11 +993,88 @@ def admin_billing_events(
     return {"events": saas_store.admin_billing_events(limit=limit)}
 
 
+def _admin_billing_catalog_state() -> dict:
+    state = saas_store.billing_catalog_state()
+
+    def version_payload(version: dict | None) -> dict | None:
+        if not version:
+            return None
+        catalog = BillingCatalog(version["catalog_json"])
+        return {
+            "revision": version["revision"],
+            "status": version["status"],
+            "created_by": version["created_by"],
+            "created_at": version["created_at"],
+            "published_by": version.get("published_by"),
+            "published_at": version.get("published_at"),
+            "offers": [offer.public() for offer in catalog.offers()],
+        }
+
+    active = current_billing_catalog()
+    published = version_payload(state["published"])
+    return {
+        "source": "published" if published else ("deployment" if billing_catalog.offers() else "empty"),
+        "active": published or {
+            "revision": None,
+            "status": "deployment" if billing_catalog.offers() else "empty",
+            "created_by": None,
+            "created_at": None,
+            "published_by": None,
+            "published_at": None,
+            "offers": [offer.public() for offer in active.offers()],
+        },
+        "draft": version_payload(state["draft"]),
+        "history": state["history"],
+        "checkout_enabled": billing_catalog_public()["enabled"],
+    }
+
+
+@app.get("/api/admin/billing/catalog")
+def admin_billing_catalog(user: dict = Depends(require_internal_admin)) -> dict:
+    return _admin_billing_catalog_state()
+
+
+@app.put("/api/admin/billing/catalog/draft")
+def save_admin_billing_catalog_draft(
+    payload: BillingCatalogDraftRequest,
+    user: dict = Depends(require_internal_admin),
+) -> dict:
+    raw_json = json.dumps(
+        [offer.model_dump(mode="json") for offer in payload.offers],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    try:
+        validated = BillingCatalog(raw_json)
+    except PaymentError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    canonical = json.dumps(
+        [offer.public() for offer in validated.offers()],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    saas_store.save_billing_catalog_draft(user["id"], canonical)
+    return _admin_billing_catalog_state()
+
+
+@app.post("/api/admin/billing/catalog/publish")
+def publish_admin_billing_catalog(user: dict = Depends(require_internal_admin)) -> dict:
+    state = saas_store.billing_catalog_state()
+    if not state["draft"]:
+        raise SaaSError("Salve um rascunho válido antes de publicar o catálogo.", 409)
+    BillingCatalog(state["draft"]["catalog_json"])
+    saas_store.publish_billing_catalog(user["id"])
+    return _admin_billing_catalog_state()
+
+
 @app.get("/api/admin/operations")
 def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
     application = readiness_report()
     backup = backup_status(settings.saas_backup_status_path)
     billing = billing_catalog_public()
+    catalog = current_billing_catalog()
     webhook_ready = 32 <= len(settings.asaas_webhook_token) <= 255
     provider_ready = settings.saas_billing_provider == "asaas" and asaas_client.available and webhook_ready
     return {
@@ -997,7 +1083,7 @@ def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
         "backup": backup,
         "billing": {
             "enabled": billing["enabled"],
-            "catalog_offers": len(billing_catalog.offers()),
+            "catalog_offers": len(catalog.offers()),
             "provider": settings.saas_billing_provider,
         },
         "launch": commercial_launch_readiness(

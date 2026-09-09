@@ -39,6 +39,9 @@ class PaymentTests(unittest.TestCase):
         self.assertEqual(offer.public()["cycle"], "MONTHLY")
         with self.assertRaises(PaymentError):
             BillingCatalog('[{"code":"bad","name":"Bad","kind":"subscription","price_cents":0,"credits":1,"cycle":"MONTHLY","description":"Bad","features":["x"]}]')
+        base = json.loads(CATALOG)[0]
+        with self.assertRaises(PaymentError):
+            BillingCatalog(json.dumps([base, {**base, "code": "scale", "highlighted": True}]))
 
     def test_asaas_checkout_keeps_payment_data_on_hosted_page(self):
         opener = Mock(return_value=Response({"id": "chk_1", "link": "https://sandbox.asaas.com/checkout/1"}))

@@ -4,6 +4,7 @@ const adminMessage = document.querySelector("#admin-message");
 const adminRows = document.querySelector("#admin-organizations");
 const adminDialog = document.querySelector("#admin-organization-dialog");
 const adminCustomerDialog = document.querySelector("#admin-customer-dialog");
+const adminCatalogDialog = document.querySelector("#admin-catalog-dialog");
 const adminSupportDialog = document.querySelector("#admin-support-dialog");
 const adminPrivacyDialog = document.querySelector("#admin-privacy-dialog");
 const pageSize = 50;
@@ -12,6 +13,7 @@ let adminTotal = 0;
 let selectedOrganizationId = null;
 let selectedSupportTicketId = null;
 let selectedPrivacyRequestId = null;
+let adminBillingCatalog = null;
 let privacyRequests = [];
 const supportStatusLabels = { open: "Aberto", in_progress: "Em atendimento", waiting_customer: "Aguardando cliente", resolved: "Resolvido", closed: "Encerrado" };
 const supportPriorityLabels = { low: "Baixa", normal: "Normal", high: "Alta", urgent: "Urgente" };
@@ -24,6 +26,10 @@ function escapeHtml(value) {
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—";
+}
+
+function formatMoney(cents) {
+  return (Number(cents || 0) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function planLabel(value) {
@@ -119,6 +125,75 @@ function renderLaunchReadiness(launch) {
       : "";
     return `<article data-state="${item.ready ? "ready" : "pending"}"><span class="admin-launch-icon" aria-hidden="true">${item.ready ? "✓" : "!"}</span><div><small>${escapeHtml(item.category)}</small><strong>${escapeHtml(item.label)}</strong><p>${escapeHtml(item.detail)}</p></div>${action}</article>`;
   }).join("");
+}
+
+function renderBillingCatalogSummary(data) {
+  adminBillingCatalog = data;
+  const activeOffers = data.active?.offers || [];
+  const revision = data.active?.revision ? `Versão ${data.active.revision}` : data.source === "deployment" ? "Configuração do servidor" : "Nenhuma versão publicada";
+  const draft = data.draft ? `Rascunho ${data.draft.revision} pronto para revisão` : "Nenhum rascunho pendente";
+  document.querySelector("#admin-catalog-summary").innerHTML = [
+    [activeOffers.length.toLocaleString("pt-BR"), activeOffers.length === 1 ? "oferta publicada" : "ofertas publicadas", revision],
+    [data.draft ? "Pendente" : "Em dia", "estado editorial", draft],
+    [data.checkout_enabled ? "Ativo" : "Bloqueado", "checkout para clientes", data.checkout_enabled ? "Provedor e webhook prontos" : "Aguardando configuração segura"],
+  ].map(([value, label, detail]) => `<article><strong>${escapeHtml(value)}</strong><span>${escapeHtml(label)}</span><small>${escapeHtml(detail)}</small></article>`).join("");
+}
+
+async function loadBillingCatalog() {
+  try { renderBillingCatalogSummary(await adminFetch("/api/admin/billing/catalog")); }
+  catch (error) { notify(error.message); }
+}
+
+function emptyCatalogOffer() {
+  return { code: "", name: "", kind: "subscription", price_cents: 0, credits: 0, description: "", features: [], cycle: "MONTHLY", highlighted: false };
+}
+
+function catalogOfferCard(offer, index) {
+  const price = offer.price_cents ? (Number(offer.price_cents) / 100).toFixed(2) : "";
+  const selected = (value, expected) => value === expected ? " selected" : "";
+  const cycleDisabled = offer.kind === "credit_pack";
+  return `<article class="admin-catalog-offer" data-offer-index="${index}">
+    <div class="admin-catalog-offer-header"><strong>Oferta ${index + 1}</strong><button class="admin-remove-offer" type="button" data-remove-offer>Remover</button></div>
+    <div class="admin-offer-grid">
+      <label class="wide">Nome<input data-offer-field="name" required maxlength="80" value="${escapeHtml(offer.name)}" placeholder="Ex.: Crescimento"></label>
+      <label>Tipo<select data-offer-field="kind"><option value="subscription"${selected(offer.kind, "subscription")}>Assinatura</option><option value="credit_pack"${selected(offer.kind, "credit_pack")}>Pacote avulso</option></select></label>
+      <label>Código interno<input data-offer-field="code" required maxlength="50" pattern="[a-z0-9][a-z0-9_-]*" value="${escapeHtml(offer.code)}" placeholder="crescimento"></label>
+      <label>Preço em reais<input data-offer-field="price" required type="number" min="0.01" max="1000000" step="0.01" value="${escapeHtml(price)}" placeholder="149,90"></label>
+      <label>Créditos<input data-offer-field="credits" required type="number" min="1" max="100000000" step="1" value="${offer.credits || ""}" placeholder="1000"></label>
+      <label>Ciclo<select data-offer-field="cycle" ${cycleDisabled ? "disabled" : ""}><option value="MONTHLY"${selected(offer.cycle, "MONTHLY")}>Mensal</option><option value="QUARTERLY"${selected(offer.cycle, "QUARTERLY")}>Trimestral</option><option value="SEMIANNUALLY"${selected(offer.cycle, "SEMIANNUALLY")}>Semestral</option><option value="YEARLY"${selected(offer.cycle, "YEARLY")}>Anual</option></select></label>
+      <label class="full">Descrição<input data-offer-field="description" required maxlength="240" value="${escapeHtml(offer.description)}" placeholder="Para equipes que prospectam de forma recorrente."></label>
+      <label class="full">Benefícios <span class="field-hint">Um benefício por linha, até 12.</span><textarea data-offer-field="features" required maxlength="1932" placeholder="Créditos compartilhados pela equipe&#10;Buscas e listas ilimitadas">${escapeHtml((offer.features || []).join("\n"))}</textarea></label>
+      <label class="checkbox-label full"><input data-offer-field="highlighted" type="checkbox" ${offer.highlighted ? "checked" : ""}>Destacar como oferta recomendada</label>
+    </div>
+  </article>`;
+}
+
+function renderCatalogEditor(offers) {
+  const values = offers.length ? offers : [emptyCatalogOffer()];
+  document.querySelector("#admin-catalog-offers").innerHTML = values.map(catalogOfferCard).join("");
+  document.querySelector("#admin-publish-catalog").disabled = !adminBillingCatalog?.draft;
+}
+
+function openBillingCatalog() {
+  const offers = adminBillingCatalog?.draft?.offers || adminBillingCatalog?.active?.offers || [];
+  document.querySelector("#admin-catalog-message").classList.add("hidden");
+  renderCatalogEditor(offers);
+  adminCatalogDialog.showModal();
+}
+
+function readCatalogOffers() {
+  return Array.from(document.querySelectorAll(".admin-catalog-offer")).map((card) => {
+    const value = (field) => card.querySelector(`[data-offer-field="${field}"]`);
+    const kind = value("kind").value;
+    return {
+      code: value("code").value.trim().toLowerCase(), name: value("name").value.trim(), kind,
+      price_cents: Math.round(Number(value("price").value.replace(",", ".")) * 100),
+      credits: Number(value("credits").value), description: value("description").value.trim(),
+      features: value("features").value.split("\n").map((item) => item.trim()).filter(Boolean),
+      cycle: kind === "subscription" ? value("cycle").value : null,
+      highlighted: value("highlighted").checked,
+    };
+  });
 }
 
 async function loadOperations() {
@@ -374,6 +449,76 @@ document.querySelector("#admin-customer-form").addEventListener("submit", async 
   finally { button.disabled = false; }
 });
 
+document.querySelector("#admin-manage-catalog").addEventListener("click", openBillingCatalog);
+document.querySelector("#admin-catalog-close").addEventListener("click", () => adminCatalogDialog.close());
+adminCatalogDialog.addEventListener("click", (event) => { if (event.target === adminCatalogDialog) adminCatalogDialog.close(); });
+document.querySelector("#admin-add-offer").addEventListener("click", () => {
+  const offers = readCatalogOffers();
+  if (offers.length >= 12) {
+    notify("O catálogo aceita até 12 ofertas.", document.querySelector("#admin-catalog-message"));
+    return;
+  }
+  renderCatalogEditor([...offers, emptyCatalogOffer()]);
+});
+document.querySelector("#admin-catalog-offers").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-offer]");
+  if (!button) return;
+  const offers = readCatalogOffers();
+  if (offers.length === 1) {
+    notify("Mantenha pelo menos uma oferta no catálogo.", document.querySelector("#admin-catalog-message"));
+    return;
+  }
+  offers.splice(Number(button.closest("[data-offer-index]").dataset.offerIndex), 1);
+  renderCatalogEditor(offers);
+});
+document.querySelector("#admin-catalog-offers").addEventListener("change", (event) => {
+  if (event.target.matches('[data-offer-field="kind"]')) {
+    const cycle = event.target.closest(".admin-catalog-offer").querySelector('[data-offer-field="cycle"]');
+    cycle.disabled = event.target.value === "credit_pack";
+  }
+  if (event.target.matches('[data-offer-field="highlighted"]') && event.target.checked) {
+    document.querySelectorAll('[data-offer-field="highlighted"]').forEach((checkbox) => {
+      if (checkbox !== event.target) checkbox.checked = false;
+    });
+  }
+});
+document.querySelector("#admin-catalog-offers").addEventListener("focusout", (event) => {
+  if (!event.target.matches('[data-offer-field="name"]')) return;
+  const code = event.target.closest(".admin-catalog-offer").querySelector('[data-offer-field="code"]');
+  if (code.value.trim()) return;
+  code.value = event.target.value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 50);
+});
+document.querySelector("#admin-catalog-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const message = document.querySelector("#admin-catalog-message");
+  const button = document.querySelector("#admin-save-catalog");
+  message.classList.add("hidden");
+  button.disabled = true;
+  try {
+    const data = await adminFetch("/api/admin/billing/catalog/draft", {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ offers: readCatalogOffers() }),
+    });
+    renderBillingCatalogSummary(data);
+    renderCatalogEditor(data.draft.offers);
+    notify("Rascunho salvo. Os clientes ainda veem a versão publicada.", message, true);
+  } catch (error) { notify(error.message, message); }
+  finally { button.disabled = false; }
+});
+document.querySelector("#admin-publish-catalog").addEventListener("click", async (event) => {
+  if (!window.confirm("Publicar este catálogo na página de planos para todos os clientes?")) return;
+  const message = document.querySelector("#admin-catalog-message");
+  message.classList.add("hidden");
+  event.currentTarget.disabled = true;
+  try {
+    const data = await adminFetch("/api/admin/billing/catalog/publish", { method: "POST" });
+    renderBillingCatalogSummary(data);
+    renderCatalogEditor(data.active.offers);
+    notify("Catálogo publicado na página de planos.", message, true);
+    await loadOperations();
+  } catch (error) { notify(error.message, message); }
+  finally { event.currentTarget.disabled = !adminBillingCatalog?.draft; }
+});
+
 document.querySelector("#admin-search-form").addEventListener("submit", (event) => { event.preventDefault(); adminOffset = 0; loadOrganizations(); });
 document.querySelector("#admin-previous").addEventListener("click", () => { adminOffset = Math.max(0, adminOffset - pageSize); loadOrganizations(); });
 document.querySelector("#admin-next").addEventListener("click", () => { if (adminOffset + pageSize < adminTotal) adminOffset += pageSize; loadOrganizations(); });
@@ -486,6 +631,7 @@ document.querySelector("#admin-privacy-form").addEventListener("submit", async (
 
 loadOrganizations();
 loadOperations();
+loadBillingCatalog();
 loadSupportTickets();
 loadPrivacyRequests();
 document.querySelector("#admin-refresh-operations").addEventListener("click", loadOperations);

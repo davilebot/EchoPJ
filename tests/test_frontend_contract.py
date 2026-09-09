@@ -136,6 +136,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="admin-transfer-responsibility"', html)
         self.assertIn("provisioning.status", script)
         self.assertIn("pilot-transfer_pending", styles)
+        self.assertIn('id="admin-commercial-title"', html)
+        self.assertIn('id="admin-catalog-dialog"', html)
+        self.assertIn('id="admin-catalog-offers"', html)
+        self.assertIn('/api/admin/billing/catalog/draft', script)
+        self.assertIn('/api/admin/billing/catalog/publish', script)
+        self.assertIn("readCatalogOffers", script)
+        self.assertIn(".admin-catalog-offer", styles)
 
     def test_billing_catalog_checkout_and_admin_audit_have_complete_ui(self):
         html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")

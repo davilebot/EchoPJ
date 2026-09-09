@@ -124,6 +124,10 @@ estão em [`.env.example`](.env.example).
   configuração publicada. Domínio, e-mail, documentos, cadastro, catálogo,
   cobrança e controles operacionais permanecem visivelmente pendentes até a
   validação real de cada item.
+- O catálogo comercial pode ser preparado no painel sem editar arquivos do
+  servidor. Alterações ficam em rascunho até uma publicação confirmada; cada
+  pedido de pagamento preserva preço e créditos da oferta contratada, mesmo se
+  uma versão futura mudar os valores.
 - O construtor de listas oferece segmentos iniciais que respeitam os dados
   disponíveis na versão atual da Receita. A biblioteca também sugere modelos
   editáveis para prospecção prioritária, qualificação e acompanhamento.

@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,6 +28,22 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertEqual(result["credits_spent"], 0)
         self.assertEqual(result["total"], 2)
         self.assertEqual(self.store.billing_summary(1)["unlocked_companies"], 2)
+
+    def test_billing_catalog_keeps_draft_separate_and_versions_publications(self):
+        first = json.dumps([{"code": "growth", "name": "Crescimento"}])
+        draft = self.store.save_billing_catalog_draft(7, first)
+        self.assertEqual((draft["revision"], draft["status"]), (1, "draft"))
+        self.assertIsNone(self.store.published_billing_catalog_json())
+        published = self.store.publish_billing_catalog(8)
+        self.assertEqual((published["revision"], published["status"], published["published_by"]), (1, "published", 8))
+        self.assertEqual(self.store.published_billing_catalog_json(), first)
+        second = json.dumps([{"code": "scale", "name": "Escala"}])
+        next_draft = self.store.save_billing_catalog_draft(9, second)
+        self.assertEqual(next_draft["revision"], 2)
+        self.assertEqual(self.store.published_billing_catalog_json(), first)
+        state = self.store.billing_catalog_state()
+        self.assertEqual(state["draft"]["catalog_json"], second)
+        self.assertEqual(state["published"]["catalog_json"], first)
 
     def test_trial_credits_are_spent_only_on_first_unlock(self):
         self.store.ensure_organization(2, initial_credits=2)

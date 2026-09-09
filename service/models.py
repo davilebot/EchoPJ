@@ -207,6 +207,48 @@ class BillingCheckoutRequest(BaseModel):
         return value.strip().casefold()
 
 
+class BillingOfferRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=50, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+    name: str = Field(min_length=1, max_length=80)
+    kind: Literal["subscription", "credit_pack"]
+    price_cents: int = Field(ge=1, le=100_000_000)
+    credits: int = Field(ge=1, le=100_000_000)
+    description: str = Field(min_length=1, max_length=240)
+    features: list[str] = Field(min_length=1, max_length=12)
+    cycle: Literal["WEEKLY", "BIWEEKLY", "MONTHLY", "BIMONTHLY", "QUARTERLY", "SEMIANNUALLY", "YEARLY"] | None = None
+    highlighted: bool = False
+
+    @field_validator("code")
+    @classmethod
+    def clean_offer_code(cls, value: str) -> str:
+        return value.strip().casefold()
+
+    @field_validator("name", "description")
+    @classmethod
+    def clean_offer_text(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("features")
+    @classmethod
+    def clean_offer_features(cls, values: list[str]) -> list[str]:
+        cleaned = [" ".join(str(value).split()) for value in values]
+        if any(not value or len(value) > 160 for value in cleaned):
+            raise ValueError("Cada benefício precisa ter entre 1 e 160 caracteres.")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_offer_cycle(self):
+        if self.kind == "subscription" and not self.cycle:
+            raise ValueError("Escolha o ciclo da assinatura.")
+        if self.kind == "credit_pack":
+            self.cycle = None
+        return self
+
+
+class BillingCatalogDraftRequest(BaseModel):
+    offers: list[BillingOfferRequest] = Field(min_length=1, max_length=12)
+
+
 class BillingCancellationRequest(PrivacyPasswordRequest):
     reason: str = Field(default="", max_length=500)
 
