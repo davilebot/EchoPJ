@@ -14,7 +14,9 @@ mantém em memória uma janela limitada de requisições com contagem de erros,
 latência p50, p95 e p99 e rotas mais acessadas. O painel não armazena parâmetros,
 corpos, e-mails, CNPJs, senhas ou tokens.
 
-O backup publica `backup-status.json` de forma atômica depois de cada execução.
+O backup publica `status.json` dentro do diretório de backups de forma atômica
+depois de cada execução. Somente esse arquivo é montado como
+`/data/backup-status.json` em modo de leitura no container da v2.
 O painel considera o backup atrasado quando a última verificação bem-sucedida
 tem mais de oito horas, cobrindo o intervalo de seis horas do timer e uma margem
 operacional.
