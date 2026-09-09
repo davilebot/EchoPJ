@@ -23,7 +23,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = resolvedTheme;
   themeToggle.setAttribute("aria-pressed", String(resolvedTheme === "dark"));
   themeToggle.setAttribute("aria-label", resolvedTheme === "dark" ? "Ativar tema claro" : "Ativar tema escuro");
-  themeColor?.setAttribute("content", resolvedTheme === "dark" ? "#111114" : "#f8f9fa");
+  themeColor?.setAttribute("content", resolvedTheme === "dark" ? "#0e1112" : "#f5f7f8");
   try {
     localStorage.setItem("echopjs-theme", resolvedTheme);
   } catch (_) {}
@@ -818,6 +818,12 @@ function renderExplorerOverview(data) {
   const auxiliary = data.auxiliary;
   const status = auxiliary?.status || "não iniciada";
   const statusText = { staging: "Carga em andamento", current: "Disponível", ready: "Versão anterior", failed: "Falha na carga" }[status] || status;
+  const heroActiveCompanies = document.querySelector("#overview-active-companies");
+  const heroDatasetVersion = document.querySelector("#overview-dataset-version");
+  const heroTotalEstablishments = document.querySelector("#overview-total-establishments");
+  if (heroActiveCompanies) heroActiveCompanies.textContent = Number(data.active_establishments).toLocaleString("pt-BR");
+  if (heroDatasetVersion) heroDatasetVersion.textContent = data.dataset_version || "—";
+  if (heroTotalEstablishments) heroTotalEstablishments.textContent = `${Number(data.total_establishments).toLocaleString("pt-BR")} registros`;
   const progressRows = (data.progress || []).map((item) => {
     const percent = item.files ? Math.round(100 * item.completed_files / item.files) : 0;
     const state = item.failed ? "Falha" : item.running ? "Processando" : percent === 100 ? "Concluído" : "Aguardando";
@@ -1570,14 +1576,16 @@ async function loadSaaSOverview() {
       <div class="usage-chart-wrap"><div class="usage-chart" role="img" aria-label="Empresas desbloqueadas por dia nos últimos 30 dias">${usageBars}</div><div class="usage-chart-labels"><span>${formatBillingDate(usage.start_date)}</span><span>Empresas desbloqueadas por dia</span><span>${formatBillingDate(usage.end_date)}</span></div></div>
     </section>`;
     saasOverview.dataset.searches = JSON.stringify(data.recent_searches);
-    saasOverview.innerHTML = `${onboarding}<div class="workspace-metrics">
+    saasOverview.innerHTML = `${data.active_jobs ? `<button class="active-jobs-banner" type="button" data-switch-tab="history"><span class="spinner" aria-hidden="true"></span><span><strong>${data.active_jobs} processamento${data.active_jobs === 1 ? "" : "s"} em andamento</strong><small>Acompanhe o progresso e baixe os resultados quando quiser.</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>` : ""}
+    <div class="overview-section-head workspace-section-head"><div><span class="eyebrow">SEU WORKSPACE</span><h2>Resumo operacional</h2></div><p>Dados atualizados em tempo real</p></div>
+    <div class="workspace-metrics">
       <button type="button" data-switch-tab="billing"><span>Créditos</span><strong>${data.profile.unlimited_credits ? "Ilimitados" : Number(data.profile.credit_balance).toLocaleString("pt-BR")}</strong><small>${data.profile.unlimited_credits ? "Plano interno EchoHub" : "Saldo compartilhado"}</small></button>
       <button type="button" data-switch-tab="lists"><span>Empresas desbloqueadas</span><strong>${Number(data.unlocked_companies).toLocaleString("pt-BR")}</strong><small>Disponíveis sem nova cobrança</small></button>
       <button type="button" data-switch-tab="lists"><span>Listas</span><strong>${Number(data.list_count).toLocaleString("pt-BR")}</strong><small>Organizadas pela equipe</small></button>
       <button type="button" data-switch-tab="saved-searches"><span>Buscas salvas</span><strong>${Number(data.saved_search_count).toLocaleString("pt-BR")}</strong><small>Segmentos reutilizáveis</small></button>
     </div>
-    ${data.active_jobs ? `<button class="active-jobs-banner" type="button" data-switch-tab="history"><span class="spinner" aria-hidden="true"></span><span><strong>${data.active_jobs} processamento${data.active_jobs === 1 ? "" : "s"} em andamento</strong><small>Acompanhe o progresso e baixe os resultados quando quiser.</small></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>` : ""}
-    ${usageCard}
+    <div class="workspace-dashboard-grid ${onboarding ? "" : "single"}">${usageCard}${onboarding}</div>
+    <div class="overview-section-head workspace-section-head"><div><span class="eyebrow">BIBLIOTECA</span><h2>Continue de onde parou</h2></div><p>Atalhos do seu time</p></div>
     <div class="workspace-columns"><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">LISTAS RECENTES</span><h2>Empresas organizadas</h2></div><button class="secondary compact" type="button" data-switch-tab="lists">Ver todas</button></div>${recentLists}</section><section class="workspace-feed section-card"><div class="workspace-feed-head"><div><span class="eyebrow">BUSCAS RECENTES</span><h2>Segmentos da equipe</h2></div><button class="secondary compact" type="button" data-switch-tab="saved-searches">Ver todas</button></div>${recentSearches}</section></div>`;
     saasOverviewLoading.classList.add("hidden");
     saasOverview.classList.remove("hidden");

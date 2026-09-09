@@ -59,7 +59,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertTrue((STATIC_DIR / "assets" / "echo-wordmark-light.png").is_file())
         styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
         self.assertIn(':root[data-theme="dark"]', styles)
-        self.assertIn("--accent: #3bfde7", styles)
+        self.assertIn("--accent: #22e6cd", styles)
 
     def test_company_search_uses_grouped_filters_and_custom_selection_ui(self):
         self.assertIn("filter-form-header", self.html)

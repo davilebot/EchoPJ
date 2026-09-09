@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light" data-rail-style="charcoal">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EchoPJs — conceito premium/tech</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+    :root {
+      color-scheme: light;
+      --accent: #22e6cd;
+      --accent-strong: #0bbda7;
+      --accent-ink: #063f39;
+      --accent-soft: #dffbf6;
+      --canvas: #f5f7f8;
+      --surface: rgba(255, 255, 255, .88);
+      --surface-solid: #ffffff;
+      --surface-soft: #f2f5f6;
+      --ink: #111516;
+      --muted: #626d70;
+      --quiet: #929da0;
+      --line: #dce2e4;
+      --line-strong: #cbd3d6;
+      --shadow-sm: 0 1px 2px rgba(11, 25, 27, .04), 0 8px 24px rgba(11, 25, 27, .035);
+      --shadow-lg: 0 24px 70px rgba(10, 30, 31, .10), 0 2px 8px rgba(10, 30, 31, .04);
+      --radius-sm: 9px;
+      --radius-md: 14px;
+      --radius-lg: 18px;
+      --rail-width: 268px;
+      --rail-bg: #fbfcfc;
+      --rail-surface: #ffffff;
+      --rail-active: #f3f7f6;
+      --rail-ink: #111516;
+      --rail-muted: #677174;
+      --rail-quiet: #929da0;
+      --rail-line: #e0e5e6;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --canvas: #0e1112;
+      --surface: rgba(24, 30, 31, .88);
+      --surface-solid: #181e1f;
+      --surface-soft: #111617;
+      --ink: #f5f9f8;
+      --muted: #a7b0b1;
+      --quiet: #707b7d;
+      --line: #293133;
+      --line-strong: #394446;
+      --accent-soft: rgba(34, 230, 205, .11);
+      --accent-ink: #a8fff3;
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, .22), 0 10px 28px rgba(0, 0, 0, .12);
+      --shadow-lg: 0 28px 80px rgba(0, 0, 0, .32);
+    }
+
+    :root[data-rail-style="charcoal"] {
+      --rail-bg: #111617;
+      --rail-surface: #181f20;
+      --rail-active: #202829;
+      --rail-ink: #f4f8f7;
+      --rail-muted: #9aa6a8;
+      --rail-quiet: #697577;
+      --rail-line: #2a3436;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--canvas); }
+    body { min-width: 320px; margin: 0; color: var(--ink); background: var(--canvas); font-family: "Manrope", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    button, a { color: inherit; font: inherit; }
+    button { border: 0; }
+    svg { display: block; }
+
+    .app { min-height: 100vh; }
+    .rail { position: fixed; z-index: 30; inset: 0 auto 0 0; display: flex; width: var(--rail-width); flex-direction: column; padding: 20px 16px 16px; border-right: 1px solid var(--rail-line); color: var(--rail-ink); background: color-mix(in srgb, var(--rail-bg) 96%, transparent); backdrop-filter: blur(24px); transition: width .22s ease, padding .22s ease; }
+    .brand { display: flex; height: 42px; align-items: center; gap: 10px; padding: 0 7px; }
+    .brand img { width: 112px; height: 38px; object-fit: contain; object-position: left center; }
+    .brand-logo-charcoal { display: none; }
+    :root[data-rail-style="charcoal"] .brand-logo-ice { display: none; }
+    :root[data-rail-style="charcoal"] .brand-logo-charcoal { display: block; }
+    .collapse { position: absolute; z-index: 3; top: 22px; right: -13px; display: grid; width: 26px; height: 38px; place-items: center; border: 1px solid var(--rail-line); border-radius: 9px; color: var(--rail-muted); background: var(--rail-active); box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent) 55%, transparent), 0 9px 24px rgba(10, 25, 27, .14); cursor: pointer; transition: color .15s ease, background .15s ease, transform .15s ease; }
+    .collapse:hover { color: var(--rail-ink); background: color-mix(in srgb, var(--rail-active) 76%, var(--accent-soft)); transform: translateX(1px); }
+    .collapse svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .22s ease; }
+
+    .org-card { position: relative; margin: 20px 0 24px; padding: 13px; overflow: hidden; border: 1px solid var(--rail-line); border-radius: 11px; background: var(--rail-surface); box-shadow: 0 10px 28px rgba(0, 0, 0, .06); }
+    .org-card::before { position: absolute; inset: 0 auto 0 0; width: 2px; background: var(--accent); content: ""; }
+    .org-card small, .org-card strong { display: block; }
+    .org-card small { color: var(--rail-quiet); font: 500 9px/1.2 "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .org-card strong { margin-top: 7px; font-size: 13px; }
+    .org-meta { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--rail-muted); font-size: 9px; }
+    .status-dot { width: 6px; height: 6px; border-radius: 99px; background: var(--accent-strong); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+
+    .nav { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+    .nav-label { display: block; margin: 20px 9px 8px; color: var(--rail-quiet); font: 500 8px/1 "DM Mono", monospace; letter-spacing: .14em; text-transform: uppercase; }
+    .nav-label:first-child { margin-top: 0; }
+    .nav-item, .nav-parent { display: flex; width: 100%; align-items: center; gap: 11px; padding: 10px 11px; border-radius: 9px; color: var(--rail-muted); background: transparent; cursor: pointer; text-align: left; text-decoration: none; transition: color .15s ease, background .15s ease, transform .15s ease; }
+    .nav-item:hover { color: var(--rail-ink); background: color-mix(in srgb, var(--rail-active) 72%, transparent); }
+    .nav-item.active { color: var(--rail-ink); background: var(--rail-active); box-shadow: inset 0 0 0 1px var(--rail-line), 0 6px 18px rgba(0, 0, 0, .07); }
+    .nav-item.active::after { width: 5px; height: 5px; margin-left: auto; border-radius: 99px; background: var(--accent-strong); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent); content: ""; }
+    .nav-item svg, .nav-parent svg { width: 17px; height: 17px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+    .nav-item span, .nav-parent span { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .nav-parent { padding-bottom: 7px; color: var(--rail-ink); cursor: default; }
+    .subnav { position: relative; display: grid; gap: 2px; margin-left: 19px; padding-left: 13px; }
+    .subnav::before { position: absolute; inset: 2px auto 2px 0; width: 1px; background: linear-gradient(var(--accent), var(--rail-line) 42%, var(--rail-line)); content: ""; }
+    .subnav .nav-item { padding: 8px 9px; }
+    .subnav .nav-item span { font-size: 10px; }
+    .subnav .nav-item svg { width: 14px; height: 14px; }
+
+    .rail-foot { margin-top: auto; padding: 15px 8px 3px; border-top: 1px solid var(--rail-line); }
+    .rail-foot-row { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700; }
+    .rail-foot p { margin: 7px 0 0; color: var(--rail-quiet); font-size: 9px; }
+
+    .frame { min-height: 100vh; margin-left: var(--rail-width); transition: margin-left .22s ease; }
+    .topbar { position: sticky; z-index: 20; top: 0; display: flex; height: 66px; align-items: center; justify-content: space-between; padding: 0 34px; border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent); background: color-mix(in srgb, var(--canvas) 82%, transparent); backdrop-filter: blur(22px); }
+    .crumb { display: flex; align-items: center; gap: 9px; color: var(--quiet); font-size: 11px; }
+    .crumb b { color: var(--ink); font-weight: 700; }
+    .crumb i { width: 3px; height: 3px; border-radius: 99px; background: var(--accent-strong); }
+    .top-actions { display: flex; align-items: center; gap: 8px; }
+    .preview-variants { display: flex; height: 34px; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+    .preview-variants > span { padding: 0 6px; color: var(--quiet); font: 500 7px/1 "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; }
+    .preview-variants button { height: 26px; padding: 0 8px; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; font-size: 8px; font-weight: 800; }
+    .preview-variants button.active { color: var(--ink); background: var(--surface-solid); box-shadow: 0 1px 5px rgba(10, 25, 27, .08); }
+    .signal, .icon-button { display: inline-flex; height: 34px; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--surface); box-shadow: var(--shadow-sm); font-size: 9px; font-weight: 700; }
+    .signal strong { color: var(--ink); }
+    .signal .status-dot { width: 5px; height: 5px; }
+    .icon-button { width: 34px; justify-content: center; padding: 0; cursor: pointer; }
+    .icon-button svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+    .content { width: min(1260px, calc(100% - 64px)); margin: 0 auto; padding: 44px 0 76px; }
+    .hero { position: relative; display: grid; min-height: 278px; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 36px; align-items: center; padding: 42px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .hero::before { position: absolute; width: 540px; height: 540px; top: -360px; left: 22%; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 22%, transparent), transparent 66%); content: ""; pointer-events: none; }
+    .hero::after { position: absolute; inset: 0; opacity: .36; background-image: linear-gradient(color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--line) 45%, transparent) 1px, transparent 1px); background-size: 36px 36px; mask-image: linear-gradient(90deg, transparent 34%, #000); content: ""; pointer-events: none; }
+    .hero-copy, .intelligence-card { position: relative; z-index: 1; }
+    .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--accent-strong); font: 500 9px/1 "DM Mono", monospace; letter-spacing: .13em; text-transform: uppercase; }
+    .eyebrow::before { width: 18px; height: 1px; background: currentColor; content: ""; }
+    h1 { max-width: 760px; margin: 16px 0 13px; font-size: clamp(38px, 4vw, 62px); font-weight: 700; letter-spacing: -.052em; line-height: .98; }
+    h1 span { color: var(--accent-strong); }
+    .hero-copy > p { max-width: 620px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 25px; }
+    .primary, .secondary { display: inline-flex; height: 42px; align-items: center; justify-content: center; gap: 9px; padding: 0 16px; border-radius: 12px; cursor: pointer; font-size: 11px; font-weight: 800; }
+    .primary { color: #061211; background: var(--accent); box-shadow: 0 10px 28px rgba(15, 194, 171, .20); }
+    .secondary { border: 1px solid var(--line); color: var(--ink); background: var(--surface-solid); }
+    .primary svg, .secondary svg { width: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+    .intelligence-card { padding: 22px; border: 1px solid rgba(255, 255, 255, .10); border-radius: 14px; color: #f5fffd; background: #111819; box-shadow: var(--shadow-lg); }
+    .intel-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .intel-head span { color: #8c9b9d; font: 500 8px/1 "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
+    .live-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(34, 230, 205, .18); border-radius: 99px; color: #8ffcec; background: rgba(34, 230, 205, .07); font-size: 8px; font-weight: 700; }
+    .intel-number { margin: 27px 0 4px; font-size: 35px; font-weight: 700; letter-spacing: -.045em; }
+    .intel-caption { color: #91a0a2; font-size: 10px; }
+    .intel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 23px; }
+    .intel-grid div { padding: 12px; border: 1px solid rgba(255, 255, 255, .08); border-radius: 11px; background: rgba(255, 255, 255, .035); }
+    .intel-grid small, .intel-grid strong { display: block; }
+    .intel-grid small { color: #748386; font: 500 7px/1 "DM Mono", monospace; letter-spacing: .1em; text-transform: uppercase; }
+    .intel-grid strong { margin-top: 7px; font-size: 11px; }
+
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin: 32px 2px 14px; }
+    .section-head h2 { margin: 8px 0 0; font-size: 20px; letter-spacing: -.025em; }
+    .section-head p { margin: 0; color: var(--quiet); font: 500 8px/1 "DM Mono", monospace; }
+
+    .workflow { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .workflow::before { position: absolute; z-index: 0; top: 38px; right: 16%; left: 16%; height: 1px; background: linear-gradient(90deg, var(--accent), var(--line-strong) 50%, var(--line)); content: ""; }
+    .workflow-step { position: relative; z-index: 1; display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 20px; border-right: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; transition: background .15s ease; }
+    .workflow-step:last-child { border-right: 0; }
+    .workflow-step:hover { background: color-mix(in srgb, var(--accent-soft) 42%, transparent); }
+    .workflow-icon { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid var(--line); border-radius: 12px; color: var(--accent-ink); background: var(--accent-soft); box-shadow: 0 0 0 5px var(--surface-solid); }
+    .workflow-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .workflow-step strong, .workflow-step small { display: block; }
+    .workflow-step strong { font-size: 11px; }
+    .workflow-step small { margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .workflow-step > svg { width: 14px; fill: none; stroke: var(--quiet); stroke-width: 1.7; }
+
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric { position: relative; min-height: 132px; padding: 19px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .metric::after { position: absolute; right: -30px; bottom: -42px; width: 100px; height: 100px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--accent) 14%, transparent), transparent 68%); content: ""; }
+    .metric-label { color: var(--quiet); font: 500 8px/1.2 "DM Mono", monospace; letter-spacing: .09em; text-transform: uppercase; }
+    .metric strong { display: block; margin-top: 17px; font-size: 30px; letter-spacing: -.045em; line-height: 1; }
+    .metric p { margin: 9px 0 0; color: var(--muted); font-size: 9px; }
+    .metric .metric-accent { color: var(--accent-strong); }
+
+    .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .55fr); gap: 14px; margin-top: 14px; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
+    .panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 24px 24px 0; }
+    .panel-head h3 { margin: 8px 0 4px; font-size: 19px; letter-spacing: -.025em; }
+    .panel-head p { margin: 0; color: var(--muted); font-size: 9px; }
+    .date-chip { padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--quiet); background: var(--surface-soft); font: 500 7px/1 "DM Mono", monospace; white-space: nowrap; }
+
+    .chart-wrap { padding: 24px; }
+    .chart-summary { display: flex; align-items: baseline; gap: 9px; }
+    .chart-summary strong { font-size: 30px; letter-spacing: -.04em; }
+    .chart-summary span { color: var(--accent-strong); font-size: 9px; font-weight: 800; }
+    .chart { display: grid; height: 150px; grid-template-columns: repeat(15, 1fr); gap: 8px; align-items: end; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); background: repeating-linear-gradient(to bottom, transparent 0, transparent 48px, color-mix(in srgb, var(--line) 52%, transparent) 49px); }
+    .bar { min-height: 5px; border-radius: 5px 5px 2px 2px; background: color-mix(in srgb, var(--accent) 56%, var(--line-strong)); transition: filter .15s ease, transform .15s ease; }
+    .bar:hover { filter: saturate(1.35); transform: translateY(-2px); }
+    .bar.active { background: var(--accent-strong); box-shadow: 0 0 18px rgba(34, 230, 205, .25); }
+    .chart-legend { display: flex; justify-content: space-between; margin-top: 9px; color: var(--quiet); font: 500 7px/1 "DM Mono", monospace; }
+
+    .setup-panel { overflow: hidden; }
+    .setup-progress { height: 3px; background: var(--line); }
+    .setup-progress span { display: block; width: 34%; height: 100%; background: var(--accent); box-shadow: 0 0 14px rgba(34, 230, 205, .5); }
+    .setup-list { display: grid; padding: 18px 24px 24px; }
+    .setup-item { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 11px; align-items: start; padding: 14px 0; border-bottom: 1px solid var(--line); }
+    .setup-item:last-child { border-bottom: 0; }
+    .setup-number { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); font: 500 8px/1 "DM Mono", monospace; }
+    .setup-item.done .setup-number { border-color: transparent; color: var(--accent-ink); background: var(--accent-soft); }
+    .setup-item strong, .setup-item small { display: block; }
+    .setup-item strong { font-size: 10px; }
+    .setup-item small { margin-top: 4px; color: var(--muted); font-size: 8px; line-height: 1.45; }
+    .setup-item a { align-self: center; color: var(--accent-strong); font-size: 8px; font-weight: 800; text-decoration: none; }
+
+    :root[data-rail="collapsed"] { --rail-width: 80px; }
+    :root[data-rail="collapsed"] .rail { padding-inline: 13px; }
+    :root[data-rail="collapsed"] .brand { justify-content: center; padding: 0; }
+    :root[data-rail="collapsed"] .brand img,
+    :root[data-rail="collapsed"] .org-card,
+    :root[data-rail="collapsed"] .nav-label,
+    :root[data-rail="collapsed"] .nav-item span,
+    :root[data-rail="collapsed"] .nav-parent span,
+    :root[data-rail="collapsed"] .rail-foot { display: none; }
+    :root[data-rail="collapsed"] .collapse svg { transform: rotate(180deg); }
+    :root[data-rail="collapsed"] .nav-item,
+    :root[data-rail="collapsed"] .nav-parent { position: relative; justify-content: center; padding: 11px; }
+    :root[data-rail="collapsed"] .nav-item.active::after { position: absolute; right: 4px; margin: 0; }
+    :root[data-rail="collapsed"] .subnav { margin: 0; padding: 0; }
+    :root[data-rail="collapsed"] .subnav::before { display: none; }
+
+    @media (max-width: 1060px) {
+      .hero { grid-template-columns: 1fr; }
+      .intelligence-card { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .intel-head, .intel-number, .intel-caption { grid-column: 1; }
+      .intel-grid { grid-column: 2; grid-row: 1 / span 3; margin: 0; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 780px) {
+      :root { --rail-width: 0px; }
+      .rail { position: sticky; inset: 0; width: 100%; height: 56px; flex-direction: row; align-items: center; padding: 8px 12px; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--line); }
+      .brand, .org-card, .nav-label, .nav-parent, .rail-foot, .collapse { display: none; }
+      .nav { display: flex; overflow: visible; }
+      .subnav { display: contents; }
+      .nav > .nav-item, .subnav .nav-item { width: auto; flex: 0 0 auto; padding: 10px; }
+      .nav-item span { display: none; }
+      .frame { margin-left: 0; }
+      .topbar { top: 56px; padding-inline: 14px; }
+      .signal:nth-of-type(2), .signal:nth-of-type(3), .preview-variants { display: none; }
+      .content { width: min(100% - 26px, 1260px); padding-top: 24px; }
+      .hero { padding: 26px; }
+      .hero::after { display: none; }
+      .intelligence-card { display: block; }
+      .intel-grid { margin-top: 20px; }
+      .workflow { grid-template-columns: 1fr; }
+      .workflow::before { display: none; }
+      .workflow-step { border-right: 0; border-bottom: 1px solid var(--line); }
+      .metrics { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 520px) {
+      .crumb span, .signal:first-child { display: none; }
+      .topbar { height: 58px; }
+      h1 { font-size: 39px; }
+      .hero { padding: 23px 20px; }
+      .hero-copy > p { font-size: 11px; }
+      .intelligence-card { margin-inline: -5px; }
+      .metrics { grid-template-columns: 1fr; }
+      .panel-head { flex-direction: column; }
+      .chart { gap: 4px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="rail" aria-label="Navegação principal">
+      <div class="brand">
+        <img class="brand-logo-ice" src="../service/static/assets/echo-wordmark-dark.png" alt="Echo PJs">
+        <img class="brand-logo-charcoal" src="../service/static/assets/echo-wordmark-light.png" alt="Echo PJs">
+        <button class="collapse" id="rail-toggle" type="button" aria-label="Recolher menu" title="Recolher menu">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+        </button>
+      </div>
+
+      <div class="org-card">
+        <small>Workspace atual</small>
+        <strong>EchoHub</strong>
+        <div class="org-meta"><span class="status-dot"></span>Plano interno · acesso ilimitado</div>
+      </div>
+
+      <nav class="nav">
+        <span class="nav-label">Workspace</span>
+        <button class="nav-item active" type="button" title="Visão geral">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="7" rx="1"/><rect x="14" y="4" width="6" height="4" rx="1"/><rect x="4" y="15" width="6" height="5" rx="1"/><rect x="14" y="12" width="6" height="8" rx="1"/></svg>
+          <span>Visão geral</span>
+        </button>
+        <div class="nav-parent">
+          <svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4.5 4.5"/></svg>
+          <span>Buscar empresas</span>
+        </div>
+        <div class="subnav">
+          <button class="nav-item" type="button" title="Busca com filtros">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Busca com filtros</span>
+          </button>
+          <button class="nav-item" type="button" title="Consultar CNPJs">
+            <svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h9"/></svg>
+            <span>Consultar CNPJs</span>
+          </button>
+          <button class="nav-item" type="button" title="Identificar CNPJ">
+            <svg viewBox="0 0 24 24"><circle cx="10" cy="10" r="5"/><path d="m14 14 5 5"/></svg>
+            <span>Identificar CNPJ</span>
+          </button>
+        </div>
+
+        <span class="nav-label">Biblioteca</span>
+        <button class="nav-item" type="button" title="Listas">
+          <svg viewBox="0 0 24 24"><path d="M7 6h13M7 12h13M7 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+          <span>Listas</span>
+        </button>
+        <button class="nav-item" type="button" title="Buscas salvas">
+          <svg viewBox="0 0 24 24"><path d="M6 4h12v16l-6-4-6 4V4Z"/></svg>
+          <span>Buscas salvas</span>
+        </button>
+
+        <span class="nav-label">Operação e conta</span>
+        <button class="nav-item" type="button" title="Processamentos">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>
+          <span>Processamentos</span>
+        </button>
+        <button class="nav-item" type="button" title="Plano e créditos">
+          <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>
+          <span>Plano e créditos</span>
+        </button>
+        <button class="nav-item" type="button" title="Ajuda e suporte">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.7 2c-1 .6-1.5 1.1-1.5 2.3M12 17h.01"/></svg>
+          <span>Ajuda e suporte</span>
+        </button>
+        <button class="nav-item" type="button" title="Administração">
+          <svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="M9 12h6M12 9v6"/></svg>
+          <span>Administração</span>
+        </button>
+      </nav>
+
+      <div class="rail-foot">
+        <div class="rail-foot-row"><span class="status-dot"></span>Base da Receita online</div>
+        <p>Inteligência comercial por Echo</p>
+      </div>
+    </aside>
+
+    <div class="frame">
+      <header class="topbar">
+        <div class="crumb"><span>EchoPJs</span><i></i><b>Visão geral</b></div>
+        <div class="top-actions">
+          <div class="preview-variants" aria-label="Comparar estilo da sidebar"><span>Sidebar</span><button type="button" data-rail-variant="charcoal">Carvão</button><button type="button" data-rail-variant="ice">Gelo</button></div>
+          <span class="signal"><span class="status-dot"></span><strong>Base oficial</strong></span>
+          <span class="signal">Créditos <strong>Ilimitados</strong></span>
+          <span class="signal">Conta <strong>Davi</strong></span>
+          <button class="icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" title="Alternar tema">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="content">
+        <section class="hero">
+          <div class="hero-copy">
+            <span class="eyebrow">Visão geral · inteligência comercial</span>
+            <h1>Transforme dados em <span>oportunidades.</span></h1>
+            <p>Encontre empresas, valide CNPJs e organize segmentos em um workspace desenhado para decisões comerciais mais rápidas.</p>
+            <div class="hero-actions">
+              <button class="primary" type="button">Encontrar empresas <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+              <button class="secondary" type="button">Ver minhas listas</button>
+            </div>
+          </div>
+
+          <aside class="intelligence-card">
+            <div class="intel-head"><span>Base intelligence</span><b class="live-pill"><span class="status-dot"></span>Online</b></div>
+            <div class="intel-number">28.068.221</div>
+            <div class="intel-caption">empresas ativas prontas para segmentação</div>
+            <div class="intel-grid">
+              <div><small>Versão</small><strong>Receita 2026-08</strong></div>
+              <div><small>Cobertura</small><strong>Brasil completo</strong></div>
+              <div><small>Estabelecimentos</small><strong>72,6 milhões</strong></div>
+              <div><small>Status</small><strong style="color:#8ffcec">Sincronizado</strong></div>
+            </div>
+          </aside>
+        </section>
+
+        <div class="section-head">
+          <div><span class="eyebrow">Fluxo principal</span><h2>Da pesquisa à ativação</h2></div>
+          <p>01 — 03</p>
+        </div>
+        <section class="workflow" aria-label="Ações rápidas">
+          <button class="workflow-step" type="button">
+            <span class="workflow-icon"><svg viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></svg></span>
+            <span><strong>Encontre o segmento</strong><small>Combine atividade, perfil e localização.</small></span>
+            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button class="workflow-step" type="button">
+            <span class="workflow-icon"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg></span>
+            <span><strong>Organize em listas</strong><small>Salve contas, territórios e prioridades.</small></span>
+            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button class="workflow-step" type="button">
+            <span class="workflow-icon"><svg viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H7V3Z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg></span>
+            <span><strong>Ative os dados</strong><small>Consulte, exporte e coloque o time em ação.</small></span>
+            <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </section>
+
+        <div class="section-head">
+          <div><span class="eyebrow">Seu workspace</span><h2>Resumo operacional</h2></div>
+          <p>Atualizado agora</p>
+        </div>
+        <section class="metrics">
+          <article class="metric"><span class="metric-label">Créditos</span><strong class="metric-accent">Ilimitados</strong><p>Plano interno EchoHub</p></article>
+          <article class="metric"><span class="metric-label">Empresas desbloqueadas</span><strong>380</strong><p>Disponíveis sem nova cobrança</p></article>
+          <article class="metric"><span class="metric-label">Listas</span><strong>0</strong><p>Organizadas pela equipe</p></article>
+          <article class="metric"><span class="metric-label">Buscas salvas</span><strong>0</strong><p>Segmentos reutilizáveis</p></article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel">
+            <header class="panel-head">
+              <div><span class="eyebrow">Ritmo da equipe</span><h3>Uso nos últimos 30 dias</h3><p>Empresas desbloqueadas por dia de atividade.</p></div>
+              <span class="date-chip">11/08 — 09/09/2026</span>
+            </header>
+            <div class="chart-wrap">
+              <div class="chart-summary"><strong>380</strong><span>+100% no período</span></div>
+              <div class="chart" aria-label="Gráfico ilustrativo de uso">
+                <span class="bar" style="height:12%"></span><span class="bar" style="height:18%"></span><span class="bar" style="height:14%"></span><span class="bar" style="height:28%"></span><span class="bar" style="height:22%"></span><span class="bar" style="height:35%"></span><span class="bar" style="height:31%"></span><span class="bar" style="height:48%"></span><span class="bar" style="height:43%"></span><span class="bar" style="height:58%"></span><span class="bar" style="height:54%"></span><span class="bar" style="height:72%"></span><span class="bar" style="height:66%"></span><span class="bar" style="height:84%"></span><span class="bar active" style="height:100%"></span>
+              </div>
+              <div class="chart-legend"><span>11 AGO</span><span>HOJE</span></div>
+            </div>
+          </article>
+
+          <article class="panel setup-panel">
+            <div class="setup-progress"><span></span></div>
+            <header class="panel-head"><div><span class="eyebrow">Ativação</span><h3>Prepare seu workspace</h3><p>1 de 3 etapas concluídas.</p></div></header>
+            <div class="setup-list">
+              <div class="setup-item"><span class="setup-number">01</span><span><strong>Salve seu primeiro segmento</strong><small>Guarde filtros para repetir a busca.</small></span><a href="#">Criar</a></div>
+              <div class="setup-item"><span class="setup-number">02</span><span><strong>Organize uma lista</strong><small>Separe campanhas ou prioridades.</small></span><a href="#">Criar</a></div>
+              <div class="setup-item done"><span class="setup-number">✓</span><span><strong>Equipe conectada</strong><small>O acesso inicial está configurado.</small></span><a href="#">Feito</a></div>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const railToggle = document.querySelector("#rail-toggle");
+    const themeToggle = document.querySelector("#theme-toggle");
+    const variantButtons = document.querySelectorAll("[data-rail-variant]");
+
+    function applyRailVariant(variant) {
+      const resolved = variant === "ice" ? "ice" : "charcoal";
+      root.dataset.railStyle = resolved;
+      variantButtons.forEach((button) => button.classList.toggle("active", button.dataset.railVariant === resolved));
+      const url = new URL(location.href);
+      url.searchParams.set("sidebar", resolved);
+      history.replaceState({}, "", url);
+    }
+
+    applyRailVariant(new URLSearchParams(location.search).get("sidebar"));
+    variantButtons.forEach((button) => button.addEventListener("click", () => applyRailVariant(button.dataset.railVariant)));
+
+    railToggle.addEventListener("click", () => {
+      const collapsed = root.dataset.rail === "collapsed";
+      if (collapsed) delete root.dataset.rail;
+      else root.dataset.rail = "collapsed";
+      railToggle.title = collapsed ? "Recolher menu" : "Expandir menu";
+      railToggle.setAttribute("aria-label", railToggle.title);
+    });
+
+    themeToggle.addEventListener("click", () => {
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+
+    document.querySelectorAll(".nav-item").forEach((item) => item.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach((button) => button.classList.remove("active"));
+      item.classList.add("active");
+    }));
+  </script>
+</body>
+</html>

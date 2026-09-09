@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f8f9fa">
+  <meta name="theme-color" content="#f5f7f8">
   <meta name="description" content="EchoPJs — inteligência comercial com dados empresariais da Receita Federal.">
   <title>EchoPJs</title>
   <script>
@@ -17,7 +17,7 @@
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-sidebar-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260909-premium-charcoal-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -87,11 +87,28 @@
       <main id="app-content" class="content" tabindex="-1">
         <div id="workspace-access-notice" class="workspace-access-notice hidden" role="status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 7v5c0 5 3.4 8 8 9 4.6-1 8-4 8-9V7l-8-4Z"/><path d="M9 12h6"/></svg><div><strong>Acesso de consulta</strong><span>Você pode pesquisar e revisar os dados deste workspace. Exportações, créditos, listas e processamentos ficam protegidos.</span></div><a id="workspace-access-team-link" href="/organizations">Ver meu acesso</a></div>
         <section id="overview-tab" class="tab-panel">
-          <div class="page-heading page-heading-row">
-            <div><span class="eyebrow">VISÃO GERAL</span><h1>Transforme dados em oportunidades.</h1><p>Encontre empresas, valide CNPJs e acompanhe suas listas em um único workspace.</p></div>
-            <button class="primary-action compact-action" data-switch-tab="search" type="button">Encontrar empresas<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-          </div>
-          <div class="quick-actions" aria-label="Ações rápidas">
+          <section class="overview-hero" aria-labelledby="overview-title">
+            <div class="overview-hero-copy">
+              <span class="eyebrow">VISÃO GERAL · INTELIGÊNCIA COMERCIAL</span>
+              <h1 id="overview-title">Transforme dados em <span>oportunidades.</span></h1>
+              <p>Encontre empresas, valide CNPJs e acompanhe suas listas em um único workspace.</p>
+              <div class="overview-hero-actions">
+                <button class="primary-action" data-switch-tab="search" type="button">Encontrar empresas<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="secondary" data-switch-tab="lists" type="button">Ver minhas listas</button>
+              </div>
+            </div>
+            <aside class="overview-intelligence" aria-label="Resumo da base empresarial">
+              <div class="intelligence-head"><span>BASE INTELLIGENCE</span><strong><i aria-hidden="true"></i> ONLINE</strong></div>
+              <div id="overview-active-companies" class="intelligence-number">Carregando…</div>
+              <p>estabelecimentos ativos para prospecção</p>
+              <div class="intelligence-grid">
+                <div><span>BASE DA RECEITA</span><strong id="overview-dataset-version">—</strong></div>
+                <div><span>COBERTURA</span><strong id="overview-total-establishments">Nacional</strong></div>
+              </div>
+            </aside>
+          </section>
+          <div class="overview-section-head"><div><span class="eyebrow">FLUXO DE PROSPECÇÃO</span><h2>Da descoberta à lista, sem perder contexto.</h2></div><p>3 caminhos para começar</p></div>
+          <div class="quick-actions overview-workflow" aria-label="Ações rápidas">
             <button class="quick-action" data-switch-tab="search" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg></span><span><strong>Criar uma lista</strong><small>Combine perfil, atividade e localização.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
             <button class="quick-action" data-switch-tab="consulta" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h8l4 4v14H7V3Z"/><path d="M15 3v5h5M10 13h6M10 17h4"/></svg></span><span><strong>Enriquecer empresas</strong><small>Descubra CNPJs individualmente ou por CSV.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
             <button class="quick-action" data-switch-tab="batch" type="button"><span class="quick-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg></span><span><strong>Consultar CNPJ</strong><small>Receba os dados de um ou vários CNPJs.</small></span><svg class="action-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
@@ -279,7 +296,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-sidebar-2"></script>
+  <script src="/static/app.js?v=20260909-premium-charcoal-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>
