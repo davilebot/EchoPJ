@@ -184,6 +184,13 @@ class SaaSStoreTests(unittest.TestCase):
         self.assertNotIn("00000000000000", memberships)
         self.assertNotIn("Lista de outro cliente", str(memberships))
 
+        self.assertEqual(
+            self.store.company_list_cnpjs(37, [first["id"]]),
+            {company["cnpj"]},
+        )
+        self.assertEqual(self.store.company_list_cnpjs(37), {company["cnpj"]})
+        self.assertEqual(self.store.company_list_cnpjs(38, [first["id"]]), set())
+
     def test_saved_search_records_last_run_and_can_be_deleted(self):
         self.store.ensure_organization(6)
         saved = self.store.create_saved_search(

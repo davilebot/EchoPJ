@@ -2443,6 +2443,28 @@ class SaaSStore:
             ).fetchall()
         return [self._company_list(row) for row in rows]
 
+    def company_list_cnpjs(
+        self,
+        organization_id: int,
+        list_ids: list[str] | None = None,
+    ) -> set[str]:
+        """Return distinct CNPJs saved by the organization, optionally within selected lists."""
+        normalized = list(dict.fromkeys(str(item).strip() for item in (list_ids or []) if str(item).strip()))
+        if list_ids is not None and not normalized:
+            return set()
+        parameters: list[Any] = [organization_id]
+        where = "i.organization_id=?"
+        if list_ids is not None:
+            placeholders = ",".join("?" for _ in normalized)
+            where += f" AND i.list_id IN ({placeholders})"
+            parameters.extend(normalized)
+        with self._lock:
+            rows = self._connection.execute(
+                f"SELECT DISTINCT i.cnpj FROM company_list_items i WHERE {where}",
+                parameters,
+            ).fetchall()
+        return {str(row["cnpj"]) for row in rows}
+
     def company_list(self, organization_id: int, list_id: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute(

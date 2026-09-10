@@ -360,6 +360,11 @@ class CompanySearchRequest(BaseModel):
     company_name: str | None = Field(default=None, max_length=200)
     excluded_company_names: list[str] = Field(default_factory=list, max_length=100)
     partner_age_ranges: list[str] = Field(default_factory=list, max_length=9)
+    partner_count_min: int | None = Field(default=None, ge=0, le=100000)
+    partner_count_max: int | None = Field(default=None, ge=0, le=100000)
+    included_list_ids: list[str] = Field(default_factory=list, max_length=100)
+    excluded_list_ids: list[str] = Field(default_factory=list, max_length=100)
+    saved_status: Literal["all", "new", "saved"] = "all"
     share_capital_min: Decimal | None = Field(default=None, ge=0)
     share_capital_max: Decimal | None = Field(default=None, ge=0)
     opened_from: date | None = None
@@ -450,6 +455,14 @@ class CompanySearchRequest(BaseModel):
             raise ValueError("faixa etaria de socio invalida")
         return normalized
 
+    @field_validator("included_list_ids", "excluded_list_ids")
+    @classmethod
+    def validate_list_ids(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+        if any(len(item) > 64 for item in normalized):
+            raise ValueError("identificador de lista invalido")
+        return normalized
+
     @field_validator("registration_statuses")
     @classmethod
     def validate_statuses(cls, value: list[str]) -> list[str]:
@@ -506,6 +519,9 @@ class CompanySearchRequest(BaseModel):
         if self.active_branch_count_min is not None and self.active_branch_count_max is not None:
             if self.active_branch_count_min > self.active_branch_count_max:
                 raise ValueError("minimo de filiais nao pode ser maior que o maximo")
+        if self.partner_count_min is not None and self.partner_count_max is not None:
+            if self.partner_count_min > self.partner_count_max:
+                raise ValueError("minimo de socios nao pode ser maior que o maximo")
         if self.cnae_scope == "any" and self.cnae and len(self.cnae) != 7:
             raise ValueError("para incluir CNAEs secundarios, informe o codigo completo de 7 digitos")
         return self

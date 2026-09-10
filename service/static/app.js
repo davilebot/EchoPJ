@@ -46,6 +46,23 @@ function applySidebarState(collapsed) {
 applySidebarState(document.documentElement.dataset.sidebarCollapsed === "true");
 sidebarToggle.addEventListener("click", () => applySidebarState(document.documentElement.dataset.sidebarCollapsed !== "true"));
 
+document.querySelectorAll("[data-filter-section-toggle]").forEach((toggle) => {
+  const section = toggle.closest(".filter-section");
+  const storageKey = `echopjs-filter-section-${section.id}`;
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(storageKey) === "collapsed"; } catch (_) {}
+  const applyState = () => {
+    section.classList.toggle("is-collapsed", collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+  };
+  applyState();
+  toggle.addEventListener("click", () => {
+    collapsed = !collapsed;
+    applyState();
+    try { localStorage.setItem(storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
+  });
+});
+
 const form = document.querySelector("#match-form");
 const loading = document.querySelector("#loading");
 const result = document.querySelector("#result");
@@ -88,6 +105,7 @@ let historyPoll = null;
 let searchCapabilitiesLoaded = false;
 let searchCapabilities = {};
 let searchCnaeOptionsLoaded = false;
+let searchListOptionsLoaded = false;
 let municipalityOptionsRequest = 0;
 let explorerSchemaLoaded = false;
 let lastCompanySearch = [];
@@ -325,6 +343,8 @@ const ufPicker = createMultiPicker(document.querySelector("#search-uf-picker"), 
 const statusPicker = createMultiPicker(document.querySelector("#search-status-picker"), "Ativa (padrão)");
 const sizePicker = createMultiPicker(document.querySelector("#search-size-picker"), "Todos os portes");
 const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
+const includedListPicker = createMultiPicker(document.querySelector("#search-included-list-picker"), "Todas as listas");
+const excludedListPicker = createMultiPicker(document.querySelector("#search-excluded-list-picker"), "Nenhuma lista excluída");
 
 regionPicker.setOptions([
   { value: "N", option_label: "Norte", display_label: "Norte" }, { value: "NE", option_label: "Nordeste", display_label: "Nordeste" }, { value: "CO", option_label: "Centro-Oeste", display_label: "Centro-Oeste" },
@@ -556,6 +576,7 @@ function switchTab(tabName) {
   if (tabName === "search") {
     loadSearchCapabilities();
     loadCnaeOptions();
+    loadSearchListOptions();
   }
   if (tabName === "lists") loadCompanyLists();
   if (tabName === "saved-searches") loadSavedSearches();
@@ -721,6 +742,33 @@ async function loadCnaeOptions() {
   }
 }
 
+async function loadSearchListOptions() {
+  if (searchListOptionsLoaded) return;
+  includedListPicker.setLoading("Carregando listas…");
+  excludedListPicker.setLoading("Carregando listas…");
+  try {
+    const response = await fetch("/api/company-lists");
+    if (!response.ok) throw new Error("Não foi possível carregar as listas");
+    const data = await response.json();
+    const options = data.lists.map((item) => ({
+      value: item.id,
+      option_label: item.name,
+      option_description: `${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}`,
+      display_label: item.name,
+      label: item.name,
+    }));
+    includedListPicker.setOptions(options);
+    excludedListPicker.setOptions(options);
+    const empty = options.length === 0;
+    includedListPicker.setDisabled(empty, empty ? "Nenhuma lista criada" : "Todas as listas");
+    excludedListPicker.setDisabled(empty, empty ? "Nenhuma lista criada" : "Nenhuma lista excluída");
+    searchListOptionsLoaded = true;
+  } catch (error) {
+    includedListPicker.setDisabled(true, error.message);
+    excludedListPicker.setDisabled(true, error.message);
+  }
+}
+
 async function loadMunicipalityOptions() {
   const ufs = ufPicker.values();
   const requestNumber = ++municipalityOptionsRequest;
@@ -765,6 +813,11 @@ function companySearchPayload() {
     postal_code_prefixes: document.querySelector("#search-postal-codes").value
       .split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
     partner_age_ranges: partnerAgePicker.values(),
+    partner_count_min: optionalNumber(document.querySelector("#search-partners-min").value),
+    partner_count_max: optionalNumber(document.querySelector("#search-partners-max").value),
+    included_list_ids: includedListPicker.values(),
+    excluded_list_ids: excludedListPicker.values(),
+    saved_status: document.querySelector("#search-saved-status").value,
     simples: optionalBoolean(document.querySelector("#search-simples").value),
     mei: optionalBoolean(document.querySelector("#search-mei").value),
     legal_nature_code: document.querySelector("#search-legal-nature").value || null,
@@ -1306,6 +1359,8 @@ function hasMeaningfulCompanyFilters(payload) {
     || payload.company_sizes.length || payload.share_capital_min !== null || payload.share_capital_max !== null
     || payload.opened_from || payload.opened_to || payload.regions.length || payload.ufs.length
     || payload.municipalities.length || payload.postal_code_prefixes.length || payload.partner_age_ranges.length
+    || payload.partner_count_min !== null || payload.partner_count_max !== null
+    || payload.included_list_ids.length || payload.excluded_list_ids.length || payload.saved_status !== "all"
     || payload.simples !== null || payload.mei !== null || payload.legal_nature_code || payload.branch_type
     || payload.has_email !== null || payload.has_phone !== null || payload.active_branch_count_min !== null
     || payload.active_branch_count_max !== null
@@ -1422,7 +1477,7 @@ companySearchForm.addEventListener("change", (event) => {
   if (event.target.closest(".multi-picker-options")) return;
   scheduleCompanySearchPreview();
 });
-[cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker]
+[cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
   .forEach((picker) => picker.onChange(() => scheduleCompanySearchPreview()));
 
 document.querySelector("#search-result-tabs").addEventListener("click", (event) => {
@@ -1743,6 +1798,12 @@ function filtersDescription(filters) {
   if (filters.municipalities?.length) parts.push(`${filters.municipalities.length} município${filters.municipalities.length === 1 ? "" : "s"}`);
   if (filters.company_name) parts.push(`Nome: ${filters.company_name}`);
   if (filters.company_sizes?.length) parts.push(`${filters.company_sizes.length} porte${filters.company_sizes.length === 1 ? "" : "s"}`);
+  if (filters.partner_count_min !== null && filters.partner_count_min !== undefined) parts.push(`A partir de ${filters.partner_count_min} sócios`);
+  if (filters.partner_count_max !== null && filters.partner_count_max !== undefined) parts.push(`Até ${filters.partner_count_max} sócios`);
+  if (filters.included_list_ids?.length) parts.push(`${filters.included_list_ids.length} lista${filters.included_list_ids.length === 1 ? "" : "s"} incluída${filters.included_list_ids.length === 1 ? "" : "s"}`);
+  if (filters.excluded_list_ids?.length) parts.push(`${filters.excluded_list_ids.length} lista${filters.excluded_list_ids.length === 1 ? "" : "s"} excluída${filters.excluded_list_ids.length === 1 ? "" : "s"}`);
+  if (filters.saved_status === "new") parts.push("Somente novas");
+  if (filters.saved_status === "saved") parts.push("Somente salvas");
   return parts.length ? parts.slice(0, 4).join(" · ") : "Busca ampla na base da Receita";
 }
 
@@ -1790,12 +1851,14 @@ function setCapitalInputValue(selector, value) {
 }
 
 async function applySearchFilters(filters) {
-  await Promise.all([loadSearchCapabilities(), loadCnaeOptions()]);
+  await Promise.all([loadSearchCapabilities(), loadCnaeOptions(), loadSearchListOptions()]);
   cnaePicker.setSelected(filters.cnaes || []);
   excludedCnaePicker.setSelected(filters.excluded_cnaes || []);
   statusPicker.setSelected(filters.registration_statuses || []);
   sizePicker.setSelected(filters.company_sizes || []);
   partnerAgePicker.setSelected(filters.partner_age_ranges || []);
+  includedListPicker.setSelected(filters.included_list_ids || []);
+  excludedListPicker.setSelected(filters.excluded_list_ids || []);
   regionPicker.setSelected(filters.regions || []);
   updateUfOptions();
   ufPicker.setSelected(filters.ufs || []);
@@ -1815,6 +1878,9 @@ async function applySearchFilters(filters) {
   setInputValue("#search-branch-type", filters.branch_type);
   setInputValue("#search-has-email", filters.has_email === null || filters.has_email === undefined ? "" : String(filters.has_email));
   setInputValue("#search-has-phone", filters.has_phone === null || filters.has_phone === undefined ? "" : String(filters.has_phone));
+  setInputValue("#search-partners-min", filters.partner_count_min);
+  setInputValue("#search-partners-max", filters.partner_count_max);
+  setInputValue("#search-saved-status", filters.saved_status || "all");
   setInputValue("#search-branches-min", filters.active_branch_count_min);
   setInputValue("#search-branches-max", filters.active_branch_count_max);
 }
@@ -1841,6 +1907,10 @@ function supportedTemplateFilters(template) {
   if (!searchCapabilities.branch_counts) {
     delete filters.active_branch_count_min;
     delete filters.active_branch_count_max;
+  }
+  if (!searchCapabilities.partners) {
+    delete filters.partner_count_min;
+    delete filters.partner_count_max;
   }
   if (!searchCapabilities.simples_mei) {
     delete filters.simples;
@@ -1900,6 +1970,7 @@ async function loadCompanyLists() {
     const response = await fetch("/api/company-lists");
     if (!response.ok) throw new Error(await responseError(response, "Não foi possível carregar as listas."));
     const data = await response.json();
+    searchListOptionsLoaded = false;
     listsGrid.innerHTML = data.lists.length ? data.lists.map((item) => `<article class="resource-card list-card">
       <div class="resource-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"/></svg></div>
       <div class="resource-card-body"><span class="resource-meta">Atualizada ${formatDate(item.updated_at)}</span><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description || "Lista compartilhada com sua organização.")}</p><small>${Number(item.company_count).toLocaleString("pt-BR")} empresa${item.company_count === 1 ? "" : "s"}</small></div>
@@ -2102,6 +2173,7 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
     return;
   }
   const result = await response.json();
+  searchListOptionsLoaded = false;
   saveListDialog.close();
   updateCreditIndicator({ unlimited_credits: result.unlimited_credits, credit_balance: result.credit_balance });
   const selectedOption = document.querySelector("#target-list").selectedOptions[0];

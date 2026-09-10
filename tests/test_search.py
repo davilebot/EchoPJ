@@ -29,6 +29,8 @@ class SearchModelTests(unittest.TestCase):
             municipalities=["SP|São Paulo", "Campinas", "SP|SÃO PAULO"],
             postal_code_prefixes=["13010-000", "045", "13010-000"],
             partner_age_ranges=["3", "5", "3"],
+            included_list_ids=["lista-a", "lista-a"],
+            excluded_list_ids=["lista-b", "lista-b"],
             excluded_company_names=["Marca A", "marca a", "Marca B"],
             postal_code_prefix="13010-",
             registration_statuses=["ativa"],
@@ -41,6 +43,8 @@ class SearchModelTests(unittest.TestCase):
         self.assertEqual(request.municipalities, ["SP|SAO PAULO", "CAMPINAS"])
         self.assertEqual(request.postal_code_prefixes, ["13010000", "045"])
         self.assertEqual(request.partner_age_ranges, ["3", "5"])
+        self.assertEqual(request.included_list_ids, ["lista-a"])
+        self.assertEqual(request.excluded_list_ids, ["lista-b"])
         self.assertEqual(request.excluded_company_names, ["Marca A", "Marca B"])
         self.assertEqual(request.postal_code_prefix, "13010")
         self.assertEqual(request.registration_statuses, ["ATIVA"])
@@ -54,6 +58,8 @@ class SearchModelTests(unittest.TestCase):
             CompanySearchRequest(cnae="62", cnae_scope="any")
         with self.assertRaises(ValidationError):
             CompanySearchRequest(active_branch_count_min=5, active_branch_count_max=2)
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(partner_count_min=5, partner_count_max=2)
         with self.assertRaises(ValidationError):
             CompanySearchRequest(cnaes=["62"])
         with self.assertRaises(ValidationError):
@@ -290,6 +296,26 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("FROM rfb_partners partner_age", sql)
         self.assertIn("partner_age.age_range_code=ANY(%s)", sql)
         self.assertIn(["3", "4", "5"], parameters)
+
+    def test_partner_count_and_workspace_cnpj_filters_are_applied(self):
+        filters = CompanySearchRequest(
+            partner_count_min=2,
+            partner_count_max=5,
+        ).model_dump()
+        filters["_included_cnpjs"] = ["11222333000181", "19131243000197"]
+        filters["_excluded_cnpjs"] = ["19131243000197"]
+        with self.assertRaises(SearchCapabilityUnavailable):
+            build_search_query(filters, SearchCapabilities())
+        sql, parameters = build_search_query(filters, SearchCapabilities(partners=True))
+        self.assertIn("e.cnpj=ANY(%s)", sql)
+        self.assertIn("NOT (e.cnpj=ANY(%s))", sql)
+        self.assertIn("FROM rfb_partners partner_count", sql)
+        self.assertIn(">=%s", sql)
+        self.assertIn("<=%s", sql)
+        self.assertIn(["11222333000181", "19131243000197"], parameters)
+        self.assertIn(["19131243000197"], parameters)
+        self.assertIn(2, parameters)
+        self.assertIn(5, parameters)
 
     def test_branch_count_filter_uses_precomputed_summary(self):
         filters = CompanySearchRequest(

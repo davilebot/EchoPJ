@@ -1876,6 +1876,33 @@ def _company_search_response(
 ) -> dict:
     filters = payload.model_dump()
     filters["limit"] = 10000
+    requested_list_ids = set(payload.included_list_ids) | set(payload.excluded_list_ids)
+    available_list_ids = {
+        item["id"] for item in saas_store.list_company_lists(user["organization_id"])
+    }
+    if requested_list_ids - available_list_ids:
+        raise HTTPException(status_code=422, detail="Uma ou mais listas selecionadas não existem neste workspace.")
+    included_cnpjs: set[str] | None = None
+    excluded_cnpjs: set[str] = set()
+    if payload.included_list_ids:
+        included_cnpjs = saas_store.company_list_cnpjs(
+            user["organization_id"], payload.included_list_ids,
+        )
+    if payload.excluded_list_ids:
+        excluded_cnpjs.update(saas_store.company_list_cnpjs(
+            user["organization_id"], payload.excluded_list_ids,
+        ))
+    if payload.saved_status != "all":
+        saved_cnpjs = saas_store.company_list_cnpjs(user["organization_id"])
+        if payload.saved_status == "saved":
+            included_cnpjs = saved_cnpjs if included_cnpjs is None else included_cnpjs & saved_cnpjs
+        else:
+            excluded_cnpjs.update(saved_cnpjs)
+    if included_cnpjs is not None:
+        included_cnpjs.difference_update(excluded_cnpjs)
+        filters["_included_cnpjs"] = sorted(included_cnpjs)
+    if excluded_cnpjs:
+        filters["_excluded_cnpjs"] = sorted(excluded_cnpjs)
     try:
         results, capabilities, duration_ms, has_more, total_count = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:

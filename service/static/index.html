@@ -17,7 +17,7 @@
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260909-picker-contained-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-compact-filters-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -138,8 +138,9 @@
                 <button class="search-template" type="button" data-search-template="simples-contact"><span class="template-icon" aria-hidden="true">03</span><span><strong>Simples com contato</strong><small>Ativas · optantes · telefone disponível</small></span><b aria-hidden="true">→</b></button>
               </div>
             </section>
-            <fieldset class="filter-section">
-              <legend><span class="step-number">1</span><span class="legend-copy"><strong>Atividade e perfil</strong><small>O que a empresa faz e qual perfil deve ter</small></span></legend>
+            <fieldset id="profile-filter-section" class="filter-section">
+              <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle aria-expanded="true" aria-controls="profile-filter-body"><span class="step-number">1</span><span class="legend-copy"><strong>Atividade e perfil</strong><small>O que a empresa faz e qual perfil deve ter</small></span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
+              <div id="profile-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
                 <div class="filter-group-title"><strong>Atividade econômica</strong><small>Use o CNAE para definir o mercado da sua lista.</small></div>
                 <div id="search-cnae-picker" class="multi-picker span-2"><span class="field-label">CNAEs</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar CNAEs</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar por código ou atividade"><div class="multi-picker-toolbar"><span>Marque quantos CNAEs quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
@@ -158,10 +159,18 @@
                 <label>Capital social mínimo<input id="search-capital-min" data-capital-input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="15" autocomplete="off" placeholder="Ex.: 60000"><span class="input-help">Somente números, sem pontos ou vírgulas.</span></label><label>Capital social máximo<input id="search-capital-max" data-capital-input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="15" autocomplete="off" placeholder="Ex.: 100000"><span class="input-help">Somente números, sem pontos ou vírgulas.</span></label>
                 <label>Abertura a partir de<input id="search-opened-from" type="date"></label><label>Abertura até<input id="search-opened-to" type="date"></label>
               </section>
+              <section class="filter-group filter-grid">
+                <div class="filter-group-title"><strong>Listas e histórico</strong><small>Separe empresas já conhecidas das novas oportunidades.</small></div>
+                <label class="span-2">Empresa nova ou salva<select id="search-saved-status"><option value="all">Todas as empresas</option><option value="new">Somente empresas novas</option><option value="saved">Somente empresas salvas</option></select></label>
+                <div id="search-included-list-picker" class="multi-picker span-2"><span class="field-label">Selecionar listas</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas as listas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar lista"><div class="multi-picker-toolbar"><span>Inclui empresas de qualquer lista marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="search-excluded-list-picker" class="multi-picker span-2"><span class="field-label">Excluir listas</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Nenhuma lista excluída</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar lista para excluir"><div class="multi-picker-toolbar"><span>Remove empresas presentes em qualquer lista marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags excluded-tags" aria-live="polite"></div></div>
+              </section>
               <aside class="network-note"><strong>Buscando franquias ou unidades de uma rede?</strong><p>Digite a marca no campo de nome e combine com CNAE e localização. Franqueados com outra razão social podem não aparecer.</p></aside>
+              </div>
             </fieldset>
-            <fieldset class="filter-section">
-              <legend><span class="step-number">2</span><span class="legend-copy"><strong>Localização</strong><small>Onde as empresas precisam estar</small></span></legend>
+            <fieldset id="location-filter-section" class="filter-section">
+              <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle aria-expanded="true" aria-controls="location-filter-body"><span class="step-number">2</span><span class="legend-copy"><strong>Localização</strong><small>Onde as empresas precisam estar</small></span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
+              <div id="location-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
                 <div class="filter-group-title"><strong>Cobertura geográfica</strong><small>Vá do país inteiro até regiões específicas por CEP.</small></div>
                 <div id="search-region-picker" class="multi-picker span-2"><span class="field-label">Regiões</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Brasil inteiro</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar região"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
@@ -169,9 +178,11 @@
                 <div id="search-municipality-picker" class="multi-picker span-2 disabled"><span class="field-label">Municípios</span><button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Escolha ao menos uma UF</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar município"><div class="multi-picker-toolbar"><span>Marque quantos municípios quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
                 <label class="span-2">CEPs ou inícios de CEP<textarea id="search-postal-codes" rows="3" placeholder="Um por linha. Ex.:&#10;13010-000&#10;045&#10;20040"></textarea><span class="input-help">Aceita também vírgula ou ponto e vírgula.</span></label>
               </section>
+              </div>
             </fieldset>
             <fieldset id="complementary-filters" class="filter-section complementary-filters">
-              <legend><span class="step-number">3</span><span class="legend-copy"><strong>Dados complementares</strong><small>Filtros avançados para listas mais precisas</small></span><span class="availability-badge">Aguardando carga</span></legend>
+              <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle aria-expanded="true" aria-controls="complementary-filter-body"><span class="step-number">3</span><span class="legend-copy"><strong>Dados complementares</strong><small>Filtros avançados para listas mais precisas</small></span><span class="availability-badge">Aguardando carga</span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
+              <div id="complementary-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
                 <div class="filter-group-title"><strong>Regime e estrutura</strong><small>Características fiscais e cadastrais da empresa.</small></div>
                 <label>Simples Nacional<select id="search-simples" data-capability="simples_mei" disabled><option value="">Tanto faz</option><option value="true">Optante</option><option value="false">Não optante</option></select></label><label>MEI<select id="search-mei" data-capability="simples_mei" disabled><option value="">Tanto faz</option><option value="true">É MEI</option><option value="false">Não é MEI</option></select></label>
@@ -180,10 +191,12 @@
               <section class="filter-group filter-grid">
                 <div class="filter-group-title"><strong>Contato e composição</strong><small>Disponibilidade comercial, sócios e rede de filiais.</small></div>
                 <div id="search-partner-age-picker" class="multi-picker span-2 disabled"><span class="field-label">Faixas etárias dos sócios</span><button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Carregando faixas etárias</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar faixa etária"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label>Mínimo de sócios<input id="search-partners-min" type="number" min="0" max="100000" step="1" data-capability="partners" disabled placeholder="Ex.: 2"></label><label>Máximo de sócios<input id="search-partners-max" type="number" min="0" max="100000" step="1" data-capability="partners" disabled placeholder="Sem limite"></label>
                 <label>Possui e-mail<select id="search-has-email" data-capability="establishment_details" disabled><option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option></select></label><label>Possui telefone<select id="search-has-phone" data-capability="establishment_details" disabled><option value="">Tanto faz</option><option value="true">Sim</option><option value="false">Não</option></select></label>
                 <label>Mínimo de filiais ativas<input id="search-branches-min" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Ex.: 2"></label><label>Máximo de filiais ativas<input id="search-branches-max" type="number" min="0" max="100000" step="1" data-capability="branch_counts" disabled placeholder="Sem limite"></label>
               </section>
               <p id="complementary-note">Esses filtros serão liberados automaticamente após a carga dos dados complementares.</p>
+              </div>
             </fieldset>
           </form>
           <section class="search-preview-column" aria-label="Empresas encontradas">
@@ -296,7 +309,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260909-capital-1"></script>
+  <script src="/static/app.js?v=20260910-company-filters-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

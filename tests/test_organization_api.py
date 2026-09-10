@@ -716,6 +716,32 @@ class OrganizationAPITests(unittest.TestCase):
         filters = self.main.repository.search_companies.call_args.args[0]
         self.assertEqual(filters["limit"], 10000)
 
+        status, _, _ = self.request(
+            "/api/search/preview", "POST",
+            {"ufs": ["SP"], "included_list_ids": [company_list["id"]], "saved_status": "saved"},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        filters = self.main.repository.search_companies.call_args.args[0]
+        self.assertEqual(filters["_included_cnpjs"], [company["cnpj"]])
+
+        status, _, _ = self.request(
+            "/api/search/preview", "POST",
+            {"ufs": ["SP"], "saved_status": "new"},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        filters = self.main.repository.search_companies.call_args.args[0]
+        self.assertEqual(filters["_excluded_cnpjs"], [company["cnpj"]])
+
+        status, detail, _ = self.request(
+            "/api/search/preview", "POST",
+            {"ufs": ["SP"], "included_list_ids": [company_list["id"]]},
+            self.owner_token, {"x-organization-id": str(self.other)},
+        )
+        self.assertEqual(status, 422)
+        self.assertIn("workspace", detail["detail"])
+
         status, foreign_data, _ = self.request(
             "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,
             {"x-organization-id": str(self.other)},

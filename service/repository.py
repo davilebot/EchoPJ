@@ -278,7 +278,8 @@ class Repository:
         for row in rows:
             company = self._search_result(row)
             company["partners"] = partners_by_root.get(row["cnpj_root"], [])
-            company["partner_count"] = len(company["partners"])
+            if company.get("partner_count") is None:
+                company["partner_count"] = len(company["partners"])
             results.append(company)
         return results, capabilities, duration_ms, has_more, total_count
 
