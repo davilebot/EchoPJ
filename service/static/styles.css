@@ -353,7 +353,7 @@ input:disabled, select:disabled { color: var(--text-tertiary); background-color:
 .filter-group-tabs span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filter-group { display: none; margin: 0; padding: 0 14px 14px; border: 1px solid color-mix(in srgb, var(--border) 88%, transparent); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-sm); }
 .filter-group.is-active { display: grid; }
-.filter-grid { display: grid; min-width: 0; grid-template-columns: 1fr; gap: 10px; align-items: start; }
+.filter-grid { min-width: 0; grid-template-columns: 1fr; gap: 10px; align-items: start; }
 .filter-group-title { display: grid; width: 100%; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; margin: 0; padding: 13px 0 11px; border: 0; border-bottom: 1px solid var(--border); color: var(--text); background: transparent; pointer-events: none; text-align: left; }
 .filter-group-title > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
 .filter-group-title strong { color: var(--text); font-size: 11px; font-weight: 650; transition: color .14s ease; }

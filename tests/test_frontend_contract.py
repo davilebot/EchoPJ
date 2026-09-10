@@ -93,6 +93,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("echopjs-filter-category-v3", script)
         self.assertIn('id="clear-company-filters"', self.html)
         self.assertIn('class="filter-category-tabs"', self.html)
+        self.assertIn(".filter-group { display: none", styles)
+        self.assertIn(".filter-group.is-active { display: grid", styles)
 
     def test_search_preview_updates_automatically_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
