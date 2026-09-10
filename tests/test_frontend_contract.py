@@ -79,6 +79,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="search-included-cnpjs"', self.html)
         self.assertIn('id="search-excluded-cnpjs"', self.html)
         self.assertIn('data-filter-group-toggle', self.html)
+        self.assertIn('data-filter-section-default-open', self.html)
+        self.assertIn('data-search-templates-toggle', self.html)
         self.assertIn("select { appearance: none", styles)
         self.assertIn(".multi-picker-trigger::after", styles)
         self.assertIn('id="search-capital-min" data-capital-input type="text" inputmode="numeric"', self.html)
@@ -87,6 +89,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("share_capital_min: optionalCapitalNumber", script)
         self.assertIn("function normalizeCnpjFilterList", script)
         self.assertIn("included_cnpjs: normalizeCnpjFilterList", script)
+        self.assertIn("function setFilterSectionState", script)
+        self.assertIn("echopjs-filter-section-v2", script)
 
     def test_search_preview_updates_automatically_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

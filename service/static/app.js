@@ -46,21 +46,47 @@ function applySidebarState(collapsed) {
 applySidebarState(document.documentElement.dataset.sidebarCollapsed === "true");
 sidebarToggle.addEventListener("click", () => applySidebarState(document.documentElement.dataset.sidebarCollapsed !== "true"));
 
-document.querySelectorAll("[data-filter-section-toggle]").forEach((toggle) => {
+const filterSectionToggles = [...document.querySelectorAll("[data-filter-section-toggle]")];
+
+function setFilterSectionState(toggle, collapsed, persist = true) {
   const section = toggle.closest(".filter-section");
-  const storageKey = `echopjs-filter-section-${section.id}`;
-  let collapsed = false;
-  try { collapsed = localStorage.getItem(storageKey) === "collapsed"; } catch (_) {}
-  const applyState = () => {
-    section.classList.toggle("is-collapsed", collapsed);
-    toggle.setAttribute("aria-expanded", String(!collapsed));
-  };
-  applyState();
+  section.classList.toggle("is-collapsed", collapsed);
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  if (!persist) return;
+  try { localStorage.setItem(toggle.dataset.storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
+}
+
+filterSectionToggles.forEach((toggle) => {
+  const section = toggle.closest(".filter-section");
+  toggle.dataset.storageKey = `echopjs-filter-section-v2-${section.id}`;
+  let savedState = null;
+  try { savedState = localStorage.getItem(toggle.dataset.storageKey); } catch (_) {}
+  const collapsed = savedState ? savedState === "collapsed" : !toggle.hasAttribute("data-filter-section-default-open");
+  setFilterSectionState(toggle, collapsed, false);
   toggle.addEventListener("click", () => {
-    collapsed = !collapsed;
-    applyState();
-    try { localStorage.setItem(storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
+    const willOpen = toggle.getAttribute("aria-expanded") !== "true";
+    if (willOpen) {
+      filterSectionToggles.forEach((sibling) => {
+        if (sibling !== toggle) setFilterSectionState(sibling, true);
+      });
+    }
+    setFilterSectionState(toggle, !willOpen);
   });
+});
+
+const searchTemplatesPanel = document.querySelector("#search-templates");
+const searchTemplatesToggle = document.querySelector("[data-search-templates-toggle]");
+let searchTemplatesExpanded = false;
+try { searchTemplatesExpanded = localStorage.getItem("echopjs-search-templates-v2") === "expanded"; } catch (_) {}
+function applySearchTemplatesState() {
+  searchTemplatesPanel.classList.toggle("is-collapsed", !searchTemplatesExpanded);
+  searchTemplatesToggle.setAttribute("aria-expanded", String(searchTemplatesExpanded));
+}
+applySearchTemplatesState();
+searchTemplatesToggle.addEventListener("click", () => {
+  searchTemplatesExpanded = !searchTemplatesExpanded;
+  applySearchTemplatesState();
+  try { localStorage.setItem("echopjs-search-templates-v2", searchTemplatesExpanded ? "expanded" : "collapsed"); } catch (_) {}
 });
 
 const filterGroupToggles = [...document.querySelectorAll("[data-filter-group-toggle]")];
@@ -75,7 +101,7 @@ function setFilterGroupState(toggle, collapsed, persist = true) {
 
 filterGroupToggles.forEach((toggle, index) => {
   const section = toggle.closest(".filter-section");
-  toggle.dataset.storageKey = `echopjs-filter-group-${section?.id || "search"}-${index}`;
+  toggle.dataset.storageKey = `echopjs-filter-group-v2-${section?.id || "search"}-${index}`;
   let savedState = null;
   try { savedState = localStorage.getItem(toggle.dataset.storageKey); } catch (_) {}
   const collapsed = savedState ? savedState === "collapsed" : !toggle.hasAttribute("data-filter-group-default-open");
