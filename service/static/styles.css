@@ -405,10 +405,10 @@ input:disabled, select:disabled { color: var(--text-tertiary); background-color:
 .multi-picker-trigger[aria-expanded="true"]::after { margin-top: 4px; transform: rotate(225deg); }
 .multi-picker-trigger[aria-expanded="true"] { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--focus); }
 .multi-picker.disabled .multi-picker-trigger { color: var(--text-tertiary); background: var(--surface-soft); cursor: not-allowed; opacity: .78; }
-.multi-picker-panel { position: absolute; z-index: 40; top: calc(100% + 8px); left: 0; width: min(500px, 75vw); padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-raised) 95%, transparent); box-shadow: var(--shadow-md); backdrop-filter: blur(18px) saturate(1.2); }
+.multi-picker-panel { position: relative; z-index: 2; width: 100%; max-width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-raised) 95%, transparent); box-shadow: var(--shadow-md); backdrop-filter: blur(18px) saturate(1.2); }
 .multi-picker-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 2px 6px; color: var(--text-secondary); font-size: 9px; }
 .multi-picker-clear { padding: 3px 5px; border: 0; color: var(--accent-strong); background: transparent; cursor: pointer; font-size: 9px; font-weight: 700; }
-.multi-picker-options { display: grid; max-height: 280px; gap: 2px; overflow-y: auto; padding-top: 4px; border-top: 1px solid var(--border); }
+.multi-picker-options { display: grid; max-height: min(280px, 40vh); gap: 2px; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding-top: 4px; border-top: 1px solid var(--border); }
 .multi-picker-option { display: flex; flex-direction: row; gap: 9px; align-items: start; padding: 9px 7px; border: 0; border-radius: 8px; cursor: pointer; }
 .multi-picker-option:hover { background: var(--surface-soft); }
 .multi-picker-option input { position: relative; width: 17px; min-height: 17px; height: 17px; flex: 0 0 auto; margin-top: 1px; padding: 0; appearance: none; border: 1px solid var(--border-strong); border-radius: 5px; background: var(--surface); box-shadow: none; cursor: pointer; }
