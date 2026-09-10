@@ -17,7 +17,7 @@
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-filter-workflow-2">
+  <link rel="stylesheet" href="/static/styles.css?v=20260910-filter-workspace-3">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -127,8 +127,8 @@
           <div class="search-workbench">
           <form id="company-search-form" class="search-form" aria-label="Filtros da busca de empresas">
             <div class="filter-form-header">
-              <div><span class="eyebrow">FILTROS</span><h2>Perfil das empresas</h2><p>Os resultados são atualizados à medida que você escolhe os critérios.</p></div>
-              <div class="filter-guidance"><span aria-hidden="true"></span>Até 10.000 resultados</div>
+              <div><span class="eyebrow">FILTROS</span><h2>Monte seu segmento</h2><p>Os resultados atualizam enquanto você preenche.</p></div>
+              <div class="filter-form-header-actions"><strong id="active-filter-count">0 filtros ativos</strong><button id="clear-company-filters" type="button">Limpar tudo</button></div>
             </div>
             <section id="search-templates" class="search-templates is-collapsed" aria-labelledby="search-templates-title">
               <button class="search-templates-heading" type="button" data-search-templates-toggle aria-expanded="false"><span><span class="eyebrow">MODELOS PRONTOS</span><strong id="search-templates-title">Comece com um segmento</strong></span><i class="search-templates-chevron" aria-hidden="true"></i></button>
@@ -139,7 +139,12 @@
                 <button class="search-template" type="button" data-search-template="simples-contact"><span class="template-icon" aria-hidden="true">03</span><span><strong>Simples com contato</strong><small>Ativas · optantes · telefone disponível</small></span><b aria-hidden="true">→</b></button>
               </div>
             </section>
-            <fieldset id="profile-filter-section" class="filter-section">
+            <nav class="filter-category-tabs" role="tablist" aria-label="Categorias dos filtros">
+              <button id="filter-category-profile" class="active" type="button" role="tab" aria-selected="true" data-filter-category="profile-filter-section"><span>Perfil</span><b data-filter-category-count="profile-filter-section"></b></button>
+              <button id="filter-category-location" type="button" role="tab" aria-selected="false" data-filter-category="location-filter-section"><span>Localização</span><b data-filter-category-count="location-filter-section"></b></button>
+              <button id="filter-category-advanced" type="button" role="tab" aria-selected="false" data-filter-category="complementary-filters"><span>Avançados</span><b data-filter-category-count="complementary-filters"></b></button>
+            </nav>
+            <fieldset id="profile-filter-section" class="filter-section is-active" data-filter-panel aria-labelledby="filter-category-profile">
               <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle data-filter-section-default-open aria-expanded="true" aria-controls="profile-filter-body"><span class="step-number">1</span><span class="legend-copy"><strong>Atividade e perfil</strong><small>O que a empresa faz e qual perfil deve ter</small></span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
               <div id="profile-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
@@ -154,6 +159,7 @@
                 <label class="span-2">Excluir nomes ou marcas que contenham<textarea id="search-excluded-names" rows="3" placeholder="Digite um por linha. Ex.:&#10;MARCA A&#10;MARCA B"></textarea><span class="input-help">A empresa será retirada se qualquer termo aparecer na razão social ou no nome fantasia.</span></label>
                 <div id="search-status-picker" class="multi-picker span-2"><span class="field-label">Situações cadastrais</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar situações</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar situação"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
                 <div id="search-size-picker" class="multi-picker span-2"><span class="field-label">Portes</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Selecionar portes</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar porte"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <aside class="network-note span-2"><strong>Buscando franquias ou unidades de uma rede?</strong><p>Digite a marca e combine com CNAE e localização. Franqueados com outra razão social podem não aparecer.</p></aside>
               </section>
               <section class="filter-group filter-grid">
                 <button class="filter-group-title" type="button" data-filter-group-toggle aria-expanded="false"><span><strong>Capital e maturidade</strong><small>Refine por investimento declarado e data de abertura.</small></span><b class="filter-group-count" aria-live="polite"></b><i class="filter-group-chevron" aria-hidden="true"></i></button>
@@ -168,10 +174,9 @@
                 <div id="search-included-list-picker" class="multi-picker span-2"><span class="field-label">Selecionar listas</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas as listas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar lista"><div class="multi-picker-toolbar"><span>Inclui empresas de qualquer lista marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
                 <div id="search-excluded-list-picker" class="multi-picker span-2"><span class="field-label">Excluir listas</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Nenhuma lista excluída</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar lista para excluir"><div class="multi-picker-toolbar"><span>Remove empresas presentes em qualquer lista marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags excluded-tags" aria-live="polite"></div></div>
               </section>
-              <aside class="network-note"><strong>Buscando franquias ou unidades de uma rede?</strong><p>Digite a marca no campo de nome e combine com CNAE e localização. Franqueados com outra razão social podem não aparecer.</p></aside>
               </div>
             </fieldset>
-            <fieldset id="location-filter-section" class="filter-section">
+            <fieldset id="location-filter-section" class="filter-section" data-filter-panel aria-labelledby="filter-category-location">
               <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle aria-expanded="true" aria-controls="location-filter-body"><span class="step-number">2</span><span class="legend-copy"><strong>Localização</strong><small>Onde as empresas precisam estar</small></span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
               <div id="location-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
@@ -183,7 +188,7 @@
               </section>
               </div>
             </fieldset>
-            <fieldset id="complementary-filters" class="filter-section complementary-filters">
+            <fieldset id="complementary-filters" class="filter-section complementary-filters" data-filter-panel aria-labelledby="filter-category-advanced">
               <legend><button class="filter-section-toggle" type="button" data-filter-section-toggle aria-expanded="true" aria-controls="complementary-filter-body"><span class="step-number">3</span><span class="legend-copy"><strong>Dados complementares</strong><small>Filtros avançados para listas mais precisas</small></span><span class="availability-badge">Aguardando carga</span><span class="filter-section-chevron" aria-hidden="true"></span></button></legend>
               <div id="complementary-filter-body" class="filter-section-body">
               <section class="filter-group filter-grid">
@@ -312,7 +317,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260910-filter-workflow-2"></script>
+  <script src="/static/app.js?v=20260910-filter-workspace-3"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

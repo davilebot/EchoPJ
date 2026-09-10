@@ -46,33 +46,25 @@ function applySidebarState(collapsed) {
 applySidebarState(document.documentElement.dataset.sidebarCollapsed === "true");
 sidebarToggle.addEventListener("click", () => applySidebarState(document.documentElement.dataset.sidebarCollapsed !== "true"));
 
-const filterSectionToggles = [...document.querySelectorAll("[data-filter-section-toggle]")];
+const filterCategoryTabs = [...document.querySelectorAll("[data-filter-category]")];
+const filterPanels = [...document.querySelectorAll("[data-filter-panel]")];
 
-function setFilterSectionState(toggle, collapsed, persist = true) {
-  const section = toggle.closest(".filter-section");
-  section.classList.toggle("is-collapsed", collapsed);
-  toggle.setAttribute("aria-expanded", String(!collapsed));
+function activateFilterCategory(panelId, persist = true) {
+  filterCategoryTabs.forEach((tab) => {
+    const active = tab.dataset.filterCategory === panelId;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  });
+  filterPanels.forEach((panel) => panel.classList.toggle("is-active", panel.id === panelId));
   if (!persist) return;
-  try { localStorage.setItem(toggle.dataset.storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
+  try { localStorage.setItem("echopjs-filter-category-v3", panelId); } catch (_) {}
 }
 
-filterSectionToggles.forEach((toggle) => {
-  const section = toggle.closest(".filter-section");
-  toggle.dataset.storageKey = `echopjs-filter-section-v2-${section.id}`;
-  let savedState = null;
-  try { savedState = localStorage.getItem(toggle.dataset.storageKey); } catch (_) {}
-  const collapsed = savedState ? savedState === "collapsed" : !toggle.hasAttribute("data-filter-section-default-open");
-  setFilterSectionState(toggle, collapsed, false);
-  toggle.addEventListener("click", () => {
-    const willOpen = toggle.getAttribute("aria-expanded") !== "true";
-    if (willOpen) {
-      filterSectionToggles.forEach((sibling) => {
-        if (sibling !== toggle) setFilterSectionState(sibling, true);
-      });
-    }
-    setFilterSectionState(toggle, !willOpen);
-  });
-});
+filterCategoryTabs.forEach((tab) => tab.addEventListener("click", () => activateFilterCategory(tab.dataset.filterCategory)));
+let initialFilterCategory = "profile-filter-section";
+try { initialFilterCategory = localStorage.getItem("echopjs-filter-category-v3") || initialFilterCategory; } catch (_) {}
+if (!filterPanels.some((panel) => panel.id === initialFilterCategory)) initialFilterCategory = "profile-filter-section";
+activateFilterCategory(initialFilterCategory, false);
 
 const searchTemplatesPanel = document.querySelector("#search-templates");
 const searchTemplatesToggle = document.querySelector("[data-search-templates-toggle]");
@@ -89,37 +81,61 @@ searchTemplatesToggle.addEventListener("click", () => {
   try { localStorage.setItem("echopjs-search-templates-v2", searchTemplatesExpanded ? "expanded" : "collapsed"); } catch (_) {}
 });
 
-const filterGroupToggles = [...document.querySelectorAll("[data-filter-group-toggle]")];
-
-function setFilterGroupState(toggle, collapsed, persist = true) {
-  const group = toggle.closest(".filter-group");
-  group.classList.toggle("is-collapsed", collapsed);
-  toggle.setAttribute("aria-expanded", String(!collapsed));
-  if (!persist) return;
-  try { localStorage.setItem(toggle.dataset.storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
-}
-
-filterGroupToggles.forEach((toggle, index) => {
-  const section = toggle.closest(".filter-section");
-  toggle.dataset.storageKey = `echopjs-filter-group-v2-${section?.id || "search"}-${index}`;
-  let savedState = null;
-  try { savedState = localStorage.getItem(toggle.dataset.storageKey); } catch (_) {}
-  const collapsed = savedState ? savedState === "collapsed" : !toggle.hasAttribute("data-filter-group-default-open");
-  setFilterGroupState(toggle, collapsed, false);
-  toggle.addEventListener("click", () => {
-    const willOpen = toggle.getAttribute("aria-expanded") !== "true";
-    if (willOpen) {
-      toggle.closest(".filter-section-body")?.querySelectorAll("[data-filter-group-toggle]").forEach((sibling) => {
-        if (sibling !== toggle) setFilterGroupState(sibling, true);
-      });
-    }
-    setFilterGroupState(toggle, !willOpen);
+document.querySelectorAll("[data-filter-panel]").forEach((panel) => {
+  const body = panel.querySelector(".filter-section-body");
+  const groups = [...body.querySelectorAll(":scope > .filter-group")];
+  groups.forEach((group, index) => {
+    group.id = `${panel.id}-group-${index}`;
+    group.classList.remove("is-collapsed");
+    const title = group.querySelector(".filter-group-title");
+    title.tabIndex = -1;
+    title.removeAttribute("aria-expanded");
   });
+  if (groups.length === 1) {
+    groups[0].classList.add("is-active");
+    return;
+  }
+  const tabs = document.createElement("nav");
+  tabs.className = "filter-group-tabs";
+  tabs.setAttribute("aria-label", "Grupos desta categoria");
+  const storageKey = `echopjs-filter-subcategory-v3-${panel.id}`;
+  let activeGroupId = groups[0].id;
+  try { activeGroupId = localStorage.getItem(storageKey) || activeGroupId; } catch (_) {}
+  if (!groups.some((group) => group.id === activeGroupId)) activeGroupId = groups[0].id;
+  const activateGroup = (groupId, persist = true) => {
+    groups.forEach((group) => group.classList.toggle("is-active", group.id === groupId));
+    tabs.querySelectorAll("[data-filter-subtab]").forEach((tab) => {
+      const active = tab.dataset.filterSubtab === groupId;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    if (persist) {
+      try { localStorage.setItem(storageKey, groupId); } catch (_) {}
+    }
+  };
+  groups.forEach((group) => {
+    const title = group.querySelector(".filter-group-title strong").textContent;
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.setAttribute("role", "tab");
+    tab.dataset.filterSubtab = group.id;
+    const label = document.createElement("span");
+    label.textContent = title;
+    const count = document.createElement("b");
+    count.dataset.filterSubtabCount = group.id;
+    tab.append(label, count);
+    tab.addEventListener("click", () => activateGroup(group.id));
+    tabs.append(tab);
+  });
+  body.prepend(tabs);
+  activateGroup(activeGroupId, false);
 });
 
 function updateFilterGroupCounts() {
   document.querySelectorAll(".filter-group").forEach((group) => {
     let activeCount = group.querySelectorAll(".multi-picker-tags .multi-picker-tag").length;
+    const defaultStatusTags = group.querySelectorAll("#search-status-picker .multi-picker-tag");
+    if (defaultStatusTags.length === 1 && defaultStatusTags[0].textContent.trim().startsWith("Ativa")) activeCount -= 1;
     group.querySelectorAll("input, select, textarea").forEach((field) => {
       if (field.disabled || field.closest(".multi-picker-panel")) return;
       const value = String(field.value || "").trim();
@@ -128,7 +144,20 @@ function updateFilterGroupCounts() {
     });
     const badge = group.querySelector(".filter-group-count");
     if (badge) badge.textContent = activeCount ? `${activeCount} ativo${activeCount === 1 ? "" : "s"}` : "";
+    group.dataset.activeFilterCount = String(activeCount);
+    const tabBadge = document.querySelector(`[data-filter-subtab-count="${group.id}"]`);
+    if (tabBadge) tabBadge.textContent = activeCount ? String(activeCount) : "";
   });
+  let totalActive = 0;
+  document.querySelectorAll("[data-filter-panel]").forEach((panel) => {
+    const categoryCount = [...panel.querySelectorAll(".filter-group")]
+      .reduce((sum, group) => sum + Number(group.dataset.activeFilterCount || 0), 0);
+    totalActive += categoryCount;
+    const categoryBadge = document.querySelector(`[data-filter-category-count="${panel.id}"]`);
+    if (categoryBadge) categoryBadge.textContent = categoryCount ? String(categoryCount) : "";
+  });
+  const totalLabel = document.querySelector("#active-filter-count");
+  if (totalLabel) totalLabel.textContent = `${totalActive} filtro${totalActive === 1 ? "" : "s"} ativo${totalActive === 1 ? "" : "s"}`;
 }
 
 const form = document.querySelector("#match-form");
@@ -454,6 +483,28 @@ function updateUfOptions() {
 updateUfOptions();
 regionPicker.onChange(updateUfOptions);
 ufPicker.onChange(loadMunicipalityOptions);
+
+document.querySelector("#clear-company-filters").addEventListener("click", () => {
+  [cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
+    .forEach((picker) => picker.clear());
+  statusPicker.setSelected(["ATIVA"]);
+  [
+    "#search-name", "#search-excluded-names", "#search-capital-min", "#search-capital-max",
+    "#search-opened-from", "#search-opened-to", "#search-included-cnpjs", "#search-excluded-cnpjs",
+    "#search-postal-codes", "#search-legal-nature", "#search-partners-min", "#search-partners-max",
+    "#search-branches-min", "#search-branches-max",
+  ].forEach((selector) => { document.querySelector(selector).value = ""; });
+  ["#search-simples", "#search-mei", "#search-branch-type", "#search-has-email", "#search-has-phone"]
+    .forEach((selector) => { document.querySelector(selector).value = ""; });
+  document.querySelector("#search-cnae-scope").value = "primary";
+  document.querySelector("#search-saved-status").value = "all";
+  setActiveSavedSearch();
+  updateUfOptions();
+  activateFilterCategory("profile-filter-section");
+  document.querySelector("#profile-filter-section [data-filter-subtab]")?.click();
+  updateFilterGroupCounts();
+  scheduleCompanySearchPreview({ immediate: true });
+});
 
 document.addEventListener("click", (event) => {
   if (event.target.closest(".multi-picker")) return;

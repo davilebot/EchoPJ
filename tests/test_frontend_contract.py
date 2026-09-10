@@ -89,8 +89,10 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("share_capital_min: optionalCapitalNumber", script)
         self.assertIn("function normalizeCnpjFilterList", script)
         self.assertIn("included_cnpjs: normalizeCnpjFilterList", script)
-        self.assertIn("function setFilterSectionState", script)
-        self.assertIn("echopjs-filter-section-v2", script)
+        self.assertIn("function activateFilterCategory", script)
+        self.assertIn("echopjs-filter-category-v3", script)
+        self.assertIn('id="clear-company-filters"', self.html)
+        self.assertIn('class="filter-category-tabs"', self.html)
 
     def test_search_preview_updates_automatically_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
