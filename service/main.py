@@ -1882,12 +1882,13 @@ def _company_search_response(
     }
     if requested_list_ids - available_list_ids:
         raise HTTPException(status_code=422, detail="Uma ou mais listas selecionadas não existem neste workspace.")
-    included_cnpjs: set[str] | None = None
-    excluded_cnpjs: set[str] = set()
+    included_cnpjs: set[str] | None = set(payload.included_cnpjs) if payload.included_cnpjs else None
+    excluded_cnpjs: set[str] = set(payload.excluded_cnpjs)
     if payload.included_list_ids:
-        included_cnpjs = saas_store.company_list_cnpjs(
+        list_cnpjs = saas_store.company_list_cnpjs(
             user["organization_id"], payload.included_list_ids,
         )
+        included_cnpjs = list_cnpjs if included_cnpjs is None else included_cnpjs & list_cnpjs
     if payload.excluded_list_ids:
         excluded_cnpjs.update(saas_store.company_list_cnpjs(
             user["organization_id"], payload.excluded_list_ids,

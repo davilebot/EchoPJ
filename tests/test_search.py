@@ -29,6 +29,8 @@ class SearchModelTests(unittest.TestCase):
             municipalities=["SP|São Paulo", "Campinas", "SP|SÃO PAULO"],
             postal_code_prefixes=["13010-000", "045", "13010-000"],
             partner_age_ranges=["3", "5", "3"],
+            included_cnpjs=["11.222.333/0001-81", "11222333000181"],
+            excluded_cnpjs=["19.131.243/0001-97", "19131243000197"],
             included_list_ids=["lista-a", "lista-a"],
             excluded_list_ids=["lista-b", "lista-b"],
             excluded_company_names=["Marca A", "marca a", "Marca B"],
@@ -43,6 +45,8 @@ class SearchModelTests(unittest.TestCase):
         self.assertEqual(request.municipalities, ["SP|SAO PAULO", "CAMPINAS"])
         self.assertEqual(request.postal_code_prefixes, ["13010000", "045"])
         self.assertEqual(request.partner_age_ranges, ["3", "5"])
+        self.assertEqual(request.included_cnpjs, ["11222333000181"])
+        self.assertEqual(request.excluded_cnpjs, ["19131243000197"])
         self.assertEqual(request.included_list_ids, ["lista-a"])
         self.assertEqual(request.excluded_list_ids, ["lista-b"])
         self.assertEqual(request.excluded_company_names, ["Marca A", "Marca B"])
@@ -72,6 +76,8 @@ class SearchModelTests(unittest.TestCase):
             CompanySearchRequest(partner_age_ranges=["10"])
         with self.assertRaises(ValidationError):
             CompanySearchRequest(municipalities=["XX|Cidade"])
+        with self.assertRaises(ValidationError):
+            CompanySearchRequest(included_cnpjs=["11.222"])
 
     def test_company_size_codes_are_presented_as_labels(self):
         self.assertEqual(COMPANY_SIZE_LABELS["01"], "MICRO EMPRESA")

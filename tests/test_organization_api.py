@@ -718,6 +718,20 @@ class OrganizationAPITests(unittest.TestCase):
 
         status, _, _ = self.request(
             "/api/search/preview", "POST",
+            {
+                "ufs": ["SP"],
+                "included_cnpjs": ["11.222.333/0001-81"],
+                "excluded_cnpjs": ["19.131.243/0001-97"],
+            },
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        filters = self.main.repository.search_companies.call_args.args[0]
+        self.assertEqual(filters["_included_cnpjs"], ["11222333000181"])
+        self.assertEqual(filters["_excluded_cnpjs"], ["19131243000197"])
+
+        status, _, _ = self.request(
+            "/api/search/preview", "POST",
             {"ufs": ["SP"], "included_list_ids": [company_list["id"]], "saved_status": "saved"},
             self.owner_token, {"x-organization-id": str(self.org)},
         )

@@ -76,12 +76,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('id="search-included-list-picker"', self.html)
         self.assertIn('id="search-excluded-list-picker"', self.html)
         self.assertIn('id="search-saved-status"', self.html)
+        self.assertIn('id="search-included-cnpjs"', self.html)
+        self.assertIn('id="search-excluded-cnpjs"', self.html)
+        self.assertIn('data-filter-group-toggle', self.html)
         self.assertIn("select { appearance: none", styles)
         self.assertIn(".multi-picker-trigger::after", styles)
         self.assertIn('id="search-capital-min" data-capital-input type="text" inputmode="numeric"', self.html)
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         self.assertIn("function capitalDigits(value)", script)
         self.assertIn("share_capital_min: optionalCapitalNumber", script)
+        self.assertIn("function normalizeCnpjFilterList", script)
+        self.assertIn("included_cnpjs: normalizeCnpjFilterList", script)
 
     def test_search_preview_updates_automatically_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")

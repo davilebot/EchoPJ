@@ -63,6 +63,48 @@ document.querySelectorAll("[data-filter-section-toggle]").forEach((toggle) => {
   });
 });
 
+const filterGroupToggles = [...document.querySelectorAll("[data-filter-group-toggle]")];
+
+function setFilterGroupState(toggle, collapsed, persist = true) {
+  const group = toggle.closest(".filter-group");
+  group.classList.toggle("is-collapsed", collapsed);
+  toggle.setAttribute("aria-expanded", String(!collapsed));
+  if (!persist) return;
+  try { localStorage.setItem(toggle.dataset.storageKey, collapsed ? "collapsed" : "expanded"); } catch (_) {}
+}
+
+filterGroupToggles.forEach((toggle, index) => {
+  const section = toggle.closest(".filter-section");
+  toggle.dataset.storageKey = `echopjs-filter-group-${section?.id || "search"}-${index}`;
+  let savedState = null;
+  try { savedState = localStorage.getItem(toggle.dataset.storageKey); } catch (_) {}
+  const collapsed = savedState ? savedState === "collapsed" : !toggle.hasAttribute("data-filter-group-default-open");
+  setFilterGroupState(toggle, collapsed, false);
+  toggle.addEventListener("click", () => {
+    const willOpen = toggle.getAttribute("aria-expanded") !== "true";
+    if (willOpen) {
+      toggle.closest(".filter-section-body")?.querySelectorAll("[data-filter-group-toggle]").forEach((sibling) => {
+        if (sibling !== toggle) setFilterGroupState(sibling, true);
+      });
+    }
+    setFilterGroupState(toggle, !willOpen);
+  });
+});
+
+function updateFilterGroupCounts() {
+  document.querySelectorAll(".filter-group").forEach((group) => {
+    let activeCount = group.querySelectorAll(".multi-picker-tags .multi-picker-tag").length;
+    group.querySelectorAll("input, select, textarea").forEach((field) => {
+      if (field.disabled || field.closest(".multi-picker-panel")) return;
+      const value = String(field.value || "").trim();
+      if (!value || ["all", "primary"].includes(value)) return;
+      activeCount += 1;
+    });
+    const badge = group.querySelector(".filter-group-count");
+    if (badge) badge.textContent = activeCount ? `${activeCount} ativo${activeCount === 1 ? "" : "s"}` : "";
+  });
+}
+
 const form = document.querySelector("#match-form");
 const loading = document.querySelector("#loading");
 const result = document.querySelector("#result");
@@ -355,6 +397,7 @@ statusPicker.setOptions([
   { value: "SUSPENSA", option_label: "Suspensa", display_label: "Suspensa" }, { value: "NULA", option_label: "Nula", display_label: "Nula" }, { value: "NAO INFORMADA", option_label: "Não informada", display_label: "Não informada" },
 ]);
 statusPicker.setSelected(["ATIVA"]);
+updateFilterGroupCounts();
 sizePicker.setOptions([
   { value: "MICRO EMPRESA", option_label: "Microempresa", display_label: "Microempresa" },
   { value: "EMPRESA DE PEQUENO PORTE", option_label: "Empresa de Pequeno Porte", display_label: "Empresa de Pequeno Porte" },
@@ -692,6 +735,12 @@ function optionalCapitalNumber(value) {
   return digits ? Number(digits) : null;
 }
 
+function normalizeCnpjFilterList(value) {
+  return [...new Set(parseCnpjList(value)
+    .map((item) => item.toUpperCase().replace(/[^0-9A-Z]/g, ""))
+    .filter(Boolean))];
+}
+
 async function loadSearchCapabilities() {
   if (searchCapabilitiesLoaded) return searchCapabilities;
   try {
@@ -815,6 +864,8 @@ function companySearchPayload() {
     partner_age_ranges: partnerAgePicker.values(),
     partner_count_min: optionalNumber(document.querySelector("#search-partners-min").value),
     partner_count_max: optionalNumber(document.querySelector("#search-partners-max").value),
+    included_cnpjs: normalizeCnpjFilterList(document.querySelector("#search-included-cnpjs").value),
+    excluded_cnpjs: normalizeCnpjFilterList(document.querySelector("#search-excluded-cnpjs").value),
     included_list_ids: includedListPicker.values(),
     excluded_list_ids: excludedListPicker.values(),
     saved_status: document.querySelector("#search-saved-status").value,
@@ -1360,6 +1411,7 @@ function hasMeaningfulCompanyFilters(payload) {
     || payload.opened_from || payload.opened_to || payload.regions.length || payload.ufs.length
     || payload.municipalities.length || payload.postal_code_prefixes.length || payload.partner_age_ranges.length
     || payload.partner_count_min !== null || payload.partner_count_max !== null
+    || payload.included_cnpjs.length || payload.excluded_cnpjs.length
     || payload.included_list_ids.length || payload.excluded_list_ids.length || payload.saved_status !== "all"
     || payload.simples !== null || payload.mei !== null || payload.legal_nature_code || payload.branch_type
     || payload.has_email !== null || payload.has_phone !== null || payload.active_branch_count_min !== null
@@ -1471,14 +1523,19 @@ companySearchForm.addEventListener("input", (event) => {
   if (event.target.closest(".multi-picker-search")) return;
   const capitalInput = event.target.closest("[data-capital-input]");
   if (capitalInput) capitalInput.value = capitalDigits(capitalInput.value);
+  updateFilterGroupCounts();
   scheduleCompanySearchPreview();
 });
 companySearchForm.addEventListener("change", (event) => {
   if (event.target.closest(".multi-picker-options")) return;
+  updateFilterGroupCounts();
   scheduleCompanySearchPreview();
 });
 [cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
-  .forEach((picker) => picker.onChange(() => scheduleCompanySearchPreview()));
+  .forEach((picker) => picker.onChange(() => {
+    updateFilterGroupCounts();
+    scheduleCompanySearchPreview();
+  }));
 
 document.querySelector("#search-result-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-search-view]");
@@ -1800,6 +1857,8 @@ function filtersDescription(filters) {
   if (filters.company_sizes?.length) parts.push(`${filters.company_sizes.length} porte${filters.company_sizes.length === 1 ? "" : "s"}`);
   if (filters.partner_count_min !== null && filters.partner_count_min !== undefined) parts.push(`A partir de ${filters.partner_count_min} sócios`);
   if (filters.partner_count_max !== null && filters.partner_count_max !== undefined) parts.push(`Até ${filters.partner_count_max} sócios`);
+  if (filters.included_cnpjs?.length) parts.push(`${filters.included_cnpjs.length} CNPJ${filters.included_cnpjs.length === 1 ? "" : "s"} incluído${filters.included_cnpjs.length === 1 ? "" : "s"}`);
+  if (filters.excluded_cnpjs?.length) parts.push(`${filters.excluded_cnpjs.length} CNPJ${filters.excluded_cnpjs.length === 1 ? "" : "s"} excluído${filters.excluded_cnpjs.length === 1 ? "" : "s"}`);
   if (filters.included_list_ids?.length) parts.push(`${filters.included_list_ids.length} lista${filters.included_list_ids.length === 1 ? "" : "s"} incluída${filters.included_list_ids.length === 1 ? "" : "s"}`);
   if (filters.excluded_list_ids?.length) parts.push(`${filters.excluded_list_ids.length} lista${filters.excluded_list_ids.length === 1 ? "" : "s"} excluída${filters.excluded_list_ids.length === 1 ? "" : "s"}`);
   if (filters.saved_status === "new") parts.push("Somente novas");
@@ -1880,9 +1939,12 @@ async function applySearchFilters(filters) {
   setInputValue("#search-has-phone", filters.has_phone === null || filters.has_phone === undefined ? "" : String(filters.has_phone));
   setInputValue("#search-partners-min", filters.partner_count_min);
   setInputValue("#search-partners-max", filters.partner_count_max);
+  setInputValue("#search-included-cnpjs", (filters.included_cnpjs || []).join("\n"));
+  setInputValue("#search-excluded-cnpjs", (filters.excluded_cnpjs || []).join("\n"));
   setInputValue("#search-saved-status", filters.saved_status || "all");
   setInputValue("#search-branches-min", filters.active_branch_count_min);
   setInputValue("#search-branches-max", filters.active_branch_count_max);
+  updateFilterGroupCounts();
 }
 
 async function applySavedSearch(saved) {

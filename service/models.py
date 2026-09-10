@@ -362,6 +362,8 @@ class CompanySearchRequest(BaseModel):
     partner_age_ranges: list[str] = Field(default_factory=list, max_length=9)
     partner_count_min: int | None = Field(default=None, ge=0, le=100000)
     partner_count_max: int | None = Field(default=None, ge=0, le=100000)
+    included_cnpjs: list[str] = Field(default_factory=list, max_length=10000)
+    excluded_cnpjs: list[str] = Field(default_factory=list, max_length=10000)
     included_list_ids: list[str] = Field(default_factory=list, max_length=100)
     excluded_list_ids: list[str] = Field(default_factory=list, max_length=100)
     saved_status: Literal["all", "new", "saved"] = "all"
@@ -462,6 +464,21 @@ class CompanySearchRequest(BaseModel):
         if any(len(item) > 64 for item in normalized):
             raise ValueError("identificador de lista invalido")
         return normalized
+
+    @field_validator("included_cnpjs", "excluded_cnpjs")
+    @classmethod
+    def validate_search_cnpjs(cls, value: list[str]) -> list[str]:
+        normalized_items: list[str] = []
+        for item in value:
+            try:
+                normalized = normalize_cnpj_identifier(str(item))
+            except ValueError as error:
+                raise ValueError("cada CNPJ deve ter 14 caracteres") from error
+            if normalized.isdigit() and not valid_cnpj(normalized):
+                raise ValueError("informe apenas CNPJs validos")
+            if normalized not in normalized_items:
+                normalized_items.append(normalized)
+        return normalized_items
 
     @field_validator("registration_statuses")
     @classmethod
