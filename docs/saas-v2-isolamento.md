@@ -21,7 +21,9 @@ atual. Quando esses dados migrarem de SQLite para PostgreSQL, a v2 deve usar um
 banco ou schema operacional proprio.
 
 Na fase inicial, `saas.sqlite` guarda perfis comerciais, livro-razao de creditos,
-empresas desbloqueadas, listas e buscas salvas. O arquivo fica apenas no volume
+empresas desbloqueadas, listas e buscas salvas. O cache global de contatos e os
+CPFs criptografados ficam em `partner-enrichment.sqlite`; o acesso aos resultados
+continua isolado por organização. Os arquivos ficam apenas no volume
 `/srv/echopjs-saas-v2/data`.
 
 ## Fluxo de desenvolvimento
@@ -50,7 +52,8 @@ implantacao tomada apenas depois da homologacao.
 2. Cadastre um arquivo de segredos separado usando `saas-v2.env.example` como
    referencia e configure nele a nova `APP_PUBLIC_URL`.
 3. Reutilize em `POSTGRES_DSN` a credencial somente leitura da Receita.
-4. Nao copie `auth.sqlite`, `jobs.sqlite` ou `website-cache.sqlite` da v1.
+4. Nao copie `auth.sqlite`, `jobs.sqlite`, `partner-enrichment.sqlite` ou
+   `website-cache.sqlite` da v1.
 5. Construa uma imagem exclusiva e identificada pelo commit:
 
    ```bash

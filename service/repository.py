@@ -174,6 +174,7 @@ class Repository:
             "company_size": cls._company_size_label(row.get("company_size")),
             "share_capital": row.get("share_capital"),
             "primary_cnae": row.get("primary_cnae"),
+            "primary_cnae_description": row.get("primary_cnae_description"),
             "secondary_cnaes": row.get("secondary_cnaes") or [],
             "municipality": row.get("municipality"),
             "uf": row.get("uf"),
@@ -182,7 +183,13 @@ class Repository:
             "is_simples": row.get("is_simples"),
             "is_mei": row.get("is_mei"),
             "legal_nature_code": row.get("legal_nature_code"),
+            "legal_nature": row.get("legal_nature"),
+            "responsible_qualification_code": row.get("responsible_qualification_code"),
+            "responsible_qualification": row.get("responsible_qualification"),
             "branch_type_code": row.get("branch_type_code"),
+            "branch_type": {"1": "Matriz", "2": "Filial"}.get(str(row.get("branch_type_code") or "")),
+            "registration_status_reason_code": row.get("registration_status_reason_code"),
+            "registration_status_reason": row.get("registration_status_reason"),
             "email": row.get("email"),
             "phone_area_code": row.get("phone1_area_code"),
             "phone": row.get("phone1"),
@@ -714,18 +721,20 @@ class Repository:
             )
             company_columns = (
                 "c.legal_nature_code,coalesce(e.company_size,c.company_size) AS company_size,"
-                "coalesce(e.share_capital,c.share_capital) AS share_capital"
+                "coalesce(e.share_capital,c.share_capital) AS share_capital,"
+                "c.responsible_qualification_code"
             )
         else:
             company_columns = (
-                "NULL::text AS legal_nature_code,e.company_size,e.share_capital"
+                "NULL::text AS legal_nature_code,e.company_size,e.share_capital,"
+                "NULL::text AS responsible_qualification_code"
             )
         if capabilities.establishment_details:
             joins.append(
                 "LEFT JOIN rfb_establishment_details x ON x.dataset_version=e.dataset_version AND x.cnpj=e.cnpj"
             )
             detail_columns = """
-                x.branch_type_code,x.email,x.phone1_area_code,x.phone1,
+                x.branch_type_code,x.registration_status_reason_code,x.email,x.phone1_area_code,x.phone1,
                 coalesce(e.opened_at,x.opened_at) AS opened_at,
                 coalesce(e.primary_cnae,x.primary_cnae) AS primary_cnae,
                 coalesce(e.secondary_cnaes,x.secondary_cnaes) AS secondary_cnaes,
@@ -737,7 +746,8 @@ class Repository:
             """
         else:
             detail_columns = """
-                NULL::text AS branch_type_code,NULL::text AS email,
+                NULL::text AS branch_type_code,NULL::text AS registration_status_reason_code,
+                NULL::text AS email,
                 NULL::text AS phone1_area_code,NULL::text AS phone1,
                 e.opened_at,e.primary_cnae,e.secondary_cnaes,
                 e.street_type,e.street,e.street_number,e.address_extra,e.district
@@ -752,10 +762,38 @@ class Repository:
             )
         else:
             branch_columns = "0::integer AS branch_count,0::integer AS active_branch_count"
+        if capabilities.references:
+            joins.append(
+                "LEFT JOIN rfb_aux_reference cnae_ref ON cnae_ref.dataset_version=e.dataset_version "
+                "AND cnae_ref.kind='cnae' AND cnae_ref.code=coalesce(e.primary_cnae,x.primary_cnae)"
+                if capabilities.establishment_details else
+                "LEFT JOIN rfb_aux_reference cnae_ref ON cnae_ref.dataset_version=e.dataset_version "
+                "AND cnae_ref.kind='cnae' AND cnae_ref.code=e.primary_cnae"
+            )
+            if capabilities.company_details:
+                joins.extend([
+                    "LEFT JOIN rfb_aux_reference nature_ref ON nature_ref.dataset_version=e.dataset_version AND nature_ref.kind='legal_nature' AND nature_ref.code=c.legal_nature_code",
+                    "LEFT JOIN rfb_aux_reference responsible_ref ON responsible_ref.dataset_version=e.dataset_version AND responsible_ref.kind='qualification' AND responsible_ref.code=c.responsible_qualification_code",
+                ])
+            if capabilities.establishment_details:
+                joins.append(
+                    "LEFT JOIN rfb_aux_reference status_reason_ref ON status_reason_ref.dataset_version=e.dataset_version AND status_reason_ref.kind='status_reason' AND status_reason_ref.code=x.registration_status_reason_code"
+                )
+            reference_columns = (
+                "cnae_ref.label AS primary_cnae_description,"
+                + ("nature_ref.label AS legal_nature,responsible_ref.label AS responsible_qualification," if capabilities.company_details else "NULL::text AS legal_nature,NULL::text AS responsible_qualification,")
+                + ("status_reason_ref.label AS registration_status_reason" if capabilities.establishment_details else "NULL::text AS registration_status_reason")
+            )
+        else:
+            reference_columns = (
+                "NULL::text AS primary_cnae_description,NULL::text AS legal_nature,"
+                "NULL::text AS responsible_qualification,NULL::text AS registration_status_reason"
+            )
         sql = f"""
             SELECT e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.registration_status,
                    e.registration_status_date,e.municipality,e.uf,e.postal_code,e.dataset_version,
-                   {company_columns},{simples_columns},{detail_columns},{branch_columns}
+                   {company_columns},{simples_columns},{detail_columns},{branch_columns},
+                   {reference_columns}
             FROM rfb_establishments e
             {' '.join(joins)}
             WHERE e.cnpj=ANY(%s)

@@ -39,6 +39,7 @@ class FrontendContractTests(unittest.TestCase):
             "save-search-dialog", "save-list-dialog", "create-list-dialog", "saas-overview",
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
             "search-templates", "workspace-access-notice", "search-excluded-cnae-picker", "sidebar-toggle",
+            "bulk-cnpj-workbench", "bulk-cnpj-filter-form", "bulk-active-filter-count",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -125,6 +126,30 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn('downloadCsvResponse("/api/exports/companies"', script)
         self.assertIn('downloadCsvResponse("/api/exports/cnpj-lookup"', script)
         self.assertNotIn("downloadCompleteCompanyCsv", script)
+
+    def test_bulk_cnpj_lookup_filters_in_memory_and_saves_to_lists(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        for filter_id in (
+            "bulk-filter-cnae-picker", "bulk-filter-excluded-cnae-picker", "bulk-filter-excluded-names",
+            "bulk-filter-region-picker", "bulk-filter-uf-picker", "bulk-filter-municipality-picker",
+            "bulk-filter-status-picker", "bulk-filter-size-picker", "bulk-filter-branch-picker",
+            "bulk-filter-opened-from", "bulk-filter-capital-min",
+            "bulk-filter-partners-min", "bulk-filter-partner-age-picker",
+            "bulk-filter-legal-nature-picker", "bulk-filter-saved-status", "bulk-filter-list-picker",
+        ):
+            self.assertIn(f'id="{filter_id}"', self.html)
+        self.assertIn("function applyBulkCnpjFilters", script)
+        self.assertIn("lastBulkCnpjLookup.filter", script)
+        self.assertIn("bulkUfPicker.values()", script)
+        self.assertIn("bulkPartnerAgePicker.values()", script)
+        self.assertIn("bulkListPicker.values()", script)
+        self.assertIn("filters.list_ids.some", script)
+        self.assertIn('openSaveListDialog("bulk")', script)
+        self.assertIn('id="save-selected-bulk-cnpj"', script)
+        self.assertIn('id="download-bulk-cnpj"', script)
+        self.assertIn("Filtrar não refaz a consulta nem usa créditos", script)
+        self.assertIn(".bulk-cnpj-workbench { display: grid", styles)
 
     def test_search_keeps_selection_actions_visible_and_explains_credit_use(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
@@ -277,6 +302,15 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("data-list-template", script)
         self.assertIn(".search-template-grid", styles)
         self.assertIn(".list-template-grid", styles)
+
+    def test_saved_lists_offer_queued_partner_enrichment(self):
+        script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+        styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("data-enrich-list", script)
+        self.assertIn("/partner-enrichments", script)
+        self.assertIn("renderEnrichedPartners", script)
+        self.assertIn("cpf_masked", script)
+        self.assertIn(".partner-enrichment-card", styles)
 
     def test_help_center_is_contextual_searchable_and_workspace_aware(self):
         html = (STATIC_DIR / "help.html").read_text(encoding="utf-8")

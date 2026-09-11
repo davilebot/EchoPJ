@@ -124,7 +124,7 @@ def build_search_query(
     if needs_branch_counts and not capabilities.branch_counts:
         raise SearchCapabilityUnavailable("o resumo de filiais ainda esta sendo preparado")
 
-    if capabilities.simples and needs_simples:
+    if capabilities.simples:
         simples_join = (
             "LEFT JOIN rfb_simples s ON s.cnpj_root=e.cnpj_root "
             "AND s.dataset_version=e.dataset_version"
@@ -143,7 +143,7 @@ def build_search_query(
         "WHEN '05' THEN 'DEMAIS' "
         "ELSE coalesce(nullif(e.company_size,''),'NAO INFORMADO') END"
     )
-    if capabilities.company_details and (needs_company or needs_company_for_inactive_filter):
+    if capabilities.company_details:
         company_join = (
             "LEFT JOIN rfb_company_details c ON c.cnpj_root=e.cnpj_root "
             "AND c.dataset_version=e.dataset_version"
@@ -152,15 +152,17 @@ def build_search_query(
         if needs_company or needs_company_for_inactive_filter:
             filter_joins.append(company_join)
         legal_nature_column = "c.legal_nature_code"
+        responsible_qualification_column = "c.responsible_qualification_code"
         company_size_expression = f"coalesce(c.company_size,{base_company_size_expression})"
         company_size_filter_expression = "e.company_size" if active_only else "coalesce(c.company_size_code,e.company_size)"
         share_capital_expression = "e.share_capital" if active_only else "coalesce(e.share_capital,c.share_capital)"
     else:
         legal_nature_column = "NULL::text AS legal_nature_code"
+        responsible_qualification_column = "NULL::text AS responsible_qualification_code"
         company_size_expression = base_company_size_expression
         company_size_filter_expression = "e.company_size"
         share_capital_expression = "e.share_capital"
-    if capabilities.establishment_details and (needs_establishment or needs_establishment_for_inactive_filter):
+    if capabilities.establishment_details:
         establishment_join = (
             "LEFT JOIN rfb_establishment_details x ON x.cnpj=e.cnpj "
             "AND x.dataset_version=e.dataset_version"
@@ -168,7 +170,10 @@ def build_search_query(
         joins.append(establishment_join)
         if needs_establishment or needs_establishment_for_inactive_filter:
             filter_joins.append(establishment_join)
-        detail_columns = "x.branch_type_code,x.email,x.phone1_area_code,x.phone1"
+        detail_columns = (
+            "x.branch_type_code,x.registration_status_reason_code,"
+            "x.email,x.phone1_area_code,x.phone1"
+        )
         if active_only:
             opened_expression = "e.opened_at"
             cnae_expression = "e.primary_cnae"
@@ -187,7 +192,8 @@ def build_search_query(
             }
     else:
         detail_columns = (
-            "NULL::text AS branch_type_code,NULL::text AS email,"
+            "NULL::text AS branch_type_code,NULL::text AS registration_status_reason_code,"
+            "NULL::text AS email,"
             "NULL::text AS phone1_area_code,NULL::text AS phone1"
         )
         opened_expression = "e.opened_at"
@@ -198,7 +204,7 @@ def build_search_query(
             for field in ("street_type", "street", "street_number", "address_extra", "district")
         }
 
-    if capabilities.branch_counts and needs_branch_counts:
+    if capabilities.branch_counts:
         branch_counts_join = (
             "LEFT JOIN rfb_company_branch_counts b ON b.cnpj_root=e.cnpj_root "
             "AND b.dataset_version=e.dataset_version"
@@ -212,6 +218,32 @@ def build_search_query(
         )
     else:
         branch_count_columns = "0::integer AS branch_count,0::integer AS active_branch_count"
+
+    if capabilities.references:
+        joins.extend([
+            f"LEFT JOIN rfb_aux_reference cnae_ref ON cnae_ref.dataset_version=e.dataset_version AND cnae_ref.kind='cnae' AND cnae_ref.code={cnae_expression}",
+            "LEFT JOIN rfb_aux_reference nature_ref ON nature_ref.dataset_version=e.dataset_version AND nature_ref.kind='legal_nature' AND nature_ref.code=c.legal_nature_code" if capabilities.company_details else "",
+            "LEFT JOIN rfb_aux_reference responsible_ref ON responsible_ref.dataset_version=e.dataset_version AND responsible_ref.kind='qualification' AND responsible_ref.code=c.responsible_qualification_code" if capabilities.company_details else "",
+            "LEFT JOIN rfb_aux_reference status_reason_ref ON status_reason_ref.dataset_version=e.dataset_version AND status_reason_ref.kind='status_reason' AND status_reason_ref.code=x.registration_status_reason_code" if capabilities.establishment_details else "",
+        ])
+        reference_columns = (
+            "cnae_ref.label AS primary_cnae_description,"
+            "nature_ref.label AS legal_nature," if capabilities.company_details else
+            "cnae_ref.label AS primary_cnae_description,NULL::text AS legal_nature,"
+        )
+        reference_columns += (
+            "responsible_ref.label AS responsible_qualification," if capabilities.company_details
+            else "NULL::text AS responsible_qualification,"
+        )
+        reference_columns += (
+            "status_reason_ref.label AS registration_status_reason" if capabilities.establishment_details
+            else "NULL::text AS registration_status_reason"
+        )
+    else:
+        reference_columns = (
+            "NULL::text AS primary_cnae_description,NULL::text AS legal_nature,"
+            "NULL::text AS responsible_qualification,NULL::text AS registration_status_reason"
+        )
 
     if set(statuses) == {"ATIVA"}:
         predicates.append("e.is_active")
@@ -448,10 +480,11 @@ def build_search_query(
           {address_expressions['street_number']} AS street_number,
           {address_expressions['address_extra']} AS address_extra,
           {address_expressions['district']} AS district,
-          e.dataset_version,{simples_columns},{legal_nature_column},{detail_columns},
+          e.dataset_version,{simples_columns},{legal_nature_column},{responsible_qualification_column},
+          {detail_columns},{reference_columns},
           {branch_count_columns},{partner_count_column}
         FROM matched e
-        {' '.join(joins)}
+        {' '.join(join for join in joins if join)}
         ORDER BY {order_expression}
     """
     return sql, parameters

@@ -14,6 +14,7 @@ from service.jobs import JobStore
 from service.legal import LegalDocuments
 from service.limits import SlidingWindowRateLimiter
 from service.payments import BillingCatalog
+from service.partner_enrichment import PartnerEnrichmentStore
 from service.saas import SaaSStore
 
 
@@ -28,11 +29,14 @@ class OrganizationAPITests(unittest.TestCase):
             "AUTH_DATABASE_PATH": f"{cls.initial.name}/auth.sqlite",
             "SAAS_DATABASE_PATH": f"{cls.initial.name}/saas.sqlite",
             "JOB_DATABASE_PATH": f"{cls.initial.name}/jobs.sqlite",
+            "PARTNER_ENRICHMENT_DATABASE_PATH": f"{cls.initial.name}/partner-enrichment.sqlite",
             "WEBSITE_CACHE_PATH": f"{cls.initial.name}/web.sqlite",
+            "LEMIT_API_TOKEN": "test-token",
+            "LEMIT_PII_ENCRYPTION_KEY": "test-encryption-key",
             "APP_USERNAME": "test", "APP_PASSWORD": "test-only-password",
         }):
             cls.main = importlib.import_module("service.main")
-        cls.main.auth_store.close(); cls.main.job_store.close(); cls.main.website_checker.close()
+        cls.main.auth_store.close(); cls.main.job_store.close(); cls.main.partner_enrichment_store.close(); cls.main.website_checker.close()
         get_settings.cache_clear()
 
     @classmethod
@@ -44,6 +48,9 @@ class OrganizationAPITests(unittest.TestCase):
         self.auth = AuthStore(f"{self.tmp.name}/auth.sqlite")
         self.jobs = JobStore(f"{self.tmp.name}/jobs.sqlite")
         self.saas = SaaSStore(f"{self.tmp.name}/saas.sqlite")
+        self.enrichment = PartnerEnrichmentStore(
+            f"{self.tmp.name}/partner-enrichment.sqlite", "test-encryption-key",
+        )
         self.auth.bootstrap("owner@example.com", "test-only-password")
         self.owner = self.auth.authenticate("owner@example.com", "test-only-password")
         self.org = self.auth.ensure_initial_organization()
@@ -61,12 +68,12 @@ class OrganizationAPITests(unittest.TestCase):
             privacy_version="2026-09", effective_date="2026-09-09",
             retention_policy="Dados de conta são mantidos durante o contrato e pelo prazo legal aplicável.",
         )
-        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "repository", MagicMock()), patch.object(self.main, "heavy_rate_limiter", SlidingWindowRateLimiter(requests=1000)), patch.object(self.main.job_runner, "notify"), patch.object(self.main, "legal_documents", self.legal)]
+        self.patches = [patch.object(self.main, "auth_store", self.auth), patch.object(self.main, "job_store", self.jobs), patch.object(self.main, "saas_store", self.saas), patch.object(self.main, "partner_enrichment_store", self.enrichment), patch.object(self.main, "repository", MagicMock()), patch.object(self.main, "heavy_rate_limiter", SlidingWindowRateLimiter(requests=1000)), patch.object(self.main.job_runner, "notify"), patch.object(self.main.partner_enrichment_runner, "notify"), patch.object(self.main.partner_enrichment_runner, "is_alive", return_value=True), patch.object(self.main, "legal_documents", self.legal)]
         for mock in self.patches: mock.start()
 
     def tearDown(self):
         for mock in reversed(self.patches): mock.stop()
-        self.auth.close(); self.jobs.close(); self.saas.close(); self.tmp.cleanup()
+        self.auth.close(); self.jobs.close(); self.saas.close(); self.enrichment.close(); self.tmp.cleanup()
 
     def request(self, path, method="GET", data=None, token=None, headers=None):
         parts = urlsplit(path)
@@ -764,6 +771,31 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(foreign_data["segments"], {"total": 1, "new": 1, "saved": 0})
         self.assertEqual(foreign_data["results"][0]["saved_lists"], [])
 
+    def test_exact_cnpj_lookup_marks_existing_list_memberships(self):
+        company = {
+            "cnpj": "11222333000181",
+            "legal_name": "Empresa Consultada Ltda",
+            "primary_cnae": "6201501",
+        }
+        company_list = self.saas.create_company_list(
+            self.org, self.owner["id"], name="CNPJs prioritários",
+        )
+        self.saas.add_companies(
+            self.org, company_list["id"], self.owner["id"], [company],
+        )
+        self.main.repository.companies_by_cnpjs.return_value = {company["cnpj"]: company}
+
+        status, data, _ = self.request(
+            "/api/explorer/company-lookup", "POST", {"cnpjs": [company["cnpj"]]},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+
+        self.assertEqual(status, 200)
+        returned = data["results"][0]["company"]
+        self.assertTrue(returned["saved"])
+        self.assertEqual(returned["saved_lists"][0]["id"], company_list["id"])
+        self.assertEqual(returned["saved_lists"][0]["name"], "CNPJs prioritários")
+
     def test_admin_pages_and_membership_free_invite_page(self):
         self.assertEqual(self.request("/organizations")[0], 303)
         self.assertEqual(self.request("/organizations", token=self.owner_token)[0], 200)
@@ -870,6 +902,43 @@ class OrganizationAPITests(unittest.TestCase):
             self.request(f"/api/company-lists/{company_list['id']}", token=self.owner_token, headers={"x-organization-id": str(self.org)})[0],
             404,
         )
+
+    def test_partner_enrichment_is_queued_for_the_whole_list_and_tenant_scoped(self):
+        status, company_list, _ = self.request(
+            "/api/company-lists", "POST", {"name": "Enriquecer"}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 201)
+        company = {"cnpj": "37602227000117", "legal_name": "EMPRESA TESTE"}
+        self.main.repository.companies_by_cnpjs.return_value = {company["cnpj"]: company}
+        self.assertEqual(self.request(
+            f"/api/company-lists/{company_list['id']}/companies", "POST",
+            {"cnpjs": [company["cnpj"]]}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )[0], 200)
+        before = self.request(
+            "/api/billing/summary", token=self.owner_token,
+            headers={"x-organization-id": str(self.org)},
+        )[1]["profile"]["credit_balance"]
+        status, job, _ = self.request(
+            f"/api/company-lists/{company_list['id']}/partner-enrichments", "POST",
+            token=self.owner_token, headers={"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 202)
+        self.assertEqual(job["total_companies"], 1)
+        self.assertEqual(self.request(
+            f"/api/partner-enrichments/{job['id']}", token=self.owner_token,
+            headers={"x-organization-id": str(self.org)},
+        )[0], 200)
+        self.assertEqual(self.request(
+            f"/api/partner-enrichments/{job['id']}", token=self.owner_token,
+            headers={"x-organization-id": str(self.other)},
+        )[0], 404)
+        after = self.request(
+            "/api/billing/summary", token=self.owner_token,
+            headers={"x-organization-id": str(self.org)},
+        )[1]["profile"]["credit_balance"]
+        self.assertEqual(after, before)
 
     def test_server_exports_estimate_and_charge_each_company_only_once(self):
         companies = {

@@ -17,7 +17,7 @@
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260910-filter-workspace-3">
+  <link rel="stylesheet" href="/static/styles.css?v=20260911-cnpj-multiselect-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -249,7 +249,56 @@
           <div class="section-divider"><span>ou consulte vários CNPJs</span></div>
 
           <form id="bulk-cnpj-form" class="bulk-cnpj-form section-card"><div class="wide form-intro"><span class="form-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/><circle cx="18" cy="17" r="2"/></svg></span><div><span class="eyebrow">CONSULTA EM MASSA</span><h2>Consultar uma lista de CNPJs</h2><p>Cole até 10.000 CNPJs, um por linha. A ordem será preservada.</p></div></div><label class="wide">Lista de CNPJs<textarea id="bulk-cnpj-list" rows="7" required placeholder="00.000.000/0001-91&#10;11.222.333/0001-81&#10;44.555.666/0001-00"></textarea></label><button type="submit">Consultar dados dos CNPJs</button></form>
-          <section id="bulk-cnpj-loading" class="section-card hidden">Consultando os CNPJs exatos na Receita…</section><section id="bulk-cnpj-result" class="hidden"></section>
+          <section id="bulk-cnpj-loading" class="section-card hidden">Consultando os CNPJs exatos na Receita…</section>
+          <div id="bulk-cnpj-workbench" class="bulk-cnpj-workbench hidden">
+            <form id="bulk-cnpj-filter-form" class="bulk-cnpj-filter-form" aria-label="Filtros dos CNPJs consultados">
+              <div class="bulk-filter-heading">
+                <div><span class="eyebrow">FILTROS DO RESULTADO</span><h2>Refine a base consultada</h2><p>Os filtros atuam somente sobre estes dados, sem nova consulta ou créditos.</p></div>
+                <div><strong id="bulk-active-filter-count">0 filtros ativos</strong><button id="clear-bulk-cnpj-filters" type="button">Limpar tudo</button></div>
+              </div>
+              <nav class="bulk-filter-tabs" aria-label="Categorias dos filtros">
+                <button class="active" type="button" data-bulk-filter-tab="profile" aria-pressed="true">Perfil</button>
+                <button type="button" data-bulk-filter-tab="location" aria-pressed="false">Localização</button>
+                <button type="button" data-bulk-filter-tab="advanced" aria-pressed="false">Avançados</button>
+              </nav>
+              <section class="bulk-filter-panel active" data-bulk-filter-panel="profile">
+                <label class="wide">Nome ou marca<input id="bulk-filter-name" type="search" placeholder="Razão social ou nome fantasia"></label>
+                <label class="wide">Excluir nomes ou marcas<textarea id="bulk-filter-excluded-names" rows="2" placeholder="Um termo por linha"></textarea></label>
+                <div id="bulk-filter-cnae-picker" class="multi-picker wide"><span class="field-label">CNAEs ou atividades</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os CNAEs</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar por código ou atividade"><div class="multi-picker-toolbar"><span>Inclui qualquer CNAE marcado</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="bulk-filter-excluded-cnae-picker" class="multi-picker wide"><span class="field-label">Excluir CNAEs</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Nenhum CNAE excluído</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar CNAE para excluir"><div class="multi-picker-toolbar"><span>Exclui qualquer CNAE marcado</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags excluded-tags" aria-live="polite"></div></div>
+                <label>Onde procurar<select id="bulk-filter-cnae-scope"><option value="primary">CNAE principal</option><option value="any">Principal ou secundário</option></select></label>
+                <div id="bulk-filter-status-picker" class="multi-picker"><span class="field-label">Situações</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar situação"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="bulk-filter-size-picker" class="multi-picker"><span class="field-label">Portes</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar porte"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="bulk-filter-branch-picker" class="multi-picker"><span class="field-label">Matriz ou filial</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar tipo"><div class="multi-picker-toolbar"><span>Marque uma ou mais opções</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label>Simples Nacional<select id="bulk-filter-simples"><option value="">Todos</option><option value="true">Optante</option><option value="false">Não optante</option></select></label>
+                <label>MEI<select id="bulk-filter-mei"><option value="">Todos</option><option value="true">MEI</option><option value="false">Não MEI</option></select></label>
+                <div id="bulk-filter-lookup-picker" class="multi-picker wide"><span class="field-label">Resultados da consulta</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar resultado"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+              </section>
+              <section class="bulk-filter-panel" data-bulk-filter-panel="location">
+                <div id="bulk-filter-region-picker" class="multi-picker"><span class="field-label">Regiões</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Brasil inteiro</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar região"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="bulk-filter-uf-picker" class="multi-picker"><span class="field-label">Estados (UFs)</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os estados</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar UF"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <div id="bulk-filter-municipality-picker" class="multi-picker wide"><span class="field-label">Municípios</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todos os municípios</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar município"><div class="multi-picker-toolbar"><span>Marque quantos quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label class="wide">CEP começa com<input id="bulk-filter-postal-code" inputmode="numeric" maxlength="9" placeholder="Ex.: 01310"></label>
+              </section>
+              <section class="bulk-filter-panel" data-bulk-filter-panel="advanced">
+                <label>Aberta a partir de<input id="bulk-filter-opened-from" type="date"></label>
+                <label>Aberta até<input id="bulk-filter-opened-to" type="date"></label>
+                <label>Capital social mínimo<input id="bulk-filter-capital-min" data-capital-input type="text" inputmode="numeric" placeholder="R$ 0"></label>
+                <label>Capital social máximo<input id="bulk-filter-capital-max" data-capital-input type="text" inputmode="numeric" placeholder="Sem limite"></label>
+                <label>Mínimo de sócios<input id="bulk-filter-partners-min" type="number" min="0" placeholder="0"></label>
+                <label>Máximo de sócios<input id="bulk-filter-partners-max" type="number" min="0" placeholder="Sem limite"></label>
+                <div id="bulk-filter-partner-age-picker" class="multi-picker wide"><span class="field-label">Faixas etárias dos sócios</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas as faixas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar faixa etária"><div class="multi-picker-toolbar"><span>Inclui empresas com sócio em qualquer faixa marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label>Mínimo de filiais ativas<input id="bulk-filter-branches-min" type="number" min="0" placeholder="0"></label>
+                <label>Máximo de filiais ativas<input id="bulk-filter-branches-max" type="number" min="0" placeholder="Sem limite"></label>
+                <div id="bulk-filter-legal-nature-picker" class="multi-picker wide"><span class="field-label">Naturezas jurídicas</span><button class="multi-picker-trigger" type="button" aria-expanded="false"><span>Todas</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar código ou descrição"><div class="multi-picker-toolbar"><span>Marque quantas quiser</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+                <label>Telefone<select id="bulk-filter-has-phone"><option value="">Com ou sem</option><option value="true">Com telefone</option><option value="false">Sem telefone</option></select></label>
+                <label>E-mail<select id="bulk-filter-has-email"><option value="">Com ou sem</option><option value="true">Com e-mail</option><option value="false">Sem e-mail</option></select></label>
+                <label class="wide">Situação em listas<select id="bulk-filter-saved-status"><option value="">Salvas ou não salvas</option><option value="new">Ainda não salva</option><option value="saved">Já salva em alguma lista</option></select></label>
+                <div id="bulk-filter-list-picker" class="multi-picker wide disabled"><span class="field-label">Listas específicas</span><button class="multi-picker-trigger" type="button" aria-expanded="false" disabled><span>Nenhuma lista nesta consulta</span><small>Nenhum selecionado</small></button><div class="multi-picker-panel hidden"><input class="multi-picker-search" type="search" placeholder="Buscar lista"><div class="multi-picker-toolbar"><span>Inclui empresas de qualquer lista marcada</span><button class="multi-picker-clear" type="button">Limpar</button></div><div class="multi-picker-options"></div></div><div class="multi-picker-tags" aria-live="polite"></div></div>
+              </section>
+            </form>
+            <section id="bulk-cnpj-result" class="bulk-cnpj-result"></section>
+          </div>
         </section>
 
         <section id="lists-tab" class="tab-panel hidden">
@@ -317,7 +366,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260910-filter-workspace-3"></script>
+  <script src="/static/app.js?v=20260911-cnpj-multiselect-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

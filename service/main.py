@@ -68,6 +68,12 @@ from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas
 from .legal import LegalDocuments
 from .launch import commercial_launch_readiness
 from .operations import OperationsMonitor, backup_status
+from .partner_enrichment import (
+    LemitClient,
+    PartnerEnrichmentRunner,
+    PartnerEnrichmentService,
+    PartnerEnrichmentStore,
+)
 
 
 settings = get_settings()
@@ -95,6 +101,24 @@ if legacy_organization_id:
             settings.saas_internal_organization_name,
         )
 saas_store = SaaSStore(settings.saas_database_path)
+partner_enrichment_store = PartnerEnrichmentStore(
+    settings.partner_enrichment_database_path,
+    settings.lemit_pii_encryption_key,
+    cache_days=settings.lemit_cache_days,
+)
+lemit_client = LemitClient(
+    settings.lemit_api_token,
+    segment=settings.lemit_segment,
+    requests_per_second=settings.lemit_requests_per_second,
+    timeout=settings.lemit_timeout_seconds,
+    max_retries=settings.lemit_max_retries,
+)
+partner_enrichment_service = PartnerEnrichmentService(
+    partner_enrichment_store, lemit_client, repository.company_detail,
+)
+partner_enrichment_runner = PartnerEnrichmentRunner(
+    partner_enrichment_store, partner_enrichment_service,
+)
 billing_catalog = BillingCatalog(settings.saas_billing_catalog_json)
 legal_documents = LegalDocuments.from_settings(settings)
 asaas_client = AsaasClient(
@@ -139,13 +163,16 @@ SESSION_COOKIE = "echopjs_session"
 async def lifespan(_: FastAPI):
     repository.open()
     job_runner.start()
+    partner_enrichment_runner.start()
     billing_email_dispatcher.start()
     yield
     billing_email_dispatcher.stop()
+    partner_enrichment_runner.stop()
     job_runner.stop()
     repository.close()
     website_checker.close()
     job_store.close()
+    partner_enrichment_store.close()
     saas_store.close()
     auth_store.close()
 
@@ -361,6 +388,7 @@ def readiness_report() -> dict:
         "contas": auth_store.health_check,
         "saas": saas_store.health_check,
         "processamentos": job_store.health_check,
+        "enriquecimento_socios": partner_enrichment_store.health_check,
     }
     for name, probe in probes.items():
         try:
@@ -369,6 +397,7 @@ def readiness_report() -> dict:
         except Exception:
             checks[name] = {"ok": False}
     checks["worker"] = {"ok": job_runner.is_alive()}
+    checks["worker_enriquecimento_socios"] = {"ok": partner_enrichment_runner.is_alive()}
     ready = all(bool(component.get("ok")) for component in checks.values())
     dataset_version = checks.get("receita_postgresql", {}).get("dataset_version")
     return {"status": "ready" if ready else "degraded", "ready": ready, "dataset_version": dataset_version, "components": checks}
@@ -1603,6 +1632,21 @@ def list_company_lists(user: dict = Depends(require_organization)) -> dict:
     return {"lists": saas_store.list_company_lists(user["organization_id"])}
 
 
+def refresh_company_snapshots(companies: list[dict]) -> list[dict]:
+    """Overlay current Receita labels while preserving list-specific metadata."""
+    cnpjs = [company.get("cnpj", "") for company in companies]
+    try:
+        current = repository.companies_by_cnpjs(cnpjs) if cnpjs else {}
+    except Exception:
+        return companies
+    if not isinstance(current, dict):
+        return companies
+    return [
+        {**company, **current.get(company.get("cnpj", ""), {})}
+        for company in companies
+    ]
+
+
 @app.post("/api/company-lists", status_code=201)
 def create_company_list(payload: CompanyListRequest, user: dict = Depends(require_organization)) -> dict:
     require_capability(user, "manage_library", "criar listas")
@@ -1627,7 +1671,73 @@ def get_company_list(
     )
     if not company_list:
         raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    company_list["companies"] = refresh_company_snapshots(company_list["companies"])
+    contacts = partner_enrichment_store.contacts_for_companies(
+        user["organization_id"],
+        [company.get("cnpj", "") for company in company_list["companies"]],
+    )
+    for company in company_list["companies"]:
+        company["enriched_partners"] = contacts.get(company.get("cnpj", ""), [])
+    company_list["partner_enrichment"] = {
+        "configured": bool(lemit_client.configured and settings.lemit_pii_encryption_key),
+        "latest_job": partner_enrichment_store.latest_job(user["organization_id"], list_id),
+        "max_people_per_company": 3,
+        "cache_days": settings.lemit_cache_days,
+    }
     return company_list
+
+
+@app.post("/api/company-lists/{list_id}/partner-enrichments", status_code=202)
+def create_partner_enrichment(
+    list_id: str,
+    user: dict = Depends(require_organization),
+) -> dict:
+    require_capability(user, "run_jobs", "enriquecer sócios")
+    enforce_heavy_rate_limit(user, "partner-enrichment")
+    if not lemit_client.configured or not settings.lemit_pii_encryption_key:
+        raise HTTPException(
+            status_code=503,
+            detail="O enriquecimento de sócios ainda não foi configurado pelo administrador.",
+        )
+    company_list = saas_store.company_list_detail(user["organization_id"], list_id)
+    if not company_list:
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    if not company_list["companies"]:
+        raise HTTPException(status_code=409, detail="Adicione empresas à lista antes de enriquecer os sócios.")
+    job = partner_enrichment_store.create_job(
+        user["organization_id"], list_id, user["id"], company_list["companies"],
+    )
+    partner_enrichment_runner.notify()
+    saas_store.record_product_event(
+        user["organization_id"], user["id"], "company_list.partner_enrichment_started",
+        subject_type="company_list", subject_id=list_id,
+        metadata={"company_count": company_list["company_count"], "job_id": job["id"]},
+    )
+    return job
+
+
+@app.get("/api/company-lists/{list_id}/partner-enrichments/latest")
+def latest_partner_enrichment(
+    list_id: str,
+    user: dict = Depends(require_organization),
+) -> dict:
+    if not saas_store.company_list(user["organization_id"], list_id):
+        raise HTTPException(status_code=404, detail="Lista não encontrada.")
+    return {
+        "configured": bool(lemit_client.configured and settings.lemit_pii_encryption_key),
+        "job": partner_enrichment_store.latest_job(user["organization_id"], list_id),
+    }
+
+
+@app.get("/api/partner-enrichments/{job_id}")
+def get_partner_enrichment(
+    job_id: str,
+    user: dict = Depends(require_organization),
+) -> dict:
+    job = partner_enrichment_store.get_job(job_id, organization_id=user["organization_id"])
+    if not job:
+        raise HTTPException(status_code=404, detail="Enriquecimento não encontrado.")
+    return job
 
 
 @app.get("/api/company-lists/{list_id}/export.csv")
@@ -1637,7 +1747,7 @@ def export_company_list(list_id: str, user: dict = Depends(require_organization)
     company_list = saas_store.company_list_detail(user["organization_id"], list_id)
     if not company_list:
         raise HTTPException(status_code=404, detail="Lista não encontrada.")
-    content = export_companies_csv(company_list["companies"])
+    content = export_companies_csv(refresh_company_snapshots(company_list["companies"]))
     credit = saas_store.credit_estimate(user["organization_id"], [])
     saas_store.record_product_event(
         user["organization_id"], user["id"], "company_list.exported",
@@ -2026,6 +2136,18 @@ def company_lookup_results(cnpjs: list[str]) -> dict:
 def explorer_company_lookup(payload: CompanyLookupRequest, user: dict = Depends(require_organization)) -> dict:
     enforce_heavy_rate_limit(user, "company-data")
     result = company_lookup_results(payload.cnpjs)
+    found_cnpjs = [
+        item["company"]["cnpj"] for item in result["results"] if item["company"]
+    ]
+    memberships = saas_store.company_list_memberships(
+        user["organization_id"], found_cnpjs,
+    )
+    for item in result["results"]:
+        if not item["company"]:
+            continue
+        saved_lists = memberships.get(item["company"]["cnpj"], [])
+        item["company"]["saved"] = bool(saved_lists)
+        item["company"]["saved_lists"] = saved_lists
     saas_store.record_product_event(
         user["organization_id"],
         user["id"],

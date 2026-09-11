@@ -93,7 +93,7 @@ class JobTests(unittest.TestCase):
             exported = store.export_csv(job["id"], company_lookup).decode("utf-8")
             self.assertIn("Company Name", exported)
             self.assertIn("Empresa 1", exported)
-            self.assertIn("11222333000181", exported)
+            self.assertIn("11.222.333/0001-81", exported)
             csv_rows = list(csv.reader(io.StringIO(exported.lstrip("\ufeff"))))
             headers, first_result = csv_rows[0], csv_rows[1]
             self.assertIn("Capital Social", headers)
@@ -102,6 +102,9 @@ class JobTests(unittest.TestCase):
             self.assertIn("Faixa Etária 1", headers)
             self.assertIn("Sócio 2", headers)
             self.assertEqual(first_result[headers.index("Porte")], "MICRO EMPRESA")
+            self.assertEqual(first_result[headers.index("CNPJ")], "11.222.333/0001-81")
+            self.assertEqual(first_result[headers.index("Simples")], "Sim")
+            self.assertEqual(first_result[headers.index("MEI")], "Não")
             self.assertEqual(first_result[headers.index("Sócio 1")], "SOCIO UM")
             self.assertEqual(first_result[headers.index("Faixa Etária 2")], "41 a 50 anos")
             self.assertEqual(first_result[headers.index("CPF/CNPJ Público 2")], "***987654**")
@@ -137,6 +140,28 @@ class JobTests(unittest.TestCase):
         self.assertTrue(company[headers.index("Razão Social")].startswith("'="))
         self.assertTrue(company[headers.index("Nome Fantasia")].startswith("'+"))
         self.assertTrue(company[headers.index("Sócio 1")].startswith("'@"))
+
+    def test_export_uses_reference_labels_and_primary_activity_description(self):
+        content = export_companies_csv([{
+            "cnpj": "37602227000117",
+            "registration_status": "ATIVA",
+            "registration_status_reason_code": "00",
+            "registration_status_reason": "SEM MOTIVO",
+            "primary_cnae": "6201501",
+            "primary_cnae_description": "Desenvolvimento de programas de computador sob encomenda",
+            "legal_nature_code": "2062",
+            "legal_nature": "Sociedade Empresária Limitada",
+            "responsible_qualification": "Sócio-Administrador",
+            "branch_type_code": "1",
+            "branch_type": "Matriz",
+        }]).decode("utf-8")
+        headers, company = list(csv.reader(io.StringIO(content.lstrip("\ufeff"))))
+        self.assertEqual(company[headers.index("CNPJ")], "37.602.227/0001-17")
+        self.assertEqual(company[headers.index("Descrição da Atividade Principal")], "Desenvolvimento de programas de computador sob encomenda")
+        self.assertEqual(company[headers.index("Natureza Jurídica")], "Sociedade Empresária Limitada")
+        self.assertEqual(company[headers.index("Qualificação do Responsável")], "Sócio-Administrador")
+        self.assertEqual(company[headers.index("Matriz/Filial")], "Matriz")
+        self.assertEqual(company[headers.index("Motivo da Situação")], "SEM MOTIVO")
 
     def test_selected_cnpjs_respects_job_organization(self):
         with tempfile.TemporaryDirectory() as directory:

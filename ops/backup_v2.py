@@ -14,7 +14,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-CRITICAL_DATABASES = ("auth.sqlite", "saas.sqlite", "jobs.sqlite")
+CRITICAL_DATABASES = (
+    "auth.sqlite", "saas.sqlite", "jobs.sqlite", "partner-enrichment.sqlite",
+)
 
 
 def write_status(path: Path, payload: dict) -> None:

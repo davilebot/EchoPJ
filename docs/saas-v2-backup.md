@@ -1,8 +1,9 @@
 # Backup e recuperação do EchoPJs SaaS v2
 
 Este procedimento cobre os dados operacionais exclusivos da v2: contas e
-organizações (`auth.sqlite`), créditos/listas/buscas (`saas.sqlite`) e
-processamentos (`jobs.sqlite`). A base pública da Receita é compartilhada em
+organizações (`auth.sqlite`), créditos/listas/buscas (`saas.sqlite`),
+processamentos (`jobs.sqlite`) e o cache criptografado de enriquecimento de
+sócios (`partner-enrichment.sqlite`). A base pública da Receita é compartilhada em
 modo de leitura e segue o procedimento próprio do serviço de dados.
 
 ## Rotina local
@@ -32,11 +33,12 @@ python3 /opt/echopjs-saas-v2/backup_v2.py \
 
 1. Escolha a cópia desejada e execute `--verify`.
 2. Pare somente `echopjs-saas_v2-app-1`.
-3. Faça um último backup do estado atual e preserve os três arquivos existentes.
-4. Copie `auth.sqlite`, `saas.sqlite` e `jobs.sqlite` da cópia verificada para o
+3. Faça um último backup do estado atual e preserve os quatro arquivos existentes.
+4. Copie `auth.sqlite`, `saas.sqlite`, `jobs.sqlite` e
+   `partner-enrichment.sqlite` da cópia verificada para o
    volume `/srv/echopjs-saas-v2/data`.
 5. Confirme proprietário `root:root`, modo `600` e execute `PRAGMA integrity_check`
-   nos três arquivos.
+   nos quatro arquivos.
 6. Inicie somente a aplicação v2 e valide `/health`, login, organização, saldo,
    listas e histórico. A v1 não participa deste procedimento.
 

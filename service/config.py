@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     saas_backup_status_path: str = "/data/backup-status.json"
     saas_offsite_backup_configured: bool = False
     saas_external_alerts_configured: bool = False
+    lemit_api_token: str = ""
+    lemit_segment: int = 20782
+    lemit_requests_per_second: float = 10.0
+    lemit_timeout_seconds: float = 15.0
+    lemit_cache_days: int = 60
+    lemit_max_retries: int = 3
+    lemit_pii_encryption_key: str = ""
+    partner_enrichment_database_path: str = "/data/partner-enrichment.sqlite"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

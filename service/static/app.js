@@ -185,6 +185,8 @@ const explorerEstablishmentsLoading = document.querySelector("#explorer-establis
 const explorerEstablishmentsResult = document.querySelector("#explorer-establishments-result");
 const bulkCnpjForm = document.querySelector("#bulk-cnpj-form");
 const bulkCnpjLoading = document.querySelector("#bulk-cnpj-loading");
+const bulkCnpjWorkbench = document.querySelector("#bulk-cnpj-workbench");
+const bulkCnpjFilterForm = document.querySelector("#bulk-cnpj-filter-form");
 const bulkCnpjResult = document.querySelector("#bulk-cnpj-result");
 const listsLoading = document.querySelector("#lists-loading");
 const listsGrid = document.querySelector("#lists-grid");
@@ -199,6 +201,7 @@ const saveListDialog = document.querySelector("#save-list-dialog");
 const createListDialog = document.querySelector("#create-list-dialog");
 let batchSourceRows = [];
 let historyPoll = null;
+let partnerEnrichmentPoll = null;
 let searchCapabilitiesLoaded = false;
 let searchCapabilities = {};
 let searchCnaeOptionsLoaded = false;
@@ -221,6 +224,12 @@ let searchPreviewRequest = 0;
 let companySearchPage = 0;
 const COMPANY_SEARCH_PAGE_SIZE = 50;
 let lastBulkCnpjLookup = [];
+let lastBulkCnpjLookupData = null;
+let filteredBulkCnpjLookup = [];
+let selectedBulkCnpjs = new Set();
+let bulkCnpjPage = 0;
+let saveListSource = "search";
+const BULK_CNPJ_PAGE_SIZE = 50;
 
 const allUfs = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"];
 const allRegistrationStatuses = ["ATIVA", "BAIXADA", "INAPTA", "NULA", "SUSPENSA", "NAO INFORMADA"];
@@ -442,6 +451,23 @@ const sizePicker = createMultiPicker(document.querySelector("#search-size-picker
 const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
 const includedListPicker = createMultiPicker(document.querySelector("#search-included-list-picker"), "Todas as listas");
 const excludedListPicker = createMultiPicker(document.querySelector("#search-excluded-list-picker"), "Nenhuma lista excluída");
+const bulkCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-cnae-picker"), "Todos os CNAEs");
+const bulkExcludedCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-excluded-cnae-picker"), "Nenhum CNAE excluído");
+const bulkStatusPicker = createMultiPicker(document.querySelector("#bulk-filter-status-picker"), "Todas as situações");
+const bulkSizePicker = createMultiPicker(document.querySelector("#bulk-filter-size-picker"), "Todos os portes");
+const bulkBranchPicker = createMultiPicker(document.querySelector("#bulk-filter-branch-picker"), "Matrizes e filiais");
+const bulkLookupPicker = createMultiPicker(document.querySelector("#bulk-filter-lookup-picker"), "Todos os resultados");
+const bulkRegionPicker = createMultiPicker(document.querySelector("#bulk-filter-region-picker"), "Brasil inteiro");
+const bulkUfPicker = createMultiPicker(document.querySelector("#bulk-filter-uf-picker"), "Todos os estados");
+const bulkMunicipalityPicker = createMultiPicker(document.querySelector("#bulk-filter-municipality-picker"), "Todos os municípios");
+const bulkPartnerAgePicker = createMultiPicker(document.querySelector("#bulk-filter-partner-age-picker"), "Todas as faixas");
+const bulkLegalNaturePicker = createMultiPicker(document.querySelector("#bulk-filter-legal-nature-picker"), "Todas as naturezas");
+const bulkListPicker = createMultiPicker(document.querySelector("#bulk-filter-list-picker"), "Todas as listas");
+const bulkMultiPickers = [
+  bulkCnaePicker, bulkExcludedCnaePicker, bulkStatusPicker, bulkSizePicker, bulkBranchPicker,
+  bulkLookupPicker, bulkRegionPicker, bulkUfPicker, bulkMunicipalityPicker,
+  bulkPartnerAgePicker, bulkLegalNaturePicker, bulkListPicker,
+];
 
 regionPicker.setOptions([
   { value: "N", option_label: "Norte", display_label: "Norte" }, { value: "NE", option_label: "Nordeste", display_label: "Nordeste" }, { value: "CO", option_label: "Centro-Oeste", display_label: "Centro-Oeste" },
@@ -469,6 +495,33 @@ partnerAgePicker.setOptions([
   { value: "7", option_label: "61 a 70 anos", display_label: "61 a 70 anos" },
   { value: "8", option_label: "71 a 80 anos", display_label: "71 a 80 anos" },
   { value: "9", option_label: "Maior de 80 anos", display_label: "Maior de 80 anos" },
+]);
+bulkBranchPicker.setOptions([
+  { value: "1", option_label: "Matriz", display_label: "Matriz" },
+  { value: "2", option_label: "Filial", display_label: "Filial" },
+]);
+bulkLookupPicker.setOptions([
+  { value: "found", option_label: "Encontrado", display_label: "Encontrado" },
+  { value: "not_found", option_label: "Não encontrado", display_label: "Não encontrado" },
+  { value: "invalid", option_label: "CNPJ inválido", display_label: "CNPJ inválido" },
+]);
+bulkRegionPicker.setOptions([
+  { value: "N", option_label: "Norte", display_label: "Norte" },
+  { value: "NE", option_label: "Nordeste", display_label: "Nordeste" },
+  { value: "CO", option_label: "Centro-Oeste", display_label: "Centro-Oeste" },
+  { value: "SE", option_label: "Sudeste", display_label: "Sudeste" },
+  { value: "S", option_label: "Sul", display_label: "Sul" },
+]);
+bulkPartnerAgePicker.setOptions([
+  { value: "1", option_label: "0 a 12 anos", display_label: "0 a 12 anos" },
+  { value: "2", option_label: "13 a 20 anos", display_label: "13 a 20 anos" },
+  { value: "3", option_label: "21 a 30 anos", display_label: "21 a 30 anos" },
+  { value: "4", option_label: "31 a 40 anos", display_label: "31 a 40 anos" },
+  { value: "5", option_label: "41 a 50 anos", display_label: "41 a 50 anos" },
+  { value: "6", option_label: "51 a 60 anos", display_label: "51 a 60 anos" },
+  { value: "7", option_label: "61 a 70 anos", display_label: "61 a 70 anos" },
+  { value: "8", option_label: "71 a 80 anos", display_label: "71 a 80 anos" },
+  { value: "9", option_label: "Mais de 80 anos", display_label: "Mais de 80 anos" },
 ]);
 
 function updateUfOptions() {
@@ -531,6 +584,48 @@ function escapeHtml(value = "") {
 function formatCnpj(value = "") {
   const digits = value.replace(/\D/g, "");
   return digits.length === 14 ? digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : value;
+}
+
+function formatMobile(phone = {}) {
+  const area = String(phone.ddd || "").replace(/\D/g, "");
+  const number = String(phone.numero || "").replace(/\D/g, "");
+  const formatted = number.length === 9 ? `${number.slice(0, 5)}-${number.slice(5)}` : number.length === 8 ? `${number.slice(0, 4)}-${number.slice(4)}` : number;
+  return `${area ? `(${area}) ` : ""}${formatted}` || "—";
+}
+
+function renderEnrichedPartners(partners = []) {
+  if (!partners.length) return `<span class="enrichment-empty">Ainda não enriquecido</span>`;
+  return `<details class="enriched-partners"><summary>${partners.length} sócio${partners.length === 1 ? "" : "s"}</summary><div>${partners.map((partner) => {
+    const phones = (partner.phones || []).map((phone) => `<a href="tel:${escapeHtml(phone.value || `55${phone.ddd || ""}${phone.numero || ""}`)}">${escapeHtml(formatMobile(phone))}${phone.whatsapp ? " · WhatsApp" : ""}</a>`).join("");
+    const fixedPhones = (partner.fixed_phones || []).map((phone) => `<a href="tel:${escapeHtml(phone.value || `55${phone.ddd || ""}${phone.numero || ""}`)}">${escapeHtml(formatMobile(phone))} · fixo</a>`).join("");
+    const emails = (partner.emails || []).map((email) => `<a href="mailto:${escapeHtml(email.email)}">${escapeHtml(email.email)}${email.corporate ? " · corporativo" : ""}</a>`).join("");
+    return `<article><strong>${escapeHtml(partner.name || "Sócio")}</strong><small>${escapeHtml(partner.qualification || partner.age_range || "Pessoa física")} · ${escapeHtml(partner.cpf_masked || "***.***.***-**")}</small>${phones ? `<span>${phones}</span>` : ""}${fixedPhones ? `<span>${fixedPhones}</span>` : ""}${emails ? `<span>${emails}</span>` : ""}${!phones && !fixedPhones && !emails ? `<em>Contato não localizado</em>` : ""}</article>`;
+  }).join("")}</div></details>`;
+}
+
+function enrichmentStatusMarkup(enrichment = {}) {
+  const job = enrichment.latest_job;
+  if (!enrichment.configured) return `<aside class="partner-enrichment-card unavailable" data-enrichment-status><div><strong>Enriquecimento de sócios</strong><p>A integração aguarda a chave segura do administrador.</p></div><span>Indisponível</span></aside>`;
+  if (!job) return `<aside class="partner-enrichment-card" data-enrichment-status><div><strong>Pronto para enriquecer</strong><p>Até 3 sócios PF por empresa, com cache global de ${Number(enrichment.cache_days || 60)} dias.</p></div><span>Sem consumo de créditos EchoPJs</span></aside>`;
+  const active = ["queued", "running"].includes(job.status);
+  const label = job.status === "queued" ? "Na fila" : job.status === "running" ? "Processando" : job.status === "completed_with_errors" ? "Concluído com alertas" : "Concluído";
+  return `<aside class="partner-enrichment-card ${active ? "active" : ""}" data-enrichment-status><div><strong>${label}</strong><p>${Number(job.processed_companies).toLocaleString("pt-BR")} de ${Number(job.total_companies).toLocaleString("pt-BR")} empresas · ${Number(job.selected_people).toLocaleString("pt-BR")} sócios · ${Number(job.contacts_found).toLocaleString("pt-BR")} contatos</p><div class="enrichment-progress"><i style="width:${Math.max(0, Math.min(100, Number(job.progress_percent || 0)))}%"></i></div></div><span>${Number(job.reused_people).toLocaleString("pt-BR")} do cache</span></aside>`;
+}
+
+function pollPartnerEnrichment(listId, jobId) {
+  clearTimeout(partnerEnrichmentPoll);
+  partnerEnrichmentPoll = setTimeout(async () => {
+    if (listDetail.dataset.listId !== listId) return;
+    try {
+      const response = await fetch(`/api/partner-enrichments/${jobId}`);
+      if (!response.ok) return;
+      const job = await response.json();
+      const status = listDetail.querySelector("[data-enrichment-status]");
+      if (status) status.outerHTML = enrichmentStatusMarkup({ configured: true, latest_job: job, cache_days: 60 });
+      if (["queued", "running"].includes(job.status)) pollPartnerEnrichment(listId, jobId);
+      else await loadCompanyListDetail(listId, listDetail.dataset.listQuery || "", Number(listDetail.dataset.listOffset || 0));
+    } catch (_) { /* A próxima abertura da lista recupera o estado persistido. */ }
+  }, 2000);
 }
 
 function render(data) {
@@ -1257,40 +1352,254 @@ async function downloadBulkCnpjLookup() {
   }, "consulta-cnpjs-echopjs.csv");
 }
 
-function renderBulkCnpjLookup(data) {
-  lastBulkCnpjLookup = data.results;
-  const preview = data.results.slice(0, 100);
-  const rows = preview.map((item) => {
+function normalizeBulkFilterText(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleUpperCase("pt-BR").trim();
+}
+
+function updateBulkMunicipalityOptions() {
+  const regions = bulkRegionPicker.values();
+  const ufs = bulkUfPicker.values();
+  const options = new Map();
+  lastBulkCnpjLookup.forEach((item) => {
     const company = item.company;
-    if (!company) return `<tr><td>${escapeHtml(item.input)}</td><td colspan="8"><span class="status ${item.status === "invalid" ? "nao_encontrado" : "revisao"}">${item.status === "invalid" ? "CNPJ inválido" : "Não encontrado"}</span></td></tr>`;
+    if (!company?.municipality || !company.uf) return;
+    if (regions.length && !regions.some((region) => (regionStates[region] || []).includes(company.uf))) return;
+    if (ufs.length && !ufs.includes(company.uf)) return;
+    const value = `${company.uf}|${company.municipality}`;
+    options.set(value, {
+      value,
+      option_label: company.municipality,
+      option_description: `${company.uf} · ${ufNames[company.uf] || company.uf}`,
+      display_label: `${company.municipality}/${company.uf}`,
+    });
+  });
+  bulkMunicipalityPicker.setOptions([...options.values()].sort((left, right) => left.display_label.localeCompare(right.display_label, "pt-BR")));
+  bulkMunicipalityPicker.setDisabled(!options.size, options.size ? "Todos os municípios" : "Nenhum município disponível");
+}
+
+function populateBulkFilterOptions() {
+  const companies = lastBulkCnpjLookup.map((item) => item.company).filter(Boolean);
+  const uniqueSorted = (field) => [...new Set(companies.map((company) => company[field]).filter(Boolean))]
+    .sort((left, right) => String(left).localeCompare(String(right), "pt-BR"));
+  const cnaes = new Map();
+  const legalNatures = new Map();
+  const lists = new Map();
+  companies.forEach((company) => {
+    const codes = [company.primary_cnae, ...(company.secondary_cnaes || [])];
+    const descriptions = [company.primary_cnae_description, ...(company.secondary_cnae_descriptions || [])];
+    codes.forEach((code, index) => {
+      const value = String(code || "").replace(/\D/g, "");
+      if (!value) return;
+      const description = descriptions[index] || "Atividade econômica";
+      cnaes.set(value, { value, option_label: value, option_description: description, display_label: `${value} — ${description}` });
+    });
+    const legalNatureValue = String(company.legal_nature_code || company.legal_nature || company.legal_nature_description || "").trim();
+    if (legalNatureValue) {
+      const description = company.legal_nature || company.legal_nature_description || legalNatureValue;
+      legalNatures.set(legalNatureValue, { value: legalNatureValue, option_label: legalNatureValue, option_description: description, display_label: company.legal_nature_code ? `${legalNatureValue} — ${description}` : description });
+    }
+    (company.saved_lists || []).forEach((list) => {
+      lists.set(String(list.id), { value: String(list.id), option_label: list.name, display_label: list.name });
+    });
+  });
+  const cnaeOptions = [...cnaes.values()].sort((left, right) => left.value.localeCompare(right.value, "pt-BR"));
+  bulkCnaePicker.setOptions(cnaeOptions);
+  bulkExcludedCnaePicker.setOptions(cnaeOptions);
+  bulkStatusPicker.setOptions(uniqueSorted("registration_status").map((value) => ({ value, option_label: value, display_label: value })));
+  bulkSizePicker.setOptions(uniqueSorted("company_size").map((value) => ({ value, option_label: companySizeLabel(value), display_label: companySizeLabel(value) })));
+  bulkUfPicker.setOptions(uniqueSorted("uf").map((value) => ({ value, option_label: value, option_description: ufNames[value] || value, display_label: value })));
+  bulkLegalNaturePicker.setOptions([...legalNatures.values()].sort((left, right) => left.display_label.localeCompare(right.display_label, "pt-BR")));
+  bulkListPicker.setOptions([...lists.values()].sort((left, right) => left.display_label.localeCompare(right.display_label, "pt-BR")));
+  bulkListPicker.setDisabled(!lists.size, lists.size ? "Todas as listas" : "Nenhuma lista nesta consulta");
+  updateBulkMunicipalityOptions();
+}
+
+function clearBulkMultiPickers() {
+  bulkMultiPickers.forEach((picker) => picker.clear());
+}
+
+function bulkCnpjFilterPayload() {
+  return {
+    name: document.querySelector("#bulk-filter-name").value.trim(),
+    excluded_names: document.querySelector("#bulk-filter-excluded-names").value.split(/[\n,;]+/).map((value) => value.trim()).filter(Boolean),
+    cnaes: bulkCnaePicker.values(),
+    excluded_cnaes: bulkExcludedCnaePicker.values(),
+    cnae_scope: document.querySelector("#bulk-filter-cnae-scope").value,
+    registration_statuses: bulkStatusPicker.values(),
+    company_sizes: bulkSizePicker.values(),
+    branch_types: bulkBranchPicker.values(),
+    simples: optionalBoolean(document.querySelector("#bulk-filter-simples").value),
+    mei: optionalBoolean(document.querySelector("#bulk-filter-mei").value),
+    lookup_statuses: bulkLookupPicker.values(),
+    regions: bulkRegionPicker.values(),
+    ufs: bulkUfPicker.values(),
+    municipalities: bulkMunicipalityPicker.values(),
+    postal_code: document.querySelector("#bulk-filter-postal-code").value.replace(/\D/g, ""),
+    opened_from: document.querySelector("#bulk-filter-opened-from").value,
+    opened_to: document.querySelector("#bulk-filter-opened-to").value,
+    share_capital_min: optionalCapitalNumber(document.querySelector("#bulk-filter-capital-min").value),
+    share_capital_max: optionalCapitalNumber(document.querySelector("#bulk-filter-capital-max").value),
+    partner_count_min: optionalNumber(document.querySelector("#bulk-filter-partners-min").value),
+    partner_count_max: optionalNumber(document.querySelector("#bulk-filter-partners-max").value),
+    partner_age_ranges: bulkPartnerAgePicker.values(),
+    active_branch_count_min: optionalNumber(document.querySelector("#bulk-filter-branches-min").value),
+    active_branch_count_max: optionalNumber(document.querySelector("#bulk-filter-branches-max").value),
+    legal_natures: bulkLegalNaturePicker.values(),
+    has_phone: optionalBoolean(document.querySelector("#bulk-filter-has-phone").value),
+    has_email: optionalBoolean(document.querySelector("#bulk-filter-has-email").value),
+    saved_status: document.querySelector("#bulk-filter-saved-status").value,
+    list_ids: bulkListPicker.values(),
+  };
+}
+
+function bulkFilterHasCompanyCriteria(filters) {
+  return Boolean(filters.name || filters.excluded_names.length || filters.cnaes.length || filters.excluded_cnaes.length
+    || filters.registration_statuses.length || filters.company_sizes.length || filters.branch_types.length
+    || filters.simples !== null || filters.mei !== null || filters.regions.length || filters.ufs.length || filters.municipalities.length || filters.postal_code
+    || filters.opened_from || filters.opened_to || filters.share_capital_min !== null || filters.share_capital_max !== null
+    || filters.partner_count_min !== null || filters.partner_count_max !== null || filters.partner_age_ranges.length
+    || filters.active_branch_count_min !== null || filters.active_branch_count_max !== null || filters.legal_natures.length
+    || filters.has_phone !== null || filters.has_email !== null || filters.saved_status || filters.list_ids.length);
+}
+
+function bulkEntryMatchesFilters(item, filters) {
+  if (filters.lookup_statuses.length && !filters.lookup_statuses.includes(item.status)) return false;
+  const company = item.company;
+  if (!company) return !bulkFilterHasCompanyCriteria(filters);
+  const name = normalizeBulkFilterText(`${company.legal_name || ""} ${company.trade_name || ""}`);
+  if (filters.name && !name.includes(normalizeBulkFilterText(filters.name))) return false;
+  if (filters.excluded_names.some((term) => name.includes(normalizeBulkFilterText(term)))) return false;
+  const primaryCnae = String(company.primary_cnae || "");
+  const secondaryCnaes = (company.secondary_cnaes || []).map(String);
+  const cnaeCodes = filters.cnae_scope === "any" ? [primaryCnae, ...secondaryCnaes] : [primaryCnae];
+  if (filters.cnaes.length && !filters.cnaes.some((selected) => cnaeCodes.some((code) => code.startsWith(selected)))) return false;
+  if (filters.excluded_cnaes.some((excluded) => [primaryCnae, ...secondaryCnaes].some((code) => code.startsWith(excluded)))) return false;
+  if (filters.registration_statuses.length && !filters.registration_statuses.includes(company.registration_status)) return false;
+  if (filters.company_sizes.length && !filters.company_sizes.includes(company.company_size)) return false;
+  if (filters.branch_types.length && !filters.branch_types.includes(String(company.branch_type_code || ""))) return false;
+  if (filters.simples !== null && company.is_simples !== filters.simples) return false;
+  if (filters.mei !== null && company.is_mei !== filters.mei) return false;
+  if (filters.regions.length && !filters.regions.some((region) => (regionStates[region] || []).includes(company.uf))) return false;
+  if (filters.ufs.length && !filters.ufs.includes(company.uf)) return false;
+  if (filters.municipalities.length && !filters.municipalities.includes(`${company.uf}|${company.municipality}`)) return false;
+  if (filters.postal_code && !String(company.postal_code || "").replace(/\D/g, "").startsWith(filters.postal_code)) return false;
+  if (filters.opened_from && (!company.opened_at || company.opened_at < filters.opened_from)) return false;
+  if (filters.opened_to && (!company.opened_at || company.opened_at > filters.opened_to)) return false;
+  const capital = Number(company.share_capital);
+  if (filters.share_capital_min !== null && (!Number.isFinite(capital) || capital < filters.share_capital_min)) return false;
+  if (filters.share_capital_max !== null && (!Number.isFinite(capital) || capital > filters.share_capital_max)) return false;
+  const partnerCount = Number(company.partner_count ?? (company.partners || []).length);
+  if (filters.partner_count_min !== null && partnerCount < filters.partner_count_min) return false;
+  if (filters.partner_count_max !== null && partnerCount > filters.partner_count_max) return false;
+  if (filters.partner_age_ranges.length && !(company.partners || []).some((partner) => filters.partner_age_ranges.includes(String(partner.age_range_code || "")))) return false;
+  const activeBranches = Number(company.active_branch_count || 0);
+  if (filters.active_branch_count_min !== null && activeBranches < filters.active_branch_count_min) return false;
+  if (filters.active_branch_count_max !== null && activeBranches > filters.active_branch_count_max) return false;
+  const legalNatureValue = String(company.legal_nature_code || company.legal_nature || company.legal_nature_description || "").trim();
+  if (filters.legal_natures.length && !filters.legal_natures.includes(legalNatureValue)) return false;
+  if (filters.has_phone !== null && Boolean(company.phone) !== filters.has_phone) return false;
+  if (filters.has_email !== null && Boolean(company.email) !== filters.has_email) return false;
+  if (filters.saved_status === "saved" && !company.saved) return false;
+  if (filters.saved_status === "new" && company.saved) return false;
+  if (filters.list_ids.length) {
+    const memberships = (company.saved_lists || []).map((list) => String(list.id));
+    if (!filters.list_ids.some((listId) => memberships.includes(listId))) return false;
+  }
+  return true;
+}
+
+function updateBulkFilterCount(filters) {
+  const active = Object.entries(filters).filter(([key, value]) => {
+    if (key === "cnae_scope") return false;
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== "" && value !== null && value !== undefined;
+  }).length;
+  document.querySelector("#bulk-active-filter-count").textContent = `${active} filtro${active === 1 ? "" : "s"} ativo${active === 1 ? "" : "s"}`;
+}
+
+function renderBulkCnpjLookupView() {
+  if (!lastBulkCnpjLookupData) return;
+  const data = lastBulkCnpjLookupData;
+  const totalPages = Math.max(1, Math.ceil(filteredBulkCnpjLookup.length / BULK_CNPJ_PAGE_SIZE));
+  bulkCnpjPage = Math.min(bulkCnpjPage, totalPages - 1);
+  const start = bulkCnpjPage * BULK_CNPJ_PAGE_SIZE;
+  const visible = filteredBulkCnpjLookup.slice(start, start + BULK_CNPJ_PAGE_SIZE);
+  const end = start + visible.length;
+  const rows = visible.map((item) => {
+    const company = item.company;
+    if (!company) return `<tr><td>—</td><td>${escapeHtml(item.input)}</td><td colspan="7"><span class="status ${item.status === "invalid" ? "nao_encontrado" : "revisao"}">${item.status === "invalid" ? "CNPJ inválido" : "Não encontrado"}</span></td></tr>`;
     return `<tr>
+      <td><input class="row-selector" type="checkbox" data-select-bulk-company="${escapeHtml(company.cnpj)}" aria-label="Selecionar ${escapeHtml(company.legal_name || company.cnpj)}" ${selectedBulkCnpjs.has(company.cnpj) ? "checked" : ""}></td>
       <td>${escapeHtml(item.input)}</td>
       <td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td>
-      <td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td>
+      <td><span class="company-name-cell"><strong>${escapeHtml(company.legal_name || company.trade_name || "—")}</strong>${company.trade_name && company.trade_name !== company.legal_name ? `<small>${escapeHtml(company.trade_name)}</small>` : ""}</span></td>
+      <td><span class="company-cnae-cell"><strong>${escapeHtml(company.primary_cnae || "—")}</strong><small>${escapeHtml(company.primary_cnae_description || "")}</small></span></td>
+      <td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td>
       <td>${escapeHtml(company.registration_status || "—")}</td>
-      <td>${yesNo(company.is_simples)}</td><td>${yesNo(company.is_mei)}</td>
-      <td>${Number(company.active_branch_count || 0).toLocaleString("pt-BR")}</td>
-      <td>${Number(company.branch_count || 0).toLocaleString("pt-BR")}</td>
-      <td>${Number(company.partner_count || 0).toLocaleString("pt-BR")}</td>
+      <td>${escapeHtml(companySizeLabel(company.company_size))}</td>
+      <td>${savedListsMarkup(company)}</td>
     </tr>`;
   }).join("");
-  bulkCnpjResult.innerHTML = `<article class="company-detail">
-    <div class="search-summary">
-      <div><strong>${data.found.toLocaleString("pt-BR")}</strong><span>Encontrados</span></div>
-      <div><strong>${data.not_found.toLocaleString("pt-BR")}</strong><span>Não encontrados</span></div>
-      <div><strong>${data.invalid.toLocaleString("pt-BR")}</strong><span>Inválidos</span></div>
+  const selectedCount = selectedBulkCnpjs.size;
+  const filteredCompanyCount = filteredBulkCnpjLookup.filter((item) => item.company).length;
+  const pagination = filteredBulkCnpjLookup.length > BULK_CNPJ_PAGE_SIZE ? `<div class="search-results-pagination" aria-label="Paginação dos CNPJs consultados"><span>Mostrando ${(start + 1).toLocaleString("pt-BR")}–${end.toLocaleString("pt-BR")} de ${filteredBulkCnpjLookup.length.toLocaleString("pt-BR")}</span><div><button class="secondary compact" data-bulk-page="previous" type="button" ${bulkCnpjPage === 0 ? "disabled" : ""}>Anterior</button><strong>Página ${bulkCnpjPage + 1} de ${totalPages}</strong><button class="secondary compact" data-bulk-page="next" type="button" ${bulkCnpjPage >= totalPages - 1 ? "disabled" : ""}>Próxima</button></div></div>` : "";
+  bulkCnpjResult.innerHTML = `<article class="bulk-result-content">
+    <div class="bulk-result-metrics">
+      <article><span>CNPJs consultados</span><strong>${data.total.toLocaleString("pt-BR")}</strong></article>
+      <article><span>Encontrados na Receita</span><strong>${data.found.toLocaleString("pt-BR")}</strong><small>${data.not_found.toLocaleString("pt-BR")} não encontrados · ${data.invalid.toLocaleString("pt-BR")} inválidos</small></article>
+      <article><span>Após os filtros</span><strong>${filteredBulkCnpjLookup.length.toLocaleString("pt-BR")}</strong><small>${filteredCompanyCount.toLocaleString("pt-BR")} disponíveis para lista</small></article>
+      <article><span>Selecionados</span><strong>${selectedCount.toLocaleString("pt-BR")}</strong><small>de ${data.total.toLocaleString("pt-BR")} CNPJs informados</small></article>
     </div>
-    <p class="search-notice">Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s. A prévia mostra os primeiros ${Math.min(100, data.total)}; o CSV preserva toda a lista e sua ordem.</p>
-    <div class="table-wrap"><table><thead><tr><th>Informado</th><th>CNPJ Receita</th><th>Razão social</th><th>Situação</th><th>Simples</th><th>MEI</th><th>Filiais ativas</th><th>Filiais totais</th><th>Sócios</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="save-actions"><button id="download-bulk-cnpj" data-capability="export" type="button">Baixar resultado completo com sócios</button></div>
+    <div class="bulk-selection-tools">
+      <div><button id="select-all-bulk-filtered" class="secondary compact" type="button" ${filteredCompanyCount ? "" : "disabled"}>Selecionar filtradas (${filteredCompanyCount.toLocaleString("pt-BR")})</button><button id="clear-bulk-selection" class="secondary compact" type="button" ${selectedCount ? "" : "disabled"}>Limpar seleção</button></div>
+      <span>Consulta concluída em ${(data.timing_ms / 1000).toFixed(1)}s · ordem original preservada</span>
+    </div>
+    <div class="selection-action-bar bulk-selection-action-bar" aria-label="Ações dos CNPJs selecionados">
+      <div class="selection-action-copy"><strong id="bulk-selection-count">${selectedCount.toLocaleString("pt-BR")} de ${data.total.toLocaleString("pt-BR")} CNPJs selecionados</strong><small>Filtrar não refaz a consulta nem usa créditos. O consumo só é confirmado ao salvar ou baixar.</small></div>
+      <div class="selection-action-buttons"><button id="save-selected-bulk-cnpj" data-capability="manage-library" type="button" ${selectedCount ? "" : "disabled"}>Salvar ${selectedCount.toLocaleString("pt-BR")} em lista</button><button id="download-selected-bulk-cnpj" class="secondary" data-capability="export" type="button" ${selectedCount ? "" : "disabled"}>Baixar selecionados</button><button id="download-bulk-cnpj" class="secondary" data-capability="export" type="button">Baixar consulta completa</button></div>
+    </div>
+    ${rows ? `<div class="table-wrap search-results-table bulk-results-table"><table><thead><tr><th>Selecionar</th><th>Informado</th><th>CNPJ Receita</th><th>Empresa</th><th>CNAE principal</th><th>Município/UF</th><th>Situação</th><th>Porte</th><th>Listas</th></tr></thead><tbody>${rows}</tbody></table></div>${pagination}` : `<div class="empty-state"><strong>Nenhum CNPJ corresponde a estes filtros.</strong><p>Limpe um ou mais critérios para ampliar o recorte.</p><button class="secondary" data-clear-bulk-empty type="button">Limpar filtros</button></div>`}
   </article>`;
-  const downloadButton = document.querySelector("#download-bulk-cnpj");
-  downloadButton.addEventListener("click", () => runButtonAction(downloadButton, "Preparando CSV…", downloadBulkCnpjLookup));
+}
+
+function applyBulkCnpjFilters({ selectMatches = true } = {}) {
+  const filters = bulkCnpjFilterPayload();
+  filteredBulkCnpjLookup = lastBulkCnpjLookup.filter((item) => bulkEntryMatchesFilters(item, filters));
+  const filteredCnpjs = new Set(filteredBulkCnpjLookup.filter((item) => item.company).map((item) => item.company.cnpj));
+  selectedBulkCnpjs = selectMatches
+    ? filteredCnpjs
+    : new Set([...selectedBulkCnpjs].filter((cnpj) => filteredCnpjs.has(cnpj)));
+  bulkCnpjPage = 0;
+  updateBulkFilterCount(filters);
+  renderBulkCnpjLookupView();
+}
+
+function activateBulkFilterTab(tabName) {
+  document.querySelectorAll("[data-bulk-filter-tab]").forEach((button) => {
+    const active = button.dataset.bulkFilterTab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  document.querySelectorAll("[data-bulk-filter-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.bulkFilterPanel === tabName);
+  });
+}
+
+function renderBulkCnpjLookup(data) {
+  lastBulkCnpjLookup = data.results;
+  lastBulkCnpjLookupData = data;
+  bulkCnpjFilterForm.reset();
+  clearBulkMultiPickers();
+  bulkCnpjFilterForm.classList.remove("hidden");
+  activateBulkFilterTab("profile");
+  populateBulkFilterOptions();
+  bulkCnpjWorkbench.classList.remove("hidden");
+  applyBulkCnpjFilters();
 }
 
 bulkCnpjForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  bulkCnpjResult.classList.add("hidden");
+  bulkCnpjWorkbench.classList.add("hidden");
   bulkCnpjLoading.classList.remove("hidden");
   try {
     const cnpjs = parseCnpjList(document.querySelector("#bulk-cnpj-list").value);
@@ -1303,9 +1612,10 @@ bulkCnpjForm.addEventListener("submit", async (event) => {
     renderBulkCnpjLookup(await response.json());
   } catch (error) {
     bulkCnpjResult.innerHTML = `<div class="error explorer-card"><strong>Não foi possível consultar a lista.</strong><p>${escapeHtml(error.message)}</p></div>`;
+    bulkCnpjFilterForm.classList.add("hidden");
+    bulkCnpjWorkbench.classList.remove("hidden");
   } finally {
     bulkCnpjLoading.classList.add("hidden");
-    bulkCnpjResult.classList.remove("hidden");
   }
 });
 
@@ -2125,6 +2435,7 @@ async function loadCompanyLists() {
 }
 
 async function loadCompanyListDetail(listId, query = "", offset = 0) {
+  clearTimeout(partnerEnrichmentPoll);
   listDetail.innerHTML = `<div class="loading-inline">Abrindo lista…</div>`;
   listDetail.classList.remove("hidden");
   try {
@@ -2133,7 +2444,7 @@ async function loadCompanyListDetail(listId, query = "", offset = 0) {
     const response = await fetch(`/api/company-lists/${listId}?${parameters}`);
     if (!response.ok) throw new Error(await responseError(response, "Não foi possível abrir a lista."));
     const data = await response.json();
-    const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td><button class="table-danger" data-capability="manage-library" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
+    const rows = data.companies.map((company) => `<tr><td><button class="table-link" type="button" data-company-cnpj="${escapeHtml(company.cnpj)}">${escapeHtml(formatCnpj(company.cnpj))}</button></td><td>${escapeHtml(company.legal_name || company.trade_name || "—")}</td><td>${escapeHtml(company.municipality || "—")}/${escapeHtml(company.uf || "—")}</td><td>${escapeHtml(company.registration_status || "—")}</td><td>${renderEnrichedPartners(company.enriched_partners || [])}</td><td><button class="table-danger" data-capability="manage-library" type="button" data-remove-list-company="${escapeHtml(company.cnpj)}">Remover</button></td></tr>`).join("");
     const page = data.pagination;
     const firstItem = data.filtered_count ? page.offset + 1 : 0;
     const lastItem = Math.min(page.offset + data.companies.length, data.filtered_count);
@@ -2145,17 +2456,32 @@ async function loadCompanyListDetail(listId, query = "", offset = 0) {
     listDetail.dataset.listQuery = data.query || "";
     listDetail.dataset.listOffset = String(page.offset);
     listDetail.dataset.list = JSON.stringify({ id: data.id, name: data.name, description: data.description });
-    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="secondary compact" data-capability="manage-library" type="button" data-edit-list>Editar</button><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.company_count ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
+    const enrichment = data.partner_enrichment || {};
+    const enrichmentActive = ["queued", "running"].includes(enrichment.latest_job?.status);
+    listDetail.innerHTML = `<div class="list-detail-head"><div><span class="eyebrow">LISTA</span><h2>${escapeHtml(data.name)}</h2><p>${escapeHtml(data.description || "Compartilhada com toda a organização.")}</p></div><div><button class="primary compact" data-capability="run-jobs" type="button" data-enrich-list ${data.company_count && enrichment.configured && !enrichmentActive ? "" : "disabled"}>${enrichmentActive ? "Enriquecendo…" : "Enriquecer sócios"}</button><button class="secondary compact" data-capability="manage-library" type="button" data-edit-list>Editar</button><button class="secondary compact" data-capability="export" type="button" data-download-list ${data.company_count ? "" : "disabled"}>Baixar CSV</button><button class="danger-button compact" data-capability="manage-library" type="button" data-delete-list>Excluir lista</button></div></div>
+      ${data.company_count ? enrichmentStatusMarkup(enrichment) : ""}
       ${data.company_count ? `<div class="list-detail-toolbar"><form data-list-search-form><label><span class="sr-only">Buscar dentro da lista</span><input data-list-query type="search" maxlength="120" value="${escapeHtml(data.query || "")}" placeholder="Buscar por empresa, CNPJ ou cidade"></label><button class="secondary compact" type="submit">Buscar</button>${data.query ? `<button class="secondary compact" type="button" data-clear-list-search>Limpar</button>` : ""}</form><span>${resultLabel}</span></div>` : ""}
-      ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${pagination}` : data.query ? `<div class="empty-state"><strong>Nenhuma empresa encontrada nesta lista.</strong><p>Tente outro nome, CNPJ, município ou estado.</p><button class="secondary" type="button" data-clear-list-search>Limpar busca</button></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
+      ${rows ? `<div class="table-wrap"><table><thead><tr><th>CNPJ</th><th>Empresa</th><th>Município/UF</th><th>Situação</th><th>Sócios enriquecidos</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>${pagination}` : data.query ? `<div class="empty-state"><strong>Nenhuma empresa encontrada nesta lista.</strong><p>Tente outro nome, CNPJ, município ou estado.</p><button class="secondary" type="button" data-clear-list-search>Limpar busca</button></div>` : `<div class="empty-state"><strong>Esta lista ainda está vazia.</strong><p>Selecione empresas em uma busca e use “Salvar em uma lista”.</p></div>`}`;
+    if (enrichmentActive) pollPartnerEnrichment(listId, enrichment.latest_job.id);
     listDetail.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     listDetail.innerHTML = `<div class="error"><strong>Não foi possível abrir a lista.</strong><p>${escapeHtml(error.message)}</p></div>`;
   }
 }
 
-async function openSaveListDialog() {
-  const selected = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
+function selectedCompaniesForList(source = saveListSource) {
+  if (source === "bulk") {
+    const companies = lastBulkCnpjLookup.map((item) => item.company).filter(Boolean);
+    return [...new Map(companies
+      .filter((company) => selectedBulkCnpjs.has(company.cnpj))
+      .map((company) => [company.cnpj, company])).values()];
+  }
+  return lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj));
+}
+
+async function openSaveListDialog(source = "search") {
+  saveListSource = source;
+  const selected = selectedCompaniesForList(source);
   if (!selected.length) return;
   const cnpjs = selected.map((company) => company.cnpj);
   const [response, estimate] = await Promise.all([
@@ -2281,7 +2607,7 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
   event.preventDefault();
   const feedback = document.querySelector("#save-list-feedback");
   setDialogFeedback(feedback);
-  const cnpjs = lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)).map((company) => company.cnpj);
+  const cnpjs = selectedCompaniesForList().map((company) => company.cnpj);
   let listId = document.querySelector("#target-list").value;
   const newName = document.querySelector("#new-list-name").value.trim();
   try {
@@ -2317,15 +2643,16 @@ document.querySelector("#save-list-form").addEventListener("submit", async (even
   updateCreditIndicator({ unlimited_credits: result.unlimited_credits, credit_balance: result.credit_balance });
   const selectedOption = document.querySelector("#target-list").selectedOptions[0];
   const listName = newName || (selectedOption?.textContent || "").replace(/\s+\(\d+\)$/, "");
-  lastCompanySearch.forEach((company) => {
-    if (!selectedCompanyCnpjs.has(company.cnpj)) return;
+  selectedCompaniesForList().forEach((company) => {
     company.saved = true;
     company.saved_lists = company.saved_lists || [];
     if (!company.saved_lists.some((list) => list.id === listId)) {
       company.saved_lists.unshift({ id: listId, name: listName });
     }
   });
-  if (lastCompanySearchData) {
+  if (saveListSource === "bulk") {
+    applyBulkCnpjFilters();
+  } else if (lastCompanySearchData) {
     const savedCount = lastCompanySearch.filter((company) => company.saved).length;
     lastCompanySearchData.segments = {
       total: lastCompanySearch.length,
@@ -2447,6 +2774,26 @@ listDetail.addEventListener("click", async (event) => {
   if (downloadButton) {
     await runButtonAction(downloadButton, "Preparando CSV…", () => downloadCsvResponse(`/api/company-lists/${listId}/export.csv`, {}, "lista-empresas.csv"));
   }
+  const enrichButton = event.target.closest("[data-enrich-list]");
+  if (enrichButton && !enrichButton.disabled) {
+    const list = JSON.parse(listDetail.dataset.list || "{}");
+    if (!window.confirm(`Enriquecer todos os sócios PF das empresas da lista “${list.name || "selecionada"}”?`)) return;
+    let startedJob = null;
+    await runButtonAction(enrichButton, "Criando fila…", async () => {
+      const response = await fetch(`/api/company-lists/${listId}/partner-enrichments`, { method: "POST" });
+      if (!response.ok) throw new Error(await responseError(response, "Não foi possível iniciar o enriquecimento."));
+      const job = await response.json();
+      startedJob = job;
+      const status = listDetail.querySelector("[data-enrichment-status]");
+      if (status) status.outerHTML = enrichmentStatusMarkup({ configured: true, latest_job: job, cache_days: 60 });
+      pollPartnerEnrichment(listId, job.id);
+      showToast("Enriquecimento iniciado. Você pode continuar usando a plataforma.");
+    });
+    if (startedJob) {
+      enrichButton.disabled = true;
+      enrichButton.textContent = "Enriquecendo…";
+    }
+  }
   if (event.target.closest("[data-delete-list]")) {
     if (!window.confirm("Excluir esta lista e remover todas as empresas dela?")) return;
     const response = await fetch(`/api/company-lists/${listId}`, { method: "DELETE" });
@@ -2504,7 +2851,85 @@ explorerEstablishmentsResult.addEventListener("click", (event) => {
   explorerCnpjForm.requestSubmit();
   explorerCnpjForm.scrollIntoView({ behavior: "smooth", block: "start" });
 });
+[
+  bulkCnaePicker, bulkExcludedCnaePicker, bulkStatusPicker, bulkSizePicker,
+  bulkBranchPicker, bulkLookupPicker, bulkMunicipalityPicker,
+  bulkPartnerAgePicker, bulkLegalNaturePicker, bulkListPicker,
+].forEach((picker) => picker.onChange(() => applyBulkCnpjFilters()));
+bulkRegionPicker.onChange(() => {
+  updateBulkMunicipalityOptions();
+  applyBulkCnpjFilters();
+});
+bulkUfPicker.onChange(() => {
+  updateBulkMunicipalityOptions();
+  applyBulkCnpjFilters();
+});
+bulkCnpjFilterForm.addEventListener("click", (event) => {
+  const tab = event.target.closest("[data-bulk-filter-tab]");
+  if (tab) activateBulkFilterTab(tab.dataset.bulkFilterTab);
+});
+bulkCnpjFilterForm.addEventListener("input", (event) => {
+  if (event.target.closest(".multi-picker")) return;
+  const capitalInput = event.target.closest("[data-capital-input]");
+  if (capitalInput) capitalInput.value = capitalDigits(capitalInput.value);
+  if (event.target.id === "bulk-filter-postal-code") event.target.value = event.target.value.replace(/\D/g, "");
+  applyBulkCnpjFilters();
+});
+bulkCnpjFilterForm.addEventListener("change", (event) => {
+  if (event.target.closest(".multi-picker")) return;
+  applyBulkCnpjFilters();
+});
+document.querySelector("#clear-bulk-cnpj-filters").addEventListener("click", () => {
+  bulkCnpjFilterForm.reset();
+  clearBulkMultiPickers();
+  activateBulkFilterTab("profile");
+  populateBulkFilterOptions();
+  applyBulkCnpjFilters();
+});
+bulkCnpjResult.addEventListener("change", (event) => {
+  const checkbox = event.target.closest("[data-select-bulk-company]");
+  if (!checkbox) return;
+  if (checkbox.checked) selectedBulkCnpjs.add(checkbox.dataset.selectBulkCompany);
+  else selectedBulkCnpjs.delete(checkbox.dataset.selectBulkCompany);
+  renderBulkCnpjLookupView();
+});
 bulkCnpjResult.addEventListener("click", (event) => {
+  if (event.target.closest("#select-all-bulk-filtered")) {
+    selectedBulkCnpjs = new Set(filteredBulkCnpjLookup.filter((item) => item.company).map((item) => item.company.cnpj));
+    renderBulkCnpjLookupView();
+    return;
+  }
+  if (event.target.closest("#clear-bulk-selection")) {
+    selectedBulkCnpjs.clear();
+    renderBulkCnpjLookupView();
+    return;
+  }
+  if (event.target.closest("[data-clear-bulk-empty]")) {
+    document.querySelector("#clear-bulk-cnpj-filters").click();
+    return;
+  }
+  const saveButton = event.target.closest("#save-selected-bulk-cnpj");
+  if (saveButton) {
+    openSaveListDialog("bulk").catch((error) => showToast(error.message));
+    return;
+  }
+  const downloadSelectedButton = event.target.closest("#download-selected-bulk-cnpj");
+  if (downloadSelectedButton) {
+    runButtonAction(downloadSelectedButton, "Preparando CSV…", () => downloadCompanySearch(selectedCompaniesForList("bulk"), "cnpjs-filtrados-echopjs.csv"));
+    return;
+  }
+  const downloadCompleteButton = event.target.closest("#download-bulk-cnpj");
+  if (downloadCompleteButton) {
+    runButtonAction(downloadCompleteButton, "Preparando CSV…", downloadBulkCnpjLookup);
+    return;
+  }
+  const pageButton = event.target.closest("[data-bulk-page]");
+  if (pageButton) {
+    bulkCnpjPage += pageButton.dataset.bulkPage === "next" ? 1 : -1;
+    renderBulkCnpjLookupView();
+    bulkCnpjResult.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
   const button = event.target.closest("[data-company-cnpj]");
   if (!button) return;
   switchTab("batch");

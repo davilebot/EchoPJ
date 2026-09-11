@@ -14,13 +14,28 @@ class JobCapacityError(RuntimeError):
 
 
 COMPANY_EXPORT_HEADERS = [
-    "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação",
+    "CNPJ", "CNPJ-base", "Razão Social", "Nome Fantasia", "Situação", "Motivo da Situação",
     "Data Situação", "Data Abertura", "Porte", "Capital Social",
-    "CNAE Principal", "CNAEs Secundários", "Município", "UF", "CEP",
-    "Endereço", "Simples", "MEI", "Natureza Jurídica", "Matriz/Filial",
+    "CNAE Principal", "Descrição da Atividade Principal", "CNAEs Secundários", "Município", "UF", "CEP",
+    "Endereço", "Simples", "MEI", "Natureza Jurídica", "Qualificação do Responsável", "Matriz/Filial",
     "Filiais Ativas", "Filiais Totais", "Quantidade de Sócios", "E-mail",
     "Telefone", "Versão Receita",
 ]
+
+
+def format_cnpj(value: Any) -> str:
+    number = "".join(character for character in str(value or "") if character.isdigit())
+    if len(number) != 14:
+        return str(value or "")
+    return f"{number[:2]}.{number[2:5]}.{number[5:8]}/{number[8:12]}-{number[12:]}"
+
+
+def yes_no(value: Any) -> Any:
+    if value is True:
+        return "Sim"
+    if value is False:
+        return "Não"
+    return value if value is not None else ""
 
 
 def partner_export_headers(max_partners: int) -> list[str]:
@@ -44,25 +59,28 @@ def partner_export_headers(max_partners: int) -> list[str]:
 def company_export_values(company: dict[str, Any], max_partners: int) -> list[Any]:
     partners = company.get("partners") or []
     values: list[Any] = [
-        company.get("cnpj", ""),
+        format_cnpj(company.get("cnpj", "")),
         company.get("cnpj_root", ""),
         company.get("legal_name", ""),
         company.get("trade_name", ""),
         company.get("registration_status", ""),
+        company.get("registration_status_reason") or company.get("registration_status_reason_code", ""),
         company.get("registration_status_date", ""),
         company.get("opened_at", ""),
         company.get("company_size", ""),
         company.get("share_capital", ""),
         company.get("primary_cnae", ""),
+        company.get("primary_cnae_description", ""),
         ";".join(company.get("secondary_cnaes") or []),
         company.get("municipality", ""),
         company.get("uf", ""),
         company.get("postal_code", ""),
         company.get("address", ""),
-        company.get("is_simples", ""),
-        company.get("is_mei", ""),
-        company.get("legal_nature_code", ""),
-        company.get("branch_type_code", ""),
+        yes_no(company.get("is_simples")),
+        yes_no(company.get("is_mei")),
+        company.get("legal_nature") or company.get("legal_nature_code", ""),
+        company.get("responsible_qualification") or company.get("responsible_qualification_code", ""),
+        company.get("branch_type") or {"1": "Matriz", "2": "Filial"}.get(str(company.get("branch_type_code") or ""), company.get("branch_type_code", "")),
         company.get("active_branch_count", ""),
         company.get("branch_count", ""),
         company.get("partner_count", len(partners)),
