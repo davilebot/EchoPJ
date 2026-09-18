@@ -163,6 +163,36 @@ class JobTests(unittest.TestCase):
         self.assertEqual(company[headers.index("Matriz/Filial")], "Matriz")
         self.assertEqual(company[headers.index("Motivo da Situação")], "SEM MOTIVO")
 
+    def test_export_includes_enriched_partner_contacts_without_full_cpf(self):
+        content = export_companies_csv([{
+            "cnpj": "37602227000117",
+            "legal_name": "Empresa Enriquecida",
+            "enriched_partners": [{
+                "first_name": "Maria",
+                "name": "Maria da Silva",
+                "cpf_masked": "***.982.247-**",
+                "qualification": "Sócio-Administrador",
+                "age_range": "31 a 40 anos",
+                "phones": [{"value": "5511999999999"}, {"value": "5511988888888"}],
+                "fixed_phones": [{"value": "551133333333"}],
+                "emails": [
+                    {"email": "maria@empresa.com.br"},
+                    {"email": "maria@gmail.com"},
+                ],
+                "corporate_emails": [{"email": "maria@empresa.com.br"}],
+                "fetched_at": "2026-09-18T12:00:00+00:00",
+            }],
+        }]).decode("utf-8")
+        headers, company = list(csv.reader(io.StringIO(content.lstrip("\ufeff"))))
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - Primeiro Nome")], "Maria")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - Nome Completo")], "Maria da Silva")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - CPF")], "***.982.247-**")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - Celular 1")], "5511999999999")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - Telefone Fixo 1")], "551133333333")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - E-mail 2")], "maria@gmail.com")
+        self.assertEqual(company[headers.index("Sócio Enriquecido 1 - E-mail Corporativo")], "maria@empresa.com.br")
+        self.assertNotIn("529.982.247-25", content)
+
     def test_selected_cnpjs_respects_job_organization(self):
         with tempfile.TemporaryDirectory() as directory:
             store = JobStore(str(Path(directory) / "jobs.sqlite"))

@@ -1747,7 +1747,15 @@ def export_company_list(list_id: str, user: dict = Depends(require_organization)
     company_list = saas_store.company_list_detail(user["organization_id"], list_id)
     if not company_list:
         raise HTTPException(status_code=404, detail="Lista não encontrada.")
-    content = export_companies_csv(refresh_company_snapshots(company_list["companies"]))
+    companies = refresh_company_snapshots(company_list["companies"])
+    contacts = partner_enrichment_store.contacts_for_companies(
+        user["organization_id"],
+        [company.get("cnpj", "") for company in companies],
+    )
+    for company in companies:
+        normalized_cnpj = "".join(character for character in str(company.get("cnpj", "")) if character.isdigit())
+        company["enriched_partners"] = contacts.get(normalized_cnpj, [])
+    content = export_companies_csv(companies)
     credit = saas_store.credit_estimate(user["organization_id"], [])
     saas_store.record_product_event(
         user["organization_id"], user["id"], "company_list.exported",

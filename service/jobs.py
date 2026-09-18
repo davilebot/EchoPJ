@@ -56,6 +56,65 @@ def partner_export_headers(max_partners: int) -> list[str]:
     return headers
 
 
+def enriched_partner_export_headers(max_partners: int) -> list[str]:
+    headers: list[str] = []
+    for position in range(1, max_partners + 1):
+        prefix = f"Sócio Enriquecido {position}"
+        headers.extend([
+            f"{prefix} - Primeiro Nome",
+            f"{prefix} - Nome Completo",
+            f"{prefix} - CPF",
+            f"{prefix} - Qualificação",
+            f"{prefix} - Faixa Etária",
+            f"{prefix} - Celular 1",
+            f"{prefix} - Celular 2",
+            f"{prefix} - Telefone Fixo 1",
+            f"{prefix} - Telefone Fixo 2",
+            f"{prefix} - E-mail 1",
+            f"{prefix} - E-mail 2",
+            f"{prefix} - E-mail 3",
+            f"{prefix} - E-mail Corporativo",
+            f"{prefix} - Data do Enriquecimento",
+        ])
+    return headers
+
+
+def _contact_values(items: Any, key: str, limit: int) -> list[str]:
+    values: list[str] = []
+    for item in items if isinstance(items, list) else []:
+        value = item.get(key) if isinstance(item, dict) else item
+        text = str(value or "").strip()
+        if text and text not in values:
+            values.append(text)
+        if len(values) == limit:
+            break
+    return values
+
+
+def enriched_partner_export_values(company: dict[str, Any], max_partners: int) -> list[Any]:
+    partners = company.get("enriched_partners") or []
+    values: list[Any] = []
+    for index in range(max_partners):
+        partner = partners[index] if index < len(partners) else {}
+        phones = _contact_values(partner.get("phones"), "value", 2)
+        fixed_phones = _contact_values(partner.get("fixed_phones"), "value", 2)
+        emails = _contact_values(partner.get("emails"), "email", 3)
+        corporate_emails = _contact_values(partner.get("corporate_emails"), "email", 1)
+        values.extend([
+            partner.get("first_name", ""),
+            partner.get("name", ""),
+            partner.get("cpf_masked", ""),
+            partner.get("qualification", ""),
+            partner.get("age_range", ""),
+            *(phones + [""] * (2 - len(phones))),
+            *(fixed_phones + [""] * (2 - len(fixed_phones))),
+            *(emails + [""] * (3 - len(emails))),
+            corporate_emails[0] if corporate_emails else "",
+            partner.get("fetched_at", ""),
+        ])
+    return values
+
+
 def company_export_values(company: dict[str, Any], max_partners: int) -> list[Any]:
     partners = company.get("partners") or []
     values: list[Any] = [
@@ -126,11 +185,21 @@ def export_companies_csv(
     if len(leading_rows) != len(companies):
         raise ValueError("leading_rows must have one entry per company")
     max_partners = max((len(company.get("partners") or []) for company in companies), default=0)
+    max_enriched_partners = max((len(company.get("enriched_partners") or []) for company in companies), default=0)
     output = io.StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow([*leading_headers, *COMPANY_EXPORT_HEADERS, *partner_export_headers(max_partners)])
+    writer.writerow([
+        *leading_headers,
+        *COMPANY_EXPORT_HEADERS,
+        *partner_export_headers(max_partners),
+        *enriched_partner_export_headers(max_enriched_partners),
+    ])
     for company, leading in zip(companies, leading_rows):
-        writer.writerow([csv_safe_value(value) for value in [*leading, *company_export_values(company, max_partners)]])
+        writer.writerow([csv_safe_value(value) for value in [
+            *leading,
+            *company_export_values(company, max_partners),
+            *enriched_partner_export_values(company, max_enriched_partners),
+        ]])
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 

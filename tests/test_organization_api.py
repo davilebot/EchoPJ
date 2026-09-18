@@ -885,6 +885,24 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(filtered["filtered_count"], 1)
         self.assertEqual(filtered["companies"][0]["legal_name"], "Empresa A")
+        self.enrichment.link_partner(
+            self.other,
+            companies[0]["cnpj"],
+            "52998224725",
+            {
+                "first_name": "Maria",
+                "name": "Maria da Silva",
+                "cpf_masked": "***.982.247-**",
+                "qualification": "Sócio-Administrador",
+                "age_range": "31 a 40 anos",
+                "phones": [{"value": "5511999999999"}],
+                "fixed_phones": [{"value": "551133333333"}],
+                "emails": [{"email": "maria@empresa.com.br"}],
+                "corporate_emails": [{"email": "maria@empresa.com.br"}],
+                "fetched_at": "2026-09-18T12:00:00+00:00",
+            },
+            "job-export-test",
+        )
         status, exported, export_headers = self.request(
             f"/api/company-lists/{company_list['id']}/export.csv",
             token=self.owner_token, headers={"x-organization-id": str(self.other)},
@@ -892,6 +910,12 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("Empresa A", exported)
         self.assertIn("Empresa B", exported)
+        self.assertIn("Sócio Enriquecido 1 - Nome Completo", exported)
+        self.assertIn("Maria da Silva", exported)
+        self.assertIn("***.982.247-**", exported)
+        self.assertIn("5511999999999", exported)
+        self.assertIn("maria@empresa.com.br", exported)
+        self.assertNotIn("529.982.247-25", exported)
         self.assertEqual(export_headers[b"x-credits-spent"], b"0")
         billing = self.request(
             "/api/billing/summary", token=self.owner_token,
