@@ -122,6 +122,8 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Mais de", script)
         self.assertIn('fetch("/api/search/count"', script)
         self.assertIn("loadExactCompanySearchCount", script)
+        self.assertIn("loadExactCompanySearchCount(payload, requestNumber, !preview)", script)
+        self.assertIn("20260922-exact-search-total-1", self.html)
         self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):

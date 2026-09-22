@@ -1861,7 +1861,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
     if (requestNumber !== searchPreviewRequest) return;
     renderCompanySearch(data);
     setSearchPreviewStatus("Resultados atualizados", "ready");
-    if (!preview && !data.total_count_exact) loadExactCompanySearchCount(payload, requestNumber);
+    if (!data.total_count_exact) loadExactCompanySearchCount(payload, requestNumber, !preview);
     if (!preview && data.total_count_exact && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count ?? data.total_count_lower_bound ?? data.returned }),
@@ -1884,7 +1884,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   }
 }
 
-async function loadExactCompanySearchCount(payload, requestNumber) {
+async function loadExactCompanySearchCount(payload, requestNumber, recordSavedSearchRun = false) {
   searchCountController = new AbortController();
   if (lastCompanySearchData) {
     lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: true, total_count_error: false };
@@ -1909,7 +1909,7 @@ async function loadExactCompanySearchCount(payload, requestNumber) {
       count_timing_ms: countData.timing_ms,
     };
     renderCompanySearchView();
-    if (activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
+    if (recordSavedSearchRun && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: countData.total_count }),
       }).catch(() => {});
