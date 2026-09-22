@@ -167,6 +167,13 @@ class SearchSqlTests(unittest.TestCase):
         ).model_dump()
         self.assertEqual(search_count_cache_key(first), search_count_cache_key(second))
 
+    def test_count_cache_key_treats_implicit_active_status_as_explicit(self):
+        implicit = CompanySearchRequest(cnaes=["5611201"]).model_dump()
+        explicit = CompanySearchRequest(
+            cnaes=["5611201"], registration_statuses=["ATIVA"],
+        ).model_dump()
+        self.assertEqual(search_count_cache_key(implicit), search_count_cache_key(explicit))
+
     def test_nationwide_capital_filter_uses_partition_index_order(self):
         filters = CompanySearchRequest(
             share_capital_min=60000,

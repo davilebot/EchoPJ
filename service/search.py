@@ -72,6 +72,8 @@ def search_count_cache_key(filters: dict[str, Any]) -> str:
     for key, value in filters.items():
         if key in _COUNT_CACHE_IGNORED_FILTERS or key in {"_cnpj_min", "_cnpj_max"}:
             continue
+        if key == "registration_statuses" and not value:
+            value = ["ATIVA"]
         if isinstance(value, (list, tuple, set)):
             value = sorted(value)
         normalized[key] = value
