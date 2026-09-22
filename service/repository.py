@@ -17,6 +17,7 @@ from .search import (
     ALL_STATES,
     SearchCapabilities,
     build_search_candidate_query,
+    build_search_count_query,
     build_search_query,
     selected_states,
 )
@@ -337,6 +338,32 @@ class Repository:
                 company["partner_count"] = len(company["partners"])
             results.append(company)
         return results, capabilities, duration_ms, has_more, total_count
+
+    def count_companies(self, filters: dict[str, Any]) -> tuple[int, SearchCapabilities, int]:
+        started = monotonic()
+        capabilities = self.search_capabilities()
+        states = selected_states(filters) or ALL_STATES
+
+        def count_state(state: str) -> int:
+            state_filters = {
+                **filters,
+                "region": None,
+                "regions": [],
+                "ufs": [state],
+            }
+            count_sql, count_parameters = build_search_count_query(state_filters, capabilities)
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(60_000, self.statement_timeout_ms * 10)),),
+                )
+                row = connection.execute(count_sql, count_parameters).fetchone()
+                return int(row["total_count"]) if row else 0
+
+        with ThreadPoolExecutor(max_workers=min(3, len(states))) as executor:
+            total_count = sum(executor.map(count_state, states))
+        duration_ms = round((monotonic() - started) * 1000)
+        return total_count, capabilities, duration_ms
 
     def _partners_by_roots(
         self,

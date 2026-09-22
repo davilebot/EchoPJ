@@ -769,6 +769,16 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(partial_data["total_count_lower_bound"], 2)
         self.assertTrue(partial_data["partial"])
 
+        self.main.repository.count_companies.return_value = (254541, capabilities, 1554)
+        status, count_data, _ = self.request(
+            "/api/search/count", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(count_data["total_count"], 254541)
+        self.assertTrue(count_data["total_count_exact"])
+        self.assertEqual(count_data["timing_ms"], 1554)
+
         status, detail, _ = self.request(
             "/api/search/preview", "POST",
             {"ufs": ["SP"], "included_list_ids": [company_list["id"]]},

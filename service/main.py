@@ -1986,12 +1986,7 @@ def search_municipality_options(
     }
 
 
-def _company_search_response(
-    payload: CompanySearchRequest,
-    user: dict,
-    *,
-    preview: bool,
-) -> dict:
+def _company_search_filters(payload: CompanySearchRequest, user: dict) -> dict:
     filters = payload.model_dump()
     filters["limit"] = 10000
     requested_list_ids = set(payload.included_list_ids) | set(payload.excluded_list_ids)
@@ -2022,6 +2017,16 @@ def _company_search_response(
         filters["_included_cnpjs"] = sorted(included_cnpjs)
     if excluded_cnpjs:
         filters["_excluded_cnpjs"] = sorted(excluded_cnpjs)
+    return filters
+
+
+def _company_search_response(
+    payload: CompanySearchRequest,
+    user: dict,
+    *,
+    preview: bool,
+) -> dict:
+    filters = _company_search_filters(payload, user)
     try:
         results, capabilities, duration_ms, has_more, total_count = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:
@@ -2091,6 +2096,28 @@ def search_companies(payload: CompanySearchRequest, user: dict = Depends(require
 def preview_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
     enforce_heavy_rate_limit(user, "search-preview")
     return _company_search_response(payload, user, preview=True)
+
+
+@app.post("/api/search/count")
+def count_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
+    enforce_heavy_rate_limit(user, "search-count")
+    filters = _company_search_filters(payload, user)
+    try:
+        total_count, capabilities, duration_ms = repository.count_companies(filters)
+    except SearchCapabilityUnavailable as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except QueryCanceled as error:
+        raise HTTPException(
+            status_code=408,
+            detail="A contagem exata ainda está processando um recorte muito amplo. Os resultados disponíveis continuam válidos.",
+        ) from error
+    return {
+        "total_count": total_count,
+        "total_count_exact": True,
+        "dataset_version": repository.current_version(),
+        "capabilities": capabilities.as_dict(),
+        "timing_ms": duration_ms,
+    }
 
 
 @app.get("/api/explorer/overview")
