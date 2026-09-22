@@ -716,7 +716,10 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertTrue(data["preview"])
         self.assertEqual(data["limit"], 10000)
         self.assertEqual(data["total_count"], 12450)
+        self.assertTrue(data["total_count_exact"])
+        self.assertEqual(data["total_count_lower_bound"], 12450)
         self.assertTrue(data["has_more"])
+        self.assertTrue(data["partial"])
         self.assertEqual(data["segments"], {"total": 1, "new": 0, "saved": 1})
         self.assertTrue(data["results"][0]["saved"])
         self.assertEqual(data["results"][0]["saved_lists"][0]["name"], "Prospecção SaaS")
@@ -754,6 +757,17 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(status, 200)
         filters = self.main.repository.search_companies.call_args.args[0]
         self.assertEqual(filters["_excluded_cnpjs"], [company["cnpj"]])
+
+        self.main.repository.search_companies.return_value = ([company], capabilities, 12, True, None)
+        status, partial_data, _ = self.request(
+            "/api/search/preview", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertIsNone(partial_data["total_count"])
+        self.assertFalse(partial_data["total_count_exact"])
+        self.assertEqual(partial_data["total_count_lower_bound"], 2)
+        self.assertTrue(partial_data["partial"])
 
         status, detail, _ = self.request(
             "/api/search/preview", "POST",

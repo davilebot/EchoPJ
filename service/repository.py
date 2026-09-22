@@ -1,5 +1,6 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from decimal import Decimal
+from math import ceil
 from time import monotonic
 from typing import Any
 
@@ -16,8 +17,8 @@ from .search import (
     ALL_STATES,
     SearchCapabilities,
     build_search_candidate_query,
-    build_search_count_query,
     build_search_query,
+    selected_states,
 )
 from .explorer import FIELD_GROUPS, RELATION_CATALOG, RELATION_CATALOG_BY_NAME, cnpj_root_bounds
 
@@ -200,38 +201,40 @@ class Repository:
         }
         return {key: cls._serializable(value) for key, value in fields.items()}
 
-    def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool, int]:
+    def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool, int | None]:
         started = monotonic()
         capabilities = self.search_capabilities()
         partners_by_root: dict[str, list[dict[str, Any]]] = {}
         limit = int(filters["limit"])
+        partition_may_have_more = False
+        # Fetch one extra row instead of counting the complete result set first.
+        # Exact COUNT(*) queries over broad regions can scan tens of millions of
+        # establishments and time out even when PostgreSQL can return the first
+        # 10,000 indexed rows quickly.  The extra row is enough to tell the UI
+        # that the response is partial without discarding useful results.
+        query_filters = {**filters, "limit": limit + 1}
         statuses = filters.get("registration_statuses") or []
         active_only = not statuses or set(statuses) == {"ATIVA"}
         nationwide_capital_filter = active_only and not any((
             filters.get("region"), filters.get("regions"), filters.get("ufs"),
         )) and any(filters.get(field) is not None for field in ("share_capital_min", "share_capital_max"))
         if nationwide_capital_filter:
-            def scan_state(state: str) -> tuple[int, list[dict[str, Any]]]:
-                state_filters = {**filters, "region": None, "regions": [], "ufs": [state]}
-                count_sql, count_parameters = build_search_count_query(state_filters, capabilities)
+            def scan_state(state: str) -> list[dict[str, Any]]:
+                state_filters = {**query_filters, "region": None, "regions": [], "ufs": [state]}
                 candidate_sql, candidate_parameters = build_search_candidate_query(state_filters, capabilities)
                 with self.pool.connection() as connection:
                     connection.execute(
                         "SELECT set_config('statement_timeout',%s,true)",
                         (str(max(60_000, self.statement_timeout_ms * 10)),),
                     )
-                    count_row = connection.execute(count_sql, count_parameters).fetchone()
-                    state_total = int(count_row["total_count"]) if count_row else 0
-                    candidates = connection.execute(candidate_sql, candidate_parameters).fetchall()
-                    return state_total, candidates
+                    return connection.execute(candidate_sql, candidate_parameters).fetchall()
 
             with ThreadPoolExecutor(max_workers=min(self.database_workers, len(ALL_STATES))) as executor:
                 state_scans = list(executor.map(scan_state, ALL_STATES))
-            total_count = sum(state_total for state_total, _ in state_scans)
             candidates = sorted(
-                (candidate for _, state_candidates in state_scans for candidate in state_candidates),
+                (candidate for state_candidates in state_scans for candidate in state_candidates),
                 key=lambda candidate: (candidate["share_capital"], candidate["cnpj"]),
-            )[:limit]
+            )[:limit + 1]
             selected_per_state: dict[str, int] = {}
             for candidate in candidates:
                 state = candidate["uf"]
@@ -262,24 +265,69 @@ class Repository:
             rows = sorted(
                 (row for result_rows in state_rows for row in result_rows),
                 key=lambda row: (row["share_capital"], row["cnpj"]),
-            )[:limit]
+            )[:limit + 1]
         else:
-            count_sql, count_parameters = build_search_count_query(filters, capabilities)
-            with self.pool.connection() as connection:
-                connection.execute(
-                    "SELECT set_config('statement_timeout',%s,true)",
-                    (str(max(60_000, self.statement_timeout_ms * 10)),),
+            def fetch_rows(search_filters: dict[str, Any]) -> list[dict[str, Any]]:
+                result_sql, result_parameters = build_search_query(search_filters, capabilities)
+                with self.pool.connection() as connection:
+                    connection.execute(
+                        "SELECT set_config('statement_timeout',%s,true)",
+                        (str(max(60_000, self.statement_timeout_ms * 10)),),
+                    )
+                    return connection.execute(result_sql, result_parameters).fetchall()
+
+            states = selected_states(filters)
+
+            def fetch_partitioned_rows() -> list[dict[str, Any]]:
+                nonlocal partition_may_have_more
+                if not states or len(states) < 2:
+                    raise QueryCanceled("a busca nao pode ser dividida por UF")
+                partition_limit = min(limit + 1, max(500, ceil((limit + 1) * 1.25 / len(states))))
+
+                def fetch_state(state: str) -> list[dict[str, Any]]:
+                    return fetch_rows({
+                        **query_filters,
+                        "region": None,
+                        "regions": [],
+                        "ufs": [state],
+                        "limit": partition_limit,
+                    })
+
+                with ThreadPoolExecutor(max_workers=min(self.database_workers, len(states))) as executor:
+                    state_rows = list(executor.map(fetch_state, states))
+                partition_may_have_more = any(len(result_rows) >= partition_limit for result_rows in state_rows)
+                order_key = (
+                    (lambda row: (row["share_capital"], row["cnpj"]))
+                    if active_only and any(filters.get(field) is not None for field in ("share_capital_min", "share_capital_max"))
+                    else (
+                        (lambda row: (row.get("primary_cnae") or "", row["cnpj"]))
+                        if (filters.get("cnaes") or filters.get("cnae")) and filters.get("cnae_scope") != "any"
+                        else (lambda row: row["cnpj"])
+                    )
                 )
-                count_row = connection.execute(count_sql, count_parameters).fetchone()
-                total_count = int(count_row["total_count"]) if count_row else 0
-            result_sql, result_parameters = build_search_query(filters, capabilities)
-            with self.pool.connection() as connection:
-                connection.execute(
-                    "SELECT set_config('statement_timeout',%s,true)",
-                    (str(max(60_000, self.statement_timeout_ms * 10)),),
-                )
-                rows = connection.execute(result_sql, result_parameters).fetchall()
-        has_more = total_count > len(rows)
+                return sorted(
+                    (row for result_rows in state_rows for row in result_rows),
+                    key=order_key,
+                )[:limit + 1]
+
+            if states and len(states) >= 4:
+                # Broad regions benefit from the leading UF columns in the
+                # partition indexes. Avoid spending a full timeout on a single
+                # cross-state plan before using that faster path.
+                rows = fetch_partitioned_rows()
+            else:
+                try:
+                    rows = fetch_rows(query_filters)
+                except QueryCanceled:
+                    if not states or len(states) < 2:
+                        raise
+                    rows = fetch_partitioned_rows()
+        has_more = partition_may_have_more or len(rows) > limit
+        if has_more:
+            rows = rows[:limit]
+            total_count = None
+        else:
+            total_count = len(rows)
         duration_ms = round((monotonic() - started) * 1000)
         results = []
         for row in rows:

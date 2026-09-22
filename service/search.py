@@ -53,7 +53,7 @@ class SearchCapabilityUnavailable(ValueError):
     pass
 
 
-def _selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
+def selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
     regions = set(filters.get("regions") or [])
     if filters.get("region"):
         regions.add(filters["region"])
@@ -265,7 +265,7 @@ def build_search_query(
         predicates.append("NOT (e.cnpj=ANY(%s))")
         parameters.append(list(excluded_cnpjs))
 
-    states = _selected_states(filters)
+    states = selected_states(filters)
     if states:
         if len(states) == 1:
             predicates.append("e.uf=%s")
@@ -449,7 +449,16 @@ def build_search_query(
         """, parameters
 
     limit = int(filters["limit"])
-    order_expression = "e.share_capital,e.cnpj" if active_only and capital_filtered else "e.cnpj"
+    if active_only and capital_filtered:
+        order_expression = "e.share_capital,e.cnpj"
+    elif cnaes and filters.get("cnae_scope") != "any":
+        # The Receita partitions have a partial btree on primary_cnae.  Keeping
+        # that index order lets PostgreSQL stop as soon as the display limit is
+        # reached instead of sorting every restaurant (or other broad segment)
+        # by CNPJ before returning the first row.
+        order_expression = cnae_expression
+    else:
+        order_expression = "e.cnpj"
     parameters.append(limit)
     if candidate_only:
         return f"""

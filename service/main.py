@@ -2044,12 +2044,17 @@ def _company_search_response(
             "saved_lists": saved_lists,
         })
     saved_count = sum(1 for company in enriched_results if company["saved"])
+    total_count_exact = total_count is not None
+    total_count_lower_bound = total_count if total_count_exact else len(enriched_results) + 1
     response = {
         "results": enriched_results,
         "returned": len(enriched_results),
         "total_count": total_count,
+        "total_count_exact": total_count_exact,
+        "total_count_lower_bound": total_count_lower_bound,
         "limit": filters["limit"],
         "has_more": has_more,
+        "partial": has_more,
         "preview": preview,
         "segments": {
             "total": len(enriched_results),
@@ -2065,7 +2070,13 @@ def _company_search_response(
             user["organization_id"],
             user["id"],
             "search.executed",
-            metadata={"returned": len(enriched_results), "total_count": total_count, "limit": filters["limit"]},
+            metadata={
+                "returned": len(enriched_results),
+                "total_count": total_count,
+                "total_count_lower_bound": total_count_lower_bound,
+                "total_count_exact": total_count_exact,
+                "limit": filters["limit"],
+            },
         )
     return response
 

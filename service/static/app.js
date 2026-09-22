@@ -1667,10 +1667,16 @@ function renderCompanySearchView() {
     <td>${savedListsMarkup(company)}</td>
   </tr>`).join("");
   const viewLabels = { total: "no total carregado", new: "que ainda não estão em listas", saved: "já salvas em listas" };
-  const exactTotal = Number(data.total_count ?? data.returned ?? 0);
+  const totalCountExact = data.total_count_exact !== false && data.total_count !== null && data.total_count !== undefined;
+  const exactTotal = totalCountExact ? Number(data.total_count) : null;
+  const totalLowerBound = Number(data.total_count_lower_bound ?? data.returned ?? 0);
+  const totalDisplay = totalCountExact ? exactTotal.toLocaleString("pt-BR") : `Mais de ${Number(data.returned || 0).toLocaleString("pt-BR")}`;
+  const resultNotice = totalCountExact
+    ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.`
+    : `A busca é maior que o limite de exibição. Estas são as primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas; existem pelo menos ${totalLowerBound.toLocaleString("pt-BR")} resultados. Você já pode selecionar, salvar em lista ou baixar este recorte.`;
   companySearchResult.innerHTML = `<div class="search-result-metrics">
-      <article><span>Encontradas na base</span><strong>${exactTotal.toLocaleString("pt-BR")}</strong></article>
-      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? "limite de 10.000 atingido" : "resultado completo carregado"}</small></article>
+      <article><span>Encontradas na base</span><strong>${totalDisplay}</strong><small>${totalCountExact ? "total exato" : "total amplo; exibindo recorte"}</small></article>
+      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? "primeiros 10.000 resultados" : "resultado completo carregado"}</small></article>
       <article><span>Base consultada</span><strong>${escapeHtml(data.dataset_version || "—")}</strong><small>${(Number(data.timing_ms || 0) / 1000).toFixed(1)}s</small></article>
     </div>
     ${viewResults.length ? `<div class="selection-tools">
@@ -1683,7 +1689,7 @@ function renderCompanySearchView() {
     </div>
     <div class="table-wrap search-results-table"><table><thead><tr><th>Selecionar</th><th>CNPJ</th><th>Empresa</th><th>CNAE principal</th><th>Município/UF</th><th>Porte</th><th>Listas</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="search-results-pagination" aria-label="Paginação dos resultados"><span>Mostrando ${(start + 1).toLocaleString("pt-BR")}–${end.toLocaleString("pt-BR")} de ${viewResults.length.toLocaleString("pt-BR")} ${viewLabels[activeCompanySearchView]}</span><div><button class="secondary compact" data-search-page="previous" type="button" ${companySearchPage === 0 ? "disabled" : ""}>Anterior</button><strong>Página ${companySearchPage + 1} de ${totalPages}</strong><button class="secondary compact" data-search-page="next" type="button" ${companySearchPage >= totalPages - 1 ? "disabled" : ""}>Próxima</button></div></div>
-    <p class="search-notice">A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.</p>
+    <p class="search-notice">${resultNotice}</p>
     ` : `<div class="empty-state"><strong>Nenhuma empresa ${activeCompanySearchView === "saved" ? "salva" : activeCompanySearchView === "new" ? "nova" : "encontrada"} nesta categoria.</strong><p>${activeCompanySearchView === "total" ? "Altere ou remova algum filtro e tente novamente." : "Escolha outra categoria ou ajuste os filtros."}</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
   const downloadSelectedButton = document.querySelector("#download-selected-company-search");
@@ -1820,7 +1826,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   const requestNumber = ++searchPreviewRequest;
   if (searchPreviewController) searchPreviewController.abort();
   searchPreviewController = new AbortController();
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Calculando o total e carregando até 10.000 empresas.</small></span>`;
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até 10.000 empresas.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
   setSearchPreviewStatus("Atualizando", "loading");
@@ -1830,7 +1836,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   }
   searchProgressTimer = setTimeout(() => {
     const detail = companySearchLoading.querySelector("small");
-    if (detail) detail.textContent = "Filtros amplos podem levar alguns segundos. A busca continua normalmente.";
+    if (detail) detail.textContent = "Filtros amplos podem levar alguns segundos e serão exibidos como um recorte parcial.";
   }, 3500);
   try {
     const payload = companySearchPayload();
@@ -1848,7 +1854,7 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
     setSearchPreviewStatus("Resultados atualizados", "ready");
     if (!preview && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count }),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count ?? data.total_count_lower_bound ?? data.returned }),
       }).catch(() => {});
     }
   } catch (error) {

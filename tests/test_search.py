@@ -11,6 +11,7 @@ from service.search import (
     build_search_candidate_query,
     build_search_count_query,
     build_search_query,
+    selected_states,
 )
 
 
@@ -90,6 +91,10 @@ class SearchModelTests(unittest.TestCase):
 
 
 class SearchSqlTests(unittest.TestCase):
+    def test_selected_states_expands_and_intersects_regions(self):
+        self.assertEqual(selected_states({"regions": ["S", "SE"]}), ("ES", "MG", "PR", "RJ", "RS", "SC", "SP"))
+        self.assertEqual(selected_states({"regions": ["S", "SE"], "ufs": ["SP", "PR"]}), ("PR", "SP"))
+
     def test_defaults_to_active_and_applies_region_cnae_and_limit(self):
         filters = CompanySearchRequest(region="SE", cnae="62", limit=500).model_dump()
         sql, parameters = build_search_query(filters, SearchCapabilities())
@@ -140,6 +145,7 @@ class SearchSqlTests(unittest.TestCase):
         filters = CompanySearchRequest(cnae="6201501").model_dump()
         sql, parameters = build_search_query(filters, SearchCapabilities())
         self.assertIn("e.primary_cnae=%s", sql)
+        self.assertIn("ORDER BY e.primary_cnae", sql)
         self.assertEqual(parameters[-2], "6201501")
 
     def test_nationwide_capital_filter_uses_partition_index_order(self):
