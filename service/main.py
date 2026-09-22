@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import sqlite3
+import threading
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -57,7 +58,7 @@ from .models import (
     VALID_UFS,
 )
 from .repository import Repository
-from .search import SearchCapabilityUnavailable
+from .search import SearchCapabilityUnavailable, search_count_cache_key
 from .explorer import normalize_cnpj_identifier
 from .website import WebsiteChecker
 from .organizations import OrganizationError, invitation_hash
@@ -119,6 +120,17 @@ partner_enrichment_service = PartnerEnrichmentService(
 partner_enrichment_runner = PartnerEnrichmentRunner(
     partner_enrichment_store, partner_enrichment_service,
 )
+
+_search_count_locks_guard = threading.Lock()
+_search_count_locks: dict[str, threading.Lock] = {}
+
+
+def _search_count_lock(cache_version: str, filters_key: str) -> threading.Lock:
+    lock_key = f"{cache_version}:{filters_key}"
+    with _search_count_locks_guard:
+        return _search_count_locks.setdefault(lock_key, threading.Lock())
+
+
 billing_catalog = BillingCatalog(settings.saas_billing_catalog_json)
 legal_documents = LegalDocuments.from_settings(settings)
 asaas_client = AsaasClient(
@@ -2102,22 +2114,40 @@ def preview_companies(payload: CompanySearchRequest, user: dict = Depends(requir
 def count_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
     enforce_heavy_rate_limit(user, "search-count")
     filters = _company_search_filters(payload, user)
-    try:
-        total_count, capabilities, duration_ms = repository.count_companies(filters)
-    except SearchCapabilityUnavailable as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-    except QueryCanceled as error:
-        raise HTTPException(
-            status_code=408,
-            detail="A contagem exata ainda está processando um recorte muito amplo. Os resultados disponíveis continuam válidos.",
-        ) from error
-    return {
-        "total_count": total_count,
-        "total_count_exact": True,
-        "dataset_version": repository.current_version(),
-        "capabilities": capabilities.as_dict(),
-        "timing_ms": duration_ms,
-    }
+    dataset_version = repository.current_version()
+    cache_version = dataset_version or "unknown"
+    filters_key = search_count_cache_key(filters)
+    with _search_count_lock(cache_version, filters_key):
+        cached = saas_store.cached_search_count(cache_version, filters_key)
+        if cached is not None:
+            return {
+                "total_count": cached["total_count"],
+                "total_count_exact": True,
+                "dataset_version": dataset_version,
+                "capabilities": repository.search_capabilities().as_dict(),
+                "timing_ms": 0,
+                "cached": True,
+                "counted_at": cached["counted_at"],
+            }
+        try:
+            total_count, capabilities, duration_ms = repository.count_companies(filters)
+        except SearchCapabilityUnavailable as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except QueryCanceled as error:
+            raise HTTPException(
+                status_code=408,
+                detail="A contagem exata ainda está processando um recorte muito amplo. Os resultados disponíveis continuam válidos.",
+            ) from error
+        cached = saas_store.cache_search_count(cache_version, filters_key, total_count)
+        return {
+            "total_count": total_count,
+            "total_count_exact": True,
+            "dataset_version": dataset_version,
+            "capabilities": capabilities.as_dict(),
+            "timing_ms": duration_ms,
+            "cached": False,
+            "counted_at": cached["counted_at"],
+        }
 
 
 @app.get("/api/explorer/overview")

@@ -1,6 +1,8 @@
 import unittest
 from contextlib import contextmanager
 
+from psycopg.errors import QueryCanceled
+
 from service.repository import Repository
 from service.search import SearchCapabilities
 
@@ -48,6 +50,25 @@ class _Pool:
         yield _Connection(self.observed_sql)
 
 
+class _FallbackConnection(_Connection):
+    def execute(self, statement, parameters=None):
+        query = str(statement)
+        self.observed_sql.append(query)
+        if "set_config('statement_timeout'" in query:
+            return _Rows([])
+        if "count(*) AS total_count" in query:
+            if parameters[0] == "SP":
+                raise QueryCanceled("statement timeout")
+            return _Rows([{"total_count": 1}])
+        return _Rows([])
+
+
+class _FallbackPool(_Pool):
+    @contextmanager
+    def connection(self):
+        yield _FallbackConnection(self.observed_sql)
+
+
 class RepositorySearchTests(unittest.TestCase):
     def test_broad_multi_region_search_returns_a_bounded_partial_result_without_counting(self):
         repository = Repository.__new__(Repository)
@@ -89,6 +110,23 @@ class RepositorySearchTests(unittest.TestCase):
             sum("count(*) AS total_count" in query for query in repository.pool.observed_sql),
             7,
         )
+
+    def test_exact_count_splits_a_timed_out_state_into_cnpj_ranges(self):
+        repository = Repository.__new__(Repository)
+        repository.pool = _FallbackPool()
+        repository.database_workers = 8
+        repository.statement_timeout_ms = 1800
+        repository.search_capabilities = lambda: SearchCapabilities()
+
+        total, _, _ = repository.count_companies({
+            "regions": ["SE"],
+            "ufs": [],
+            "registration_statuses": ["ATIVA"],
+            "cnaes": ["5611201"],
+            "limit": 10000,
+        })
+
+        self.assertEqual(total, 13)
 
 
 if __name__ == "__main__":

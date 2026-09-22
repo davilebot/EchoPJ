@@ -63,6 +63,22 @@ class SaaSStoreTests(unittest.TestCase):
             self.assertIn("invoice_url", columns)
             self.assertIn("receipt_url", columns)
 
+    def test_exact_search_count_cache_is_persistent_and_dataset_scoped(self):
+        self.assertIsNone(self.store.cached_search_count("2026-08", "filters-a"))
+        stored = self.store.cache_search_count("2026-08", "filters-a", 403451)
+        self.assertEqual(stored["total_count"], 403451)
+        self.assertEqual(
+            self.store.cached_search_count("2026-08", "filters-a")["total_count"],
+            403451,
+        )
+        self.assertIsNone(self.store.cached_search_count("2026-09", "filters-a"))
+
+        self.store.cache_search_count("2026-08", "filters-a", 403452)
+        self.assertEqual(
+            self.store.cached_search_count("2026-08", "filters-a")["total_count"],
+            403452,
+        )
+
     def test_billing_catalog_keeps_draft_separate_and_versions_publications(self):
         first = json.dumps([{"code": "growth", "name": "Crescimento"}])
         draft = self.store.save_billing_catalog_draft(7, first)

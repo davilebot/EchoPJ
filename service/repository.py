@@ -344,6 +344,16 @@ class Repository:
         capabilities = self.search_capabilities()
         states = selected_states(filters) or ALL_STATES
 
+        def execute_count(scope_filters: dict[str, Any], timeout_ms: int = 20_000) -> int:
+            count_sql, count_parameters = build_search_count_query(scope_filters, capabilities)
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(timeout_ms, self.statement_timeout_ms * 10)),),
+                )
+                row = connection.execute(count_sql, count_parameters).fetchone()
+                return int(row["total_count"]) if row else 0
+
         def count_state(state: str) -> int:
             state_filters = {
                 **filters,
@@ -351,14 +361,21 @@ class Repository:
                 "regions": [],
                 "ufs": [state],
             }
-            count_sql, count_parameters = build_search_count_query(state_filters, capabilities)
-            with self.pool.connection() as connection:
-                connection.execute(
-                    "SELECT set_config('statement_timeout',%s,true)",
-                    (str(max(60_000, self.statement_timeout_ms * 10)),),
+            try:
+                return execute_count(state_filters)
+            except QueryCanceled:
+                # A large state can still exceed the count timeout even with
+                # the CNAE index. Split its exact count into disjoint CNPJ
+                # ranges so every query has a bounded scan, then sum them.
+                boundaries = "0123456789:"
+                return sum(
+                    execute_count({
+                        **state_filters,
+                        "_cnpj_min": boundaries[index],
+                        "_cnpj_max": boundaries[index + 1],
+                    }, timeout_ms=30_000)
+                    for index in range(10)
                 )
-                row = connection.execute(count_sql, count_parameters).fetchone()
-                return int(row["total_count"]) if row else 0
 
         with ThreadPoolExecutor(max_workers=min(3, len(states))) as executor:
             total_count = sum(executor.map(count_state, states))

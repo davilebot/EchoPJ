@@ -6,6 +6,8 @@ fixed capability/field maps controlled by the application.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -51,6 +53,36 @@ class SearchCapabilities:
 
 class SearchCapabilityUnavailable(ValueError):
     pass
+
+
+_COUNT_CACHE_IGNORED_FILTERS = {
+    "limit",
+    "included_cnpjs",
+    "excluded_cnpjs",
+    "included_list_ids",
+    "excluded_list_ids",
+    "saved_status",
+}
+
+
+def search_count_cache_key(filters: dict[str, Any]) -> str:
+    """Return a stable key for the SQL-affecting part of a search."""
+
+    normalized: dict[str, Any] = {}
+    for key, value in filters.items():
+        if key in _COUNT_CACHE_IGNORED_FILTERS or key in {"_cnpj_min", "_cnpj_max"}:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            value = sorted(value)
+        normalized[key] = value
+    payload = json.dumps(
+        normalized,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
@@ -264,6 +296,12 @@ def build_search_query(
     if excluded_cnpjs:
         predicates.append("NOT (e.cnpj=ANY(%s))")
         parameters.append(list(excluded_cnpjs))
+    if filters.get("_cnpj_min") is not None:
+        predicates.append("e.cnpj>=%s")
+        parameters.append(filters["_cnpj_min"])
+    if filters.get("_cnpj_max") is not None:
+        predicates.append("e.cnpj<%s")
+        parameters.append(filters["_cnpj_max"])
 
     states = selected_states(filters)
     if states:

@@ -770,6 +770,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertTrue(partial_data["partial"])
 
         self.main.repository.count_companies.return_value = (254541, capabilities, 1554)
+        self.main.repository.search_capabilities.return_value = capabilities
         status, count_data, _ = self.request(
             "/api/search/count", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
             self.owner_token, {"x-organization-id": str(self.org)},
@@ -778,6 +779,17 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(count_data["total_count"], 254541)
         self.assertTrue(count_data["total_count_exact"])
         self.assertEqual(count_data["timing_ms"], 1554)
+        self.assertFalse(count_data["cached"])
+
+        status, cached_count_data, _ = self.request(
+            "/api/search/count", "POST", {"regions": ["SE", "S"], "cnaes": ["5611201"]},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(cached_count_data["total_count"], 254541)
+        self.assertEqual(cached_count_data["timing_ms"], 0)
+        self.assertTrue(cached_count_data["cached"])
+        self.main.repository.count_companies.assert_called_once()
 
         status, detail, _ = self.request(
             "/api/search/preview", "POST",

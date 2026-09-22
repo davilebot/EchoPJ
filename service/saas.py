@@ -300,6 +300,13 @@ class SaaSStore:
             );
             CREATE INDEX IF NOT EXISTS idx_support_messages_ticket_created
                 ON support_messages(ticket_id, created_at);
+            CREATE TABLE IF NOT EXISTS search_count_cache (
+                dataset_version TEXT NOT NULL,
+                filters_key TEXT NOT NULL,
+                total_count INTEGER NOT NULL CHECK(total_count >= 0),
+                counted_at TEXT NOT NULL,
+                PRIMARY KEY(dataset_version, filters_key)
+            );
         """)
         payment_columns = {
             row[1] for row in self._connection.execute("PRAGMA table_info(billing_payments)")
@@ -317,6 +324,33 @@ class SaaSStore:
     def health_check(self) -> bool:
         with self._lock:
             return self._connection.execute("SELECT 1").fetchone()[0] == 1
+
+    def cached_search_count(self, dataset_version: str, filters_key: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._connection.execute(
+                """SELECT total_count,counted_at FROM search_count_cache
+                   WHERE dataset_version=? AND filters_key=?""",
+                (dataset_version, filters_key),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def cache_search_count(
+        self,
+        dataset_version: str,
+        filters_key: str,
+        total_count: int,
+    ) -> dict[str, Any]:
+        counted_at = utc_now()
+        with self._lock, self._connection:
+            self._connection.execute(
+                """INSERT INTO search_count_cache(dataset_version,filters_key,total_count,counted_at)
+                   VALUES(?,?,?,?)
+                   ON CONFLICT(dataset_version,filters_key) DO UPDATE SET
+                     total_count=excluded.total_count,
+                     counted_at=excluded.counted_at""",
+                (dataset_version, filters_key, total_count, counted_at),
+            )
+        return {"total_count": total_count, "counted_at": counted_at}
 
     @staticmethod
     def _catalog_version(row: sqlite3.Row | None) -> dict[str, Any] | None:

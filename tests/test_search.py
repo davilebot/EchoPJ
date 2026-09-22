@@ -11,6 +11,7 @@ from service.search import (
     build_search_candidate_query,
     build_search_count_query,
     build_search_query,
+    search_count_cache_key,
     selected_states,
 )
 
@@ -147,6 +148,24 @@ class SearchSqlTests(unittest.TestCase):
         self.assertIn("e.primary_cnae=%s", sql)
         self.assertIn("ORDER BY e.primary_cnae", sql)
         self.assertEqual(parameters[-2], "6201501")
+
+    def test_internal_cnpj_range_is_parameterized_for_partitioned_counts(self):
+        filters = CompanySearchRequest(ufs=["SP"], cnae="5611201").model_dump()
+        filters.update({"_cnpj_min": "3", "_cnpj_max": "4"})
+        sql, parameters = build_search_count_query(filters, SearchCapabilities())
+        self.assertIn("e.cnpj>=%s", sql)
+        self.assertIn("e.cnpj<%s", sql)
+        self.assertIn("3", parameters)
+        self.assertIn("4", parameters)
+
+    def test_count_cache_key_ignores_result_limit_and_filter_order(self):
+        first = CompanySearchRequest(
+            regions=["S", "SE"], cnaes=["5611201", "5611203"], limit=100,
+        ).model_dump()
+        second = CompanySearchRequest(
+            regions=["SE", "S"], cnaes=["5611203", "5611201"], limit=10000,
+        ).model_dump()
+        self.assertEqual(search_count_cache_key(first), search_count_cache_key(second))
 
     def test_nationwide_capital_filter_uses_partition_index_order(self):
         filters = CompanySearchRequest(
