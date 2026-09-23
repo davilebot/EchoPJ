@@ -226,11 +226,11 @@ class Repository:
                 with self.pool.connection() as connection:
                     connection.execute(
                         "SELECT set_config('statement_timeout',%s,true)",
-                        (str(max(60_000, self.statement_timeout_ms * 10)),),
+                        (str(max(300_000, self.statement_timeout_ms * 10)),),
                     )
                     return connection.execute(candidate_sql, candidate_parameters).fetchall()
 
-            with ThreadPoolExecutor(max_workers=min(2, len(ALL_STATES))) as executor:
+            with ThreadPoolExecutor(max_workers=min(4, len(ALL_STATES))) as executor:
                 state_scans = list(executor.map(scan_state, ALL_STATES))
             candidates = sorted(
                 (candidate for state_candidates in state_scans for candidate in state_candidates),
@@ -254,12 +254,12 @@ class Repository:
                 with self.pool.connection() as connection:
                     connection.execute(
                         "SELECT set_config('statement_timeout',%s,true)",
-                        (str(max(60_000, self.statement_timeout_ms * 10)),),
+                        (str(max(300_000, self.statement_timeout_ms * 10)),),
                     )
                     return connection.execute(state_sql, state_parameters).fetchall()
 
             if selected_per_state:
-                with ThreadPoolExecutor(max_workers=min(2, len(selected_per_state))) as executor:
+                with ThreadPoolExecutor(max_workers=min(4, len(selected_per_state))) as executor:
                     state_rows = list(executor.map(fetch_state, selected_per_state.items()))
             else:
                 state_rows = []
@@ -273,7 +273,7 @@ class Repository:
                 with self.pool.connection() as connection:
                     connection.execute(
                         "SELECT set_config('statement_timeout',%s,true)",
-                        (str(max(60_000, self.statement_timeout_ms * 10)),),
+                        (str(max(300_000, self.statement_timeout_ms * 10)),),
                     )
                     return connection.execute(result_sql, result_parameters).fetchall()
 
@@ -294,8 +294,15 @@ class Repository:
                         "limit": partition_limit,
                     })
 
-                with ThreadPoolExecutor(max_workers=min(2, len(states))) as executor:
-                    state_rows = list(executor.map(fetch_state, states))
+                primary_states = tuple(
+                    state for state in states
+                    if not (state == "SP" and len(states) >= 4)
+                )
+                deferred_states = ("SP",) if "SP" in states and len(states) >= 4 else ()
+                with ThreadPoolExecutor(max_workers=min(4, len(primary_states))) as executor:
+                    state_rows = list(executor.map(fetch_state, primary_states))
+                if deferred_states and sum(len(result_rows) for result_rows in state_rows) < limit + 1:
+                    state_rows.extend(fetch_state(state) for state in deferred_states)
                 partition_may_have_more = any(len(result_rows) >= partition_limit for result_rows in state_rows)
                 order_key = (
                     (lambda row: (row["share_capital"], row["cnpj"]))
@@ -344,12 +351,12 @@ class Repository:
         capabilities = self.search_capabilities()
         states = selected_states(filters) or ALL_STATES
 
-        def execute_count(scope_filters: dict[str, Any], timeout_ms: int = 20_000) -> int:
+        def execute_count(scope_filters: dict[str, Any]) -> int:
             count_sql, count_parameters = build_search_count_query(scope_filters, capabilities)
             with self.pool.connection() as connection:
                 connection.execute(
                     "SELECT set_config('statement_timeout',%s,true)",
-                    (str(max(timeout_ms, self.statement_timeout_ms * 10)),),
+                    (str(max(600_000, self.statement_timeout_ms * 10)),),
                 )
                 row = connection.execute(count_sql, count_parameters).fetchone()
                 return int(row["total_count"]) if row else 0
@@ -361,21 +368,7 @@ class Repository:
                 "regions": [],
                 "ufs": [state],
             }
-            try:
-                return execute_count(state_filters)
-            except QueryCanceled:
-                # A large state can still exceed the count timeout even with
-                # the CNAE index. Split its exact count into disjoint CNPJ
-                # ranges so every query has a bounded scan, then sum them.
-                boundaries = "0123456789:"
-                return sum(
-                    execute_count({
-                        **state_filters,
-                        "_cnpj_min": boundaries[index],
-                        "_cnpj_max": boundaries[index + 1],
-                    }, timeout_ms=30_000)
-                    for index in range(10)
-                )
+            return execute_count(state_filters)
 
         with ThreadPoolExecutor(max_workers=min(2, len(states))) as executor:
             total_count = sum(executor.map(count_state, states))

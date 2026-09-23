@@ -98,11 +98,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn(".filter-group { display: none", styles)
         self.assertIn(".filter-group.is-active { display: grid", styles)
 
-    def test_search_preview_updates_automatically_and_shows_list_memberships(self):
+    def test_search_runs_only_on_submit_and_shows_list_memberships(self):
         script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
         styles = (STATIC_DIR / "styles.css").read_text(encoding="utf-8")
-        self.assertIn('fetch(preview ? "/api/search/preview" : "/api/search"', script)
-        self.assertIn("scheduleCompanySearchPreview", script)
+        self.assertIn('fetch("/api/search"', script)
+        self.assertNotIn('fetch("/api/search/preview"', script)
+        self.assertNotIn("scheduleCompanySearchPreview", script)
+        self.assertIn("markCompanySearchFiltersChanged", script)
         self.assertIn("saved_lists", script)
         self.assertIn("company-list-tags", script)
         self.assertIn("hasOwnProperty.call(data.filters, field.dataset.capability)", script)
@@ -120,12 +122,17 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("COMPANY_SEARCH_PAGE_SIZE", script)
         self.assertIn("data.total_count", script)
         self.assertIn("data.total_count_exact", script)
-        self.assertIn("Mais de", script)
+        self.assertIn("Calculando…", script)
         self.assertIn('fetch("/api/search/count"', script)
-        self.assertIn("loadExactCompanySearchCount", script)
-        self.assertIn("if (!preview && !data.total_count_exact)", script)
+        self.assertIn("requestExactCompanySearchCount", script)
+        self.assertIn("applyExactCompanySearchCount", script)
+        self.assertIn("if (!data.total_count_exact)", script)
+        self.assertLess(
+            script.index('fetch("/api/search"'),
+            script.index("requestExactCompanySearchCount(payload, searchCountController.signal)"),
+        )
         self.assertIn("function searchResponseError", script)
-        self.assertIn("20260923-simplified-search-1", self.html)
+        self.assertIn("20260923-direct-search-1", self.html)
         self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):

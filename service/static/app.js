@@ -218,10 +218,9 @@ let searchSelectionEstimateTimer = null;
 let searchSelectionEstimateRequest = 0;
 let activeCompanySearchView = "total";
 let lastCompanySearchData = null;
-let searchPreviewTimer = null;
-let searchPreviewController = null;
+let searchResultsController = null;
 let searchCountController = null;
-let searchPreviewRequest = 0;
+let companySearchRequest = 0;
 let companySearchPage = 0;
 const COMPANY_SEARCH_PAGE_SIZE = 50;
 let lastBulkCnpjLookup = [];
@@ -557,7 +556,7 @@ document.querySelector("#clear-company-filters").addEventListener("click", () =>
   activateFilterCategory("profile-filter-section");
   document.querySelector("#profile-filter-section [data-filter-subtab]")?.click();
   updateFilterGroupCounts();
-  scheduleCompanySearchPreview({ immediate: true });
+  markCompanySearchFiltersChanged();
 });
 
 document.addEventListener("click", (event) => {
@@ -1670,27 +1669,26 @@ function renderCompanySearchView() {
   const viewLabels = { total: "no total carregado", new: "que ainda não estão em listas", saved: "já salvas em listas" };
   const totalCountExact = data.total_count_exact !== false && data.total_count !== null && data.total_count !== undefined;
   const exactTotal = totalCountExact ? Number(data.total_count) : null;
-  const totalLowerBound = Number(data.total_count_lower_bound ?? data.returned ?? 0);
-  const totalDisplay = totalCountExact ? exactTotal.toLocaleString("pt-BR") : `Mais de ${Number(data.returned || 0).toLocaleString("pt-BR")}`;
+  const totalDisplay = totalCountExact
+    ? exactTotal.toLocaleString("pt-BR")
+    : data.total_count_error
+      ? "Indisponível"
+      : "Calculando…";
   const totalDetail = totalCountExact
     ? "total exato"
     : data.total_count_pending
-      ? "calculando o total exato…"
+      ? "calculando sem bloquear os resultados…"
       : data.total_count_error
-        ? "não foi possível concluir a contagem exata"
-        : data.preview
-          ? "prévia carregada; confirme para contar o total"
-          : "recorte carregado; contando o total";
+        ? "não foi possível concluir a contagem agora"
+        : "aguardando a contagem exata";
   const resultNotice = totalCountExact
-    ? data.preview && data.has_more
-      ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Esta é uma prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")}; use “Carregar até 10.000” para ampliar o recorte.`
-      : `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.`
-    : data.preview
-      ? `Esta é uma prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas. Use “Carregar até 10.000” quando terminar de ajustar os filtros.`
-      : `A busca é maior que o limite de exibição. Estas são as primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas; existem pelo menos ${totalLowerBound.toLocaleString("pt-BR")} resultados. Você já pode selecionar, salvar em lista ou baixar este recorte.`;
+    ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV.`
+    : data.total_count_error
+      ? `As ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas carregadas continuam disponíveis. A contagem exata pode ser tentada novamente atualizando os resultados.`
+      : `As primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas já estão disponíveis enquanto o total exato é calculado.`;
   companySearchResult.innerHTML = `<div class="search-result-metrics">
       <article><span>Encontradas na base</span><strong>${totalDisplay}</strong><small>${totalDetail}</small></article>
-      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? (data.preview ? `prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")}` : `primeiros ${Number(data.returned || 0).toLocaleString("pt-BR")} resultados`) : "resultado completo carregado"}</small></article>
+      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? `primeiros ${Number(data.returned || 0).toLocaleString("pt-BR")} resultados` : "resultado completo carregado"}</small></article>
       <article><span>Base consultada</span><strong>${escapeHtml(data.dataset_version || "—")}</strong><small>${(Number(data.timing_ms || 0) / 1000).toFixed(1)}s</small></article>
     </div>
     ${viewResults.length ? `<div class="selection-tools">
@@ -1851,20 +1849,50 @@ async function searchResponseError(response, fallback) {
   }
 }
 
-async function runCompanySearch({ preview = false, scroll = false } = {}) {
+async function requestExactCompanySearchCount(payload, signal) {
+  const response = await fetch("/api/search/count", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal,
+  });
+  if (!response.ok) throw new Error(await searchResponseError(response, "Falha na contagem exata"));
+  return response.json();
+}
+
+function applyExactCompanySearchCount(countData, requestNumber, recordSavedSearchRun = false) {
+  if (requestNumber !== companySearchRequest || !lastCompanySearchData) return;
+  lastCompanySearchData = {
+    ...lastCompanySearchData,
+    total_count: countData.total_count,
+    total_count_exact: true,
+    total_count_lower_bound: countData.total_count,
+    total_count_pending: false,
+    total_count_error: false,
+    count_timing_ms: countData.timing_ms,
+  };
+  renderCompanySearchView();
+  if (recordSavedSearchRun && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
+    fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: countData.total_count }),
+    }).catch(() => {});
+  }
+}
+
+async function runCompanySearch({ scroll = false } = {}) {
   const submitButton = companySearchForm.querySelector('button[type="submit"]');
   const originalSubmitLabel = submitButton?.textContent || "";
   let searchProgressTimer = null;
-  const requestNumber = ++searchPreviewRequest;
-  if (searchPreviewController) searchPreviewController.abort();
+  const requestNumber = ++companySearchRequest;
+  if (searchResultsController) searchResultsController.abort();
   if (searchCountController) searchCountController.abort();
-  searchPreviewController = new AbortController();
-  const resultLimit = preview ? 500 : 10000;
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até ${resultLimit.toLocaleString("pt-BR")} empresas.</small></span>`;
+  searchResultsController = new AbortController();
+  searchCountController = null;
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até 10.000 empresas; o total será calculado em paralelo.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
   setSearchPreviewStatus("Atualizando", "loading");
-  if (!preview && submitButton) {
+  if (submitButton) {
     submitButton.disabled = true;
     submitButton.textContent = "Buscando…";
   }
@@ -1875,22 +1903,35 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   try {
     const payload = companySearchPayload();
     lastCompanySearchPayload = payload;
-    const response = await fetch(preview ? "/api/search/preview" : "/api/search", {
+    const response = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: searchPreviewController.signal,
+      signal: searchResultsController.signal,
     });
     if (!response.ok) throw new Error(await searchResponseError(response, "Falha na busca"));
     const data = await response.json();
-    if (requestNumber !== searchPreviewRequest) return;
-    renderCompanySearch(data);
-    setSearchPreviewStatus(preview ? "Prévia atualizada" : "Resultados atualizados", "ready");
-    if (!preview && !data.total_count_exact) loadExactCompanySearchCount(payload, requestNumber, true);
-    if (!preview && data.total_count_exact && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
+    if (requestNumber !== companySearchRequest) return;
+    renderCompanySearch({
+      ...data,
+      total_count_pending: !data.total_count_exact,
+      total_count_error: false,
+    });
+    setSearchPreviewStatus("Resultados atualizados", "ready");
+    if (data.total_count_exact && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count ?? data.total_count_lower_bound ?? data.returned }),
       }).catch(() => {});
+    }
+    if (!data.total_count_exact) {
+      searchCountController = new AbortController();
+      requestExactCompanySearchCount(payload, searchCountController.signal)
+        .then((countData) => applyExactCompanySearchCount(countData, requestNumber, true))
+        .catch((error) => {
+          if (error.name === "AbortError" || requestNumber !== companySearchRequest || !lastCompanySearchData) return;
+          lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: false, total_count_error: true };
+          renderCompanySearchView();
+        });
     }
   } catch (error) {
     if (error.name === "AbortError") return;
@@ -1898,9 +1939,9 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
     setSearchPreviewStatus("Falha nos resultados", "error");
   } finally {
     clearTimeout(searchProgressTimer);
-    if (requestNumber !== searchPreviewRequest) return;
+    if (requestNumber !== companySearchRequest) return;
     companySearchForm.removeAttribute("aria-busy");
-    if (!preview && submitButton) {
+    if (submitButton) {
       submitButton.disabled = false;
       submitButton.textContent = originalSubmitLabel;
     }
@@ -1909,80 +1950,41 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   }
 }
 
-async function loadExactCompanySearchCount(payload, requestNumber, recordSavedSearchRun = false) {
-  searchCountController = new AbortController();
-  if (lastCompanySearchData) {
-    lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: true, total_count_error: false };
-    renderCompanySearchView();
-  }
-  try {
-    const response = await fetch("/api/search/count", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: searchCountController.signal,
-    });
-    if (!response.ok) throw new Error(await searchResponseError(response, "Falha na contagem exata"));
-    const countData = await response.json();
-    if (requestNumber !== searchPreviewRequest || !lastCompanySearchData) return;
-    lastCompanySearchData = {
-      ...lastCompanySearchData,
-      total_count: countData.total_count,
-      total_count_exact: true,
-      total_count_lower_bound: countData.total_count,
-      total_count_pending: false,
-      count_timing_ms: countData.timing_ms,
-    };
-    renderCompanySearchView();
-    if (recordSavedSearchRun && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
-      fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: countData.total_count }),
-      }).catch(() => {});
-    }
-  } catch (error) {
-    if (error.name === "AbortError" || requestNumber !== searchPreviewRequest || !lastCompanySearchData) return;
-    lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: false, total_count_error: true };
-    renderCompanySearchView();
-  }
-}
-
-function scheduleCompanySearchPreview({ immediate = false } = {}) {
-  clearTimeout(searchPreviewTimer);
+function markCompanySearchFiltersChanged() {
   const payload = companySearchPayload();
-  if (!hasMeaningfulCompanyFilters(payload)) {
-    searchPreviewRequest += 1;
-    if (searchPreviewController) searchPreviewController.abort();
-    if (searchCountController) searchCountController.abort();
-    lastCompanySearch = [];
-    lastCompanySearchData = null;
-    selectedCompanyCnpjs = new Set();
-    activeCompanySearchView = "total";
-    companySearchPage = 0;
-    document.querySelectorAll("[data-search-view-count]").forEach((element) => { element.textContent = "0"; });
-    document.querySelectorAll("[data-search-view]").forEach((button) => {
-      const active = button.dataset.searchView === "total";
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-pressed", String(active));
-    });
-    companySearchForm.removeAttribute("aria-busy");
-    const submitButton = companySearchForm.querySelector('button[type="submit"]');
-    if (submitButton) {
-      submitButton.disabled = false;
-      submitButton.textContent = "Atualizar resultados";
-    }
-    companySearchLoading.classList.add("hidden");
-    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Uma prévia aparecerá automaticamente.</p></div>`;
-    setSearchPreviewStatus("Aguardando filtros");
-    return;
+  companySearchRequest += 1;
+  if (searchResultsController) searchResultsController.abort();
+  if (searchCountController) searchCountController.abort();
+  lastCompanySearch = [];
+  lastCompanySearchData = null;
+  selectedCompanyCnpjs = new Set();
+  activeCompanySearchView = "total";
+  companySearchPage = 0;
+  document.querySelectorAll("[data-search-view-count]").forEach((element) => { element.textContent = "0"; });
+  document.querySelectorAll("[data-search-view]").forEach((button) => {
+    const active = button.dataset.searchView === "total";
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+  companySearchForm.removeAttribute("aria-busy");
+  const submitButton = companySearchForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = false;
+    submitButton.textContent = "Atualizar resultados";
   }
-  setSearchPreviewStatus("Filtros alterados", "pending");
-  searchPreviewTimer = setTimeout(() => runCompanySearch({ preview: true }), immediate ? 0 : 850);
+  companySearchLoading.classList.add("hidden");
+  if (hasMeaningfulCompanyFilters(payload)) {
+    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Filtros prontos</strong><p>Clique em “Atualizar resultados” para carregar até 10.000 empresas e calcular o total.</p></div>`;
+    setSearchPreviewStatus("Filtros alterados", "pending");
+  } else {
+    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização e clique em “Atualizar resultados”.</p></div>`;
+    setSearchPreviewStatus("Aguardando filtros");
+  }
 }
 
 companySearchForm.addEventListener("submit", (event) => {
   event.preventDefault();
-  clearTimeout(searchPreviewTimer);
-  runCompanySearch({ preview: false, scroll: true });
+  runCompanySearch({ scroll: true });
 });
 
 companySearchForm.addEventListener("input", (event) => {
@@ -1990,17 +1992,17 @@ companySearchForm.addEventListener("input", (event) => {
   const capitalInput = event.target.closest("[data-capital-input]");
   if (capitalInput) capitalInput.value = capitalDigits(capitalInput.value);
   updateFilterGroupCounts();
-  scheduleCompanySearchPreview();
+  markCompanySearchFiltersChanged();
 });
 companySearchForm.addEventListener("change", (event) => {
   if (event.target.closest(".multi-picker-options")) return;
   updateFilterGroupCounts();
-  scheduleCompanySearchPreview();
+  markCompanySearchFiltersChanged();
 });
 [cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
   .forEach((picker) => picker.onChange(() => {
     updateFilterGroupCounts();
-    scheduleCompanySearchPreview();
+    markCompanySearchFiltersChanged();
   }));
 
 document.querySelector("#search-result-tabs").addEventListener("click", (event) => {
@@ -2421,8 +2423,8 @@ async function applySavedSearch(saved) {
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Busca salva: ${escapeHtml(saved.name)}`;
   companySearchForm.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast(`Critérios de “${saved.name}” carregados.`);
-  scheduleCompanySearchPreview({ immediate: true });
+  showToast(`Critérios de “${saved.name}” carregados. Clique em “Atualizar resultados”.`);
+  markCompanySearchFiltersChanged();
 }
 
 function supportedTemplateFilters(template) {
@@ -2456,8 +2458,8 @@ async function applySearchTemplate(templateKey) {
   const guidance = document.querySelector(".filter-guidance");
   guidance.innerHTML = `<span aria-hidden="true"></span>Modelo aplicado: ${escapeHtml(template.name)}`;
   document.querySelector(".filter-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  showToast(`Modelo “${template.name}” aplicado. Os resultados estão sendo atualizados.`);
-  scheduleCompanySearchPreview({ immediate: true });
+  showToast(`Modelo “${template.name}” aplicado. Clique em “Atualizar resultados”.`);
+  markCompanySearchFiltersChanged();
 }
 
 document.querySelector("#search-templates").addEventListener("click", async (event) => {

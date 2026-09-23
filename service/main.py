@@ -2049,7 +2049,7 @@ def _company_search_response(
     except QueryCanceled as error:
         raise HTTPException(
             status_code=408,
-            detail="A prévia não terminou a tempo. Ajuste os filtros ou use Carregar até 10.000 para tentar novamente.",
+            detail="A busca não terminou a tempo. Tente atualizar os resultados novamente.",
         ) from error
     except PoolTimeout as error:
         raise HTTPException(
@@ -2074,7 +2074,7 @@ def _company_search_response(
     filters_key = search_count_cache_key(filters)
     if total_count is not None:
         saas_store.cache_search_count(cache_version, filters_key, total_count)
-    elif preview:
+    else:
         cached_count = saas_store.cached_search_count(cache_version, filters_key)
         if cached_count is not None:
             total_count = cached_count["total_count"]
@@ -2153,7 +2153,7 @@ def count_companies(payload: CompanySearchRequest, user: dict = Depends(require_
         except QueryCanceled as error:
             raise HTTPException(
                 status_code=408,
-                detail="A contagem exata ainda está processando um recorte muito amplo. Os resultados disponíveis continuam válidos.",
+                detail="A contagem exata não terminou desta vez. Os resultados disponíveis continuam válidos.",
             ) from error
         except PoolTimeout as error:
             raise HTTPException(

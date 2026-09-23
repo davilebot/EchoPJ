@@ -125,10 +125,11 @@ def build_search_query(
 
     needs_simples = filters.get("simples") is not None or filters.get("mei") is not None
     needs_company = bool(filters.get("legal_nature_code"))
-    needs_partners = bool(filters.get("partner_age_ranges")) or any(
+    needs_partner_count = any(
         filters.get(field) is not None
         for field in ("partner_count_min", "partner_count_max")
     )
+    needs_partners = bool(filters.get("partner_age_ranges")) or needs_partner_count
     needs_establishment = any(
         filters.get(field) is not None
         for field in ("branch_type", "has_email", "has_phone")
@@ -252,6 +253,29 @@ def build_search_query(
         )
     else:
         branch_count_columns = "0::integer AS branch_count,0::integer AS active_branch_count"
+
+    if capabilities.partners and needs_partners:
+        joins.append(
+            "LEFT JOIN LATERAL ("
+            "SELECT count(*)::integer AS partner_count "
+            "FROM rfb_partners partner_totals "
+            "WHERE partner_totals.dataset_version=e.dataset_version "
+            "AND partner_totals.cnpj_root=e.cnpj_root"
+            ") partner_totals ON TRUE"
+        )
+        partner_count_column = "partner_totals.partner_count"
+    else:
+        partner_count_column = "NULL::integer AS partner_count"
+
+    if capabilities.partners and needs_partner_count:
+        filter_joins.append(
+            "JOIN LATERAL ("
+            "SELECT count(*)::integer AS partner_count "
+            "FROM rfb_partners partner_count_filter "
+            "WHERE partner_count_filter.dataset_version=e.dataset_version "
+            "AND partner_count_filter.cnpj_root=e.cnpj_root"
+            ") partner_count_filter ON TRUE"
+        )
 
     if capabilities.references:
         joins.extend([
@@ -425,16 +449,11 @@ def build_search_query(
         """)
         parameters.append(filters["partner_age_ranges"])
 
-    partner_count_expression = (
-        "(SELECT count(*) FROM rfb_partners partner_count "
-        "WHERE partner_count.dataset_version=e.dataset_version "
-        "AND partner_count.cnpj_root=e.cnpj_root)"
-    )
     if filters.get("partner_count_min") is not None:
-        predicates.append(f"{partner_count_expression}>=%s")
+        predicates.append("partner_count_filter.partner_count>=%s")
         parameters.append(filters["partner_count_min"])
     if filters.get("partner_count_max") is not None:
-        predicates.append(f"{partner_count_expression}<=%s")
+        predicates.append("partner_count_filter.partner_count<=%s")
         parameters.append(filters["partner_count_max"])
 
     for field, operator in (
@@ -474,11 +493,6 @@ def build_search_query(
     if filters.get("active_branch_count_max") is not None:
         predicates.append("coalesce(b.active_branch_count,0)<=%s")
         parameters.append(filters["active_branch_count_max"])
-
-    partner_count_column = (
-        f"{partner_count_expression}::integer AS partner_count"
-        if needs_partners else "NULL::integer AS partner_count"
-    )
 
     if count_only:
         return f"""
