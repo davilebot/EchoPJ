@@ -1678,13 +1678,19 @@ function renderCompanySearchView() {
       ? "calculando o total exato…"
       : data.total_count_error
         ? "não foi possível concluir a contagem exata"
-        : "recorte carregado; atualize para contar o total";
+        : data.preview
+          ? "prévia carregada; confirme para contar o total"
+          : "recorte carregado; contando o total";
   const resultNotice = totalCountExact
-    ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.`
-    : `A busca é maior que o limite de exibição. Estas são as primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas; existem pelo menos ${totalLowerBound.toLocaleString("pt-BR")} resultados. Você já pode selecionar, salvar em lista ou baixar este recorte.`;
+    ? data.preview && data.has_more
+      ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Esta é uma prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")}; use “Carregar até 10.000” para ampliar o recorte.`
+      : `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV. Nada é salvo automaticamente.`
+    : data.preview
+      ? `Esta é uma prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas. Use “Carregar até 10.000” quando terminar de ajustar os filtros.`
+      : `A busca é maior que o limite de exibição. Estas são as primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas; existem pelo menos ${totalLowerBound.toLocaleString("pt-BR")} resultados. Você já pode selecionar, salvar em lista ou baixar este recorte.`;
   companySearchResult.innerHTML = `<div class="search-result-metrics">
       <article><span>Encontradas na base</span><strong>${totalDisplay}</strong><small>${totalDetail}</small></article>
-      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? "primeiros 10.000 resultados" : "resultado completo carregado"}</small></article>
+      <article><span>Disponíveis para selecionar</span><strong>${Number(data.returned || 0).toLocaleString("pt-BR")}</strong><small>${data.has_more ? (data.preview ? `prévia de ${Number(data.returned || 0).toLocaleString("pt-BR")}` : `primeiros ${Number(data.returned || 0).toLocaleString("pt-BR")} resultados`) : "resultado completo carregado"}</small></article>
       <article><span>Base consultada</span><strong>${escapeHtml(data.dataset_version || "—")}</strong><small>${(Number(data.timing_ms || 0) / 1000).toFixed(1)}s</small></article>
     </div>
     ${viewResults.length ? `<div class="selection-tools">
@@ -1827,6 +1833,24 @@ function setSearchPreviewStatus(label, state = "idle") {
   status.innerHTML = `<i aria-hidden="true"></i>${escapeHtml(label)}`;
 }
 
+async function searchResponseError(response, fallback) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = await response.json();
+      return payload.detail || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  }
+  if (response.status >= 500) return "A base encontrou uma instabilidade temporária. Tente novamente em alguns segundos.";
+  try {
+    return (await response.text()).trim() || fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
 async function runCompanySearch({ preview = false, scroll = false } = {}) {
   const submitButton = companySearchForm.querySelector('button[type="submit"]');
   const originalSubmitLabel = submitButton?.textContent || "";
@@ -1835,7 +1859,8 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
   if (searchPreviewController) searchPreviewController.abort();
   if (searchCountController) searchCountController.abort();
   searchPreviewController = new AbortController();
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até 10.000 empresas.</small></span>`;
+  const resultLimit = preview ? 500 : 10000;
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até ${resultLimit.toLocaleString("pt-BR")} empresas.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
   setSearchPreviewStatus("Atualizando", "loading");
@@ -1856,12 +1881,12 @@ async function runCompanySearch({ preview = false, scroll = false } = {}) {
       body: JSON.stringify(payload),
       signal: searchPreviewController.signal,
     });
-    if (!response.ok) throw new Error((await response.json()).detail || "Falha na busca");
+    if (!response.ok) throw new Error(await searchResponseError(response, "Falha na busca"));
     const data = await response.json();
     if (requestNumber !== searchPreviewRequest) return;
     renderCompanySearch(data);
-    setSearchPreviewStatus("Resultados atualizados", "ready");
-    if (!data.total_count_exact) loadExactCompanySearchCount(payload, requestNumber, !preview);
+    setSearchPreviewStatus(preview ? "Prévia atualizada" : "Resultados atualizados", "ready");
+    if (!preview && !data.total_count_exact) loadExactCompanySearchCount(payload, requestNumber, true);
     if (!preview && data.total_count_exact && activeSavedSearchId && serializeSearchFilters(lastCompanySearchPayload) === activeSavedSearchFilters) {
       fetch(`/api/saved-searches/${activeSavedSearchId}/runs`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ result_count: data.total_count ?? data.total_count_lower_bound ?? data.returned }),
@@ -1897,7 +1922,7 @@ async function loadExactCompanySearchCount(payload, requestNumber, recordSavedSe
       body: JSON.stringify(payload),
       signal: searchCountController.signal,
     });
-    if (!response.ok) throw new Error((await response.json()).detail || "Falha na contagem exata");
+    if (!response.ok) throw new Error(await searchResponseError(response, "Falha na contagem exata"));
     const countData = await response.json();
     if (requestNumber !== searchPreviewRequest || !lastCompanySearchData) return;
     lastCompanySearchData = {
@@ -1946,7 +1971,7 @@ function scheduleCompanySearchPreview({ immediate = false } = {}) {
       submitButton.textContent = "Atualizar resultados";
     }
     companySearchLoading.classList.add("hidden");
-    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Os resultados aparecerão aqui automaticamente.</p></div>`;
+    companySearchResult.innerHTML = `<div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Uma prévia aparecerá automaticamente.</p></div>`;
     setSearchPreviewStatus("Aguardando filtros");
     return;
   }

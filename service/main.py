@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from psycopg.errors import QueryCanceled
+from psycopg_pool import PoolTimeout
 
 from .auth import AuthStore, LoginRateLimiter, normalize_identifier, token_digest
 from .config import get_settings
@@ -2039,6 +2040,8 @@ def _company_search_response(
     preview: bool,
 ) -> dict:
     filters = _company_search_filters(payload, user)
+    if preview:
+        filters["limit"] = 500
     try:
         results, capabilities, duration_ms, has_more, total_count = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:
@@ -2046,7 +2049,12 @@ def _company_search_response(
     except QueryCanceled as error:
         raise HTTPException(
             status_code=408,
-            detail="A busca ficou ampla demais. Acrescente uma regiao, UF ou CNAE e tente novamente.",
+            detail="A prévia não terminou a tempo. Ajuste os filtros ou use Carregar até 10.000 para tentar novamente.",
+        ) from error
+    except PoolTimeout as error:
+        raise HTTPException(
+            status_code=503,
+            detail="A base está concluindo outra busca. Aguarde alguns segundos e tente novamente.",
         ) from error
     memberships = saas_store.company_list_memberships(
         user["organization_id"],
@@ -2061,6 +2069,15 @@ def _company_search_response(
             "saved_lists": saved_lists,
         })
     saved_count = sum(1 for company in enriched_results if company["saved"])
+    dataset_version = repository.current_version()
+    cache_version = dataset_version or "unknown"
+    filters_key = search_count_cache_key(filters)
+    if total_count is not None:
+        saas_store.cache_search_count(cache_version, filters_key, total_count)
+    elif preview:
+        cached_count = saas_store.cached_search_count(cache_version, filters_key)
+        if cached_count is not None:
+            total_count = cached_count["total_count"]
     total_count_exact = total_count is not None
     total_count_lower_bound = total_count if total_count_exact else len(enriched_results) + 1
     response = {
@@ -2078,7 +2095,7 @@ def _company_search_response(
             "new": len(enriched_results) - saved_count,
             "saved": saved_count,
         },
-        "dataset_version": repository.current_version(),
+        "dataset_version": dataset_version,
         "capabilities": capabilities.as_dict(),
         "timing_ms": duration_ms,
     }
@@ -2137,6 +2154,11 @@ def count_companies(payload: CompanySearchRequest, user: dict = Depends(require_
             raise HTTPException(
                 status_code=408,
                 detail="A contagem exata ainda está processando um recorte muito amplo. Os resultados disponíveis continuam válidos.",
+            ) from error
+        except PoolTimeout as error:
+            raise HTTPException(
+                status_code=503,
+                detail="A base está concluindo outra busca. Os resultados já carregados continuam disponíveis.",
             ) from error
         cached = saas_store.cache_search_count(cache_version, filters_key, total_count)
         return {

@@ -335,6 +335,11 @@ input:disabled, select:disabled { color: var(--text-tertiary); background-color:
 .filter-form-header-actions > strong { color: var(--accent-strong); font-size: 9px; font-weight: 750; white-space: nowrap; }
 .filter-form-header-actions > button { padding: 0 !important; border: 0 !important; color: var(--text-secondary) !important; background: transparent !important; box-shadow: none !important; font-size: 9px !important; text-decoration: underline; text-underline-offset: 3px; }
 .filter-form-header-actions > button:hover { color: var(--text) !important; transform: none !important; }
+.search-run-panel { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 14px; background: color-mix(in srgb, var(--accent-soft) 55%, var(--surface)); }
+.search-run-panel span { display: grid; gap: 2px; min-width: 0; }
+.search-run-panel strong { color: var(--text); font-size: 12px; }
+.search-run-panel small { color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
+.search-run-panel button { flex: 0 0 auto; padding: 9px 12px; font-size: 11px; white-space: nowrap; }
 .filter-category-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-soft); box-shadow: var(--shadow-sm); }
 .filter-category-tabs button { display: flex; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 5px; padding: 7px 6px; border: 0; border-radius: var(--radius-md); color: var(--text-secondary); background: transparent; box-shadow: none; cursor: pointer; font-size: 9px; font-weight: 700; }
 .filter-category-tabs button:hover { color: var(--text); background: var(--surface); box-shadow: none; transform: none; }

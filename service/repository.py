@@ -230,7 +230,7 @@ class Repository:
                     )
                     return connection.execute(candidate_sql, candidate_parameters).fetchall()
 
-            with ThreadPoolExecutor(max_workers=min(self.database_workers, len(ALL_STATES))) as executor:
+            with ThreadPoolExecutor(max_workers=min(2, len(ALL_STATES))) as executor:
                 state_scans = list(executor.map(scan_state, ALL_STATES))
             candidates = sorted(
                 (candidate for state_candidates in state_scans for candidate in state_candidates),
@@ -259,7 +259,7 @@ class Repository:
                     return connection.execute(state_sql, state_parameters).fetchall()
 
             if selected_per_state:
-                with ThreadPoolExecutor(max_workers=min(self.database_workers, len(selected_per_state))) as executor:
+                with ThreadPoolExecutor(max_workers=min(2, len(selected_per_state))) as executor:
                     state_rows = list(executor.map(fetch_state, selected_per_state.items()))
             else:
                 state_rows = []
@@ -294,7 +294,7 @@ class Repository:
                         "limit": partition_limit,
                     })
 
-                with ThreadPoolExecutor(max_workers=min(self.database_workers, len(states))) as executor:
+                with ThreadPoolExecutor(max_workers=min(2, len(states))) as executor:
                     state_rows = list(executor.map(fetch_state, states))
                 partition_may_have_more = any(len(result_rows) >= partition_limit for result_rows in state_rows)
                 order_key = (
@@ -377,7 +377,7 @@ class Repository:
                     for index in range(10)
                 )
 
-        with ThreadPoolExecutor(max_workers=min(3, len(states))) as executor:
+        with ThreadPoolExecutor(max_workers=min(2, len(states))) as executor:
             total_count = sum(executor.map(count_state, states))
         duration_ms = round((monotonic() - started) * 1000)
         return total_count, capabilities, duration_ms

@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlsplit
 
+from psycopg_pool import PoolTimeout
+
 from service.auth import AuthStore
 from service.jobs import JobStore
 from service.legal import LegalDocuments
@@ -714,7 +716,7 @@ class OrganizationAPITests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertTrue(data["preview"])
-        self.assertEqual(data["limit"], 10000)
+        self.assertEqual(data["limit"], 500)
         self.assertEqual(data["total_count"], 12450)
         self.assertTrue(data["total_count_exact"])
         self.assertEqual(data["total_count_lower_bound"], 12450)
@@ -724,7 +726,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertTrue(data["results"][0]["saved"])
         self.assertEqual(data["results"][0]["saved_lists"][0]["name"], "Prospecção SaaS")
         filters = self.main.repository.search_companies.call_args.args[0]
-        self.assertEqual(filters["limit"], 10000)
+        self.assertEqual(filters["limit"], 500)
 
         status, _, _ = self.request(
             "/api/search/preview", "POST",
@@ -790,6 +792,25 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(cached_count_data["timing_ms"], 0)
         self.assertTrue(cached_count_data["cached"])
         self.main.repository.count_companies.assert_called_once()
+
+        status, cached_preview, _ = self.request(
+            "/api/search/preview", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
+            self.owner_token, {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(cached_preview["limit"], 500)
+        self.assertEqual(cached_preview["total_count"], 254541)
+        self.assertTrue(cached_preview["total_count_exact"])
+
+        self.main.repository.search_companies.side_effect = PoolTimeout("busy")
+        status, busy, _ = self.request(
+            "/api/search/preview", "POST", {"cnaes": ["6201501"]}, self.owner_token,
+            {"x-organization-id": str(self.org)},
+        )
+        self.assertEqual(status, 503)
+        self.assertIn("concluindo outra busca", busy["detail"])
+        self.main.repository.search_companies.side_effect = None
+        self.main.repository.search_companies.return_value = ([company], capabilities, 12, True, None)
 
         status, detail, _ = self.request(
             "/api/search/preview", "POST",

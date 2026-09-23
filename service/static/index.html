@@ -17,7 +17,7 @@
       }
     } catch (_) {}
   </script>
-  <link rel="stylesheet" href="/static/styles.css?v=20260922-exact-search-total-1">
+  <link rel="stylesheet" href="/static/styles.css?v=20260923-simplified-search-1">
 </head>
 <body>
   <a class="skip-link" href="#app-content">Ir para o conteúdo</a>
@@ -127,9 +127,10 @@
           <div class="search-workbench">
           <form id="company-search-form" class="search-form" aria-label="Filtros da busca de empresas">
             <div class="filter-form-header">
-              <div><span class="eyebrow">FILTROS</span><h2>Monte seu segmento</h2><p>Os resultados atualizam enquanto você preenche.</p></div>
+              <div><span class="eyebrow">FILTROS</span><h2>Monte seu segmento</h2><p>Uma prévia leve atualiza enquanto você preenche.</p></div>
               <div class="filter-form-header-actions"><strong id="active-filter-count">0 filtros ativos</strong><button id="clear-company-filters" type="button">Limpar tudo</button></div>
             </div>
+            <div class="search-run-panel"><span><strong>Filtros prontos?</strong><small>Carregue o recorte completo uma única vez.</small></span><button id="run-company-search" type="submit">Carregar até 10.000</button></div>
             <section id="search-templates" class="search-templates is-collapsed" aria-labelledby="search-templates-title">
               <button class="search-templates-heading" type="button" data-search-templates-toggle aria-expanded="false"><span><span class="eyebrow">MODELOS PRONTOS</span><strong id="search-templates-title">Comece com um segmento</strong></span><i class="search-templates-chevron" aria-hidden="true"></i></button>
               <p class="search-templates-description">Escolha uma base e ajuste atividade ou localização antes de buscar.</p>
@@ -208,14 +209,14 @@
             </fieldset>
           </form>
           <section class="search-preview-column" aria-label="Empresas encontradas">
-            <header class="search-preview-header"><div><span class="eyebrow">RESULTADOS AO VIVO</span><h2>Empresas disponíveis</h2><p>Você pode carregar e selecionar até 10.000 empresas por busca.</p></div><div class="search-preview-header-actions"><button id="save-current-search" class="secondary compact" data-capability="manage-library" type="button">Salvar busca</button><span id="search-preview-status" class="preview-status"><i aria-hidden="true"></i>Aguardando filtros</span></div></header>
+            <header class="search-preview-header"><div><span class="eyebrow">RESULTADOS AO VIVO</span><h2>Empresas disponíveis</h2><p>A prévia carrega até 500 empresas; confirme para carregar até 10.000.</p></div><div class="search-preview-header-actions"><button id="save-current-search" class="secondary compact" data-capability="manage-library" type="button">Salvar busca</button><span id="search-preview-status" class="preview-status"><i aria-hidden="true"></i>Aguardando filtros</span></div></header>
             <nav id="search-result-tabs" class="search-result-tabs" aria-label="Separar empresas encontradas">
               <button class="active" type="button" data-search-view="total" aria-pressed="true"><span>Total</span><strong data-search-view-count="total">0</strong></button>
               <button type="button" data-search-view="new" aria-pressed="false"><span>Novo</span><strong data-search-view-count="new">0</strong></button>
               <button type="button" data-search-view="saved" aria-pressed="false"><span>Salvo</span><strong data-search-view-count="saved">0</strong></button>
             </nav>
             <section id="search-loading" class="search-progress hidden" role="status" aria-live="polite"></section>
-            <section id="search-result" class="search-result-panel"><div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Os resultados aparecerão aqui automaticamente.</p></div></section>
+            <section id="search-result" class="search-result-panel"><div class="search-preview-empty"><span aria-hidden="true">⌕</span><strong>Comece escolhendo um filtro</strong><p>Use CNAE, nome, porte ou localização. Uma prévia aparecerá automaticamente.</p></div></section>
           </section>
           </div>
         </section>
@@ -366,7 +367,7 @@
     </form>
   </dialog>
   <script src="/static/workspace.js?v=20260908-org-scope-1"></script>
-  <script src="/static/app.js?v=20260922-exact-search-total-1"></script>
+  <script src="/static/app.js?v=20260923-simplified-search-1"></script>
   <script src="/static/notifications.js?v=20260909-support-2"></script>
 </body>
 </html>

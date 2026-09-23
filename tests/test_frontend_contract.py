@@ -40,6 +40,7 @@ class FrontendContractTests(unittest.TestCase):
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
             "search-templates", "workspace-access-notice", "search-excluded-cnae-picker", "sidebar-toggle",
             "bulk-cnpj-workbench", "bulk-cnpj-filter-form", "bulk-active-filter-count",
+            "run-company-search",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -122,8 +123,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("Mais de", script)
         self.assertIn('fetch("/api/search/count"', script)
         self.assertIn("loadExactCompanySearchCount", script)
-        self.assertIn("loadExactCompanySearchCount(payload, requestNumber, !preview)", script)
-        self.assertIn("20260922-exact-search-total-1", self.html)
+        self.assertIn("if (!preview && !data.total_count_exact)", script)
+        self.assertIn("function searchResponseError", script)
+        self.assertIn("20260923-simplified-search-1", self.html)
         self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):
