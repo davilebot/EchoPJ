@@ -538,9 +538,16 @@ class UnifiedSearchBuilder:
         return validation
 
     def _metadata(self) -> tuple[dict[str, Any], dict[str, list[str]]]:
-        rows = self.connection.execute("""
+        reference_source = "rfb_aux_reference"
+        direct_reference = f"rfb_unified_reference_build_{self.suffix}"
+        direct_exists = self.connection.execute(
+            "SELECT to_regclass(%s) AS relation", (f"public.{direct_reference}",)
+        ).fetchone()["relation"]
+        if direct_exists:
+            reference_source = direct_reference
+        rows = self.connection.execute(f"""
             SELECT kind,jsonb_object_agg(code,label ORDER BY code) AS labels
-            FROM rfb_aux_reference WHERE dataset_version=%s GROUP BY kind
+            FROM {reference_source} WHERE dataset_version=%s GROUP BY kind
         """, (self.version,)).fetchall()
         references = {row["kind"]: row["labels"] for row in rows}
         municipality_rows = self.connection.execute(f"""
@@ -561,6 +568,10 @@ class UnifiedSearchBuilder:
         self._copy_select_grants("rfb_establishments", self.main_next)
         self._copy_select_grants("rfb_partners", self.partners_next)
         with self.connection.transaction():
+            previous = self.connection.execute(
+                "SELECT version FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
+            ).fetchone()
+            previous_version = previous["version"] if previous else None
             for relation in (legacy_main, legacy_partners):
                 exists = self.connection.execute(
                     "SELECT to_regclass(%s) AS relation", (f"public.{relation}",)
@@ -572,20 +583,35 @@ class UnifiedSearchBuilder:
             self.connection.execute(f"ALTER TABLE rfb_partners RENAME TO {legacy_partners}")
             self.connection.execute(f"ALTER TABLE {self.partners_next} RENAME TO rfb_partners")
             self._refresh_partner_view()
+            counts = self.connection.execute("""
+                SELECT count(*) FILTER (WHERE is_active) AS active_count,
+                       count(*) FILTER (WHERE NOT is_active) AS inactive_count
+                FROM rfb_establishments WHERE dataset_version=%s
+            """, (self.version,)).fetchone()
+            self.connection.execute(
+                "UPDATE dataset_versions SET is_current=false WHERE version<>%s",
+                (self.version,),
+            )
             self.connection.execute("""
                 UPDATE dataset_versions
-                SET metadata=metadata || jsonb_build_object(
+                SET status='ready',is_current=true,imported_at=now(),
+                    active_count=%s,inactive_count=%s,
+                    metadata=metadata || jsonb_build_object(
                       'unified_search','ready',
                       'unified_search_published_at',now(),
                       'unified_search_legacy_establishments',%s,
                       'unified_search_legacy_partners',%s,
+                      'unified_search_previous_version',%s,
                       'reference_labels',%s::jsonb,
                       'municipalities_by_uf',%s::jsonb
                     )
                 WHERE version=%s
             """, (
+                counts["active_count"],
+                counts["inactive_count"],
                 legacy_main,
                 legacy_partners,
+                previous_version,
                 json.dumps(references, ensure_ascii=False),
                 json.dumps(municipalities, ensure_ascii=False),
                 self.version,
@@ -600,7 +626,8 @@ class UnifiedSearchBuilder:
     def rollback(self) -> None:
         row = self.connection.execute("""
             SELECT metadata->>'unified_search_legacy_establishments' AS legacy_main,
-                   metadata->>'unified_search_legacy_partners' AS legacy_partners
+                   metadata->>'unified_search_legacy_partners' AS legacy_partners,
+                   metadata->>'unified_search_previous_version' AS previous_version
             FROM dataset_versions WHERE version=%s
         """, (self.version,)).fetchone()
         if not row or not row["legacy_main"] or not row["legacy_partners"]:
@@ -613,6 +640,15 @@ class UnifiedSearchBuilder:
             self.connection.execute(f"ALTER TABLE rfb_partners RENAME TO {failed_partners}")
             self.connection.execute(f"ALTER TABLE {row['legacy_partners']} RENAME TO rfb_partners")
             self._refresh_partner_view()
+            self.connection.execute(
+                "UPDATE dataset_versions SET is_current=false WHERE version=%s",
+                (self.version,),
+            )
+            if row["previous_version"]:
+                self.connection.execute(
+                    "UPDATE dataset_versions SET is_current=true,status='ready' WHERE version=%s",
+                    (row["previous_version"],),
+                )
             self.connection.execute("""
                 UPDATE dataset_versions
                 SET metadata=(metadata-'unified_search') || jsonb_build_object('unified_search','rolled_back')
@@ -662,9 +698,49 @@ class UnifiedSearchBuilder:
                 WHERE version=%s
             """, (self.version,))
             self.connection.execute("""
-                UPDATE rfb_unified_builds SET status='rolled_back',published=false,updated_at=now()
+                UPDATE rfb_unified_builds SET status='retired',updated_at=now()
                 WHERE version=%s
             """, (self.version,))
+
+    def discard_incomplete(self) -> None:
+        """Remove only disposable shadow relations for an unpublished version."""
+        builds_exists = self.connection.execute(
+            "SELECT to_regclass('public.rfb_unified_builds') AS relation"
+        ).fetchone()["relation"]
+        row = None
+        if builds_exists:
+            row = self.connection.execute(
+                "SELECT published FROM rfb_unified_builds WHERE version=%s", (self.version,)
+            ).fetchone()
+        if row and row["published"]:
+            raise RuntimeError("uma construcao publicada nao pode ser descartada")
+        relations = (
+            self.main_next,
+            self.partners_next,
+            self.partner_summary,
+            f"rfb_unified_company_build_{self.suffix}",
+            f"rfb_unified_simples_build_{self.suffix}",
+            f"rfb_unified_reference_build_{self.suffix}",
+            f"rfb_unified_branch_rows_build_{self.suffix}",
+            f"rfb_unified_branch_summary_build_{self.suffix}",
+        )
+        for relation in relations:
+            self.connection.execute(
+                sql.SQL("DROP TABLE IF EXISTS {} CASCADE").format(sql.Identifier(relation))
+            )
+        if builds_exists:
+            self.connection.execute("DELETE FROM rfb_unified_builds WHERE version=%s", (self.version,))
+        for tracking in ("rfb_unified_import_files", "rfb_unified_imports"):
+            exists = self.connection.execute(
+                "SELECT to_regclass(%s) AS relation", (f"public.{tracking}",)
+            ).fetchone()["relation"]
+            if exists:
+                self.connection.execute(
+                    sql.SQL("DELETE FROM {} WHERE version=%s").format(sql.Identifier(tracking)),
+                    (self.version,),
+                )
+        self.connection.commit()
+        LOGGER.info("construcao incompleta %s descartada", self.version)
 
 
 def main() -> None:
@@ -677,6 +753,7 @@ def main() -> None:
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--rollback", action="store_true")
     parser.add_argument("--retire-legacy", action="store_true")
+    parser.add_argument("--discard-incomplete", action="store_true")
     args = parser.parse_args()
     dsn = os.getenv("ADMIN_POSTGRES_DSN") or os.getenv("POSTGRES_DSN")
     if not dsn:
@@ -687,6 +764,9 @@ def main() -> None:
         builder = UnifiedSearchBuilder(connection, args.version)
         builder.lock()
         try:
+            if args.discard_incomplete:
+                builder.discard_incomplete()
+                return
             if args.rollback:
                 builder.rollback()
                 return

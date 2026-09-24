@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+import base64
 import json
 import re
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 
 from .rfb_layout import LAYOUTS
 
@@ -120,6 +122,58 @@ def discover_manifest(version: str, directory_url: str) -> Manifest:
         html = response.read().decode("utf-8", "replace")
     links = re.findall(r'href=["\']([^"\']+)', html, flags=re.IGNORECASE)
     return manifest_from_links(version, directory_url, links)
+
+
+def official_webdav_directory(share_url: str, version: str) -> tuple[str, str]:
+    """Return the public WebDAV directory and token for an official share URL."""
+    parsed = urllib.parse.urlparse(share_url)
+    match = re.search(r"/index\.php/s/([^/?#]+)", parsed.path)
+    if not match:
+        raise ValueError("URL oficial deve usar /index.php/s/TOKEN")
+    token = match.group(1)
+    base = f"{parsed.scheme}://{parsed.netloc}"
+    directory = f"{base}/public.php/dav/files/{token}/{version}/"
+    return directory, token
+
+
+def discover_official_manifest(version: str, share_url: str) -> Manifest:
+    """List one monthly folder from Receita's public Nextcloud share."""
+    directory, token = official_webdav_directory(share_url, version)
+    authorization = base64.b64encode(f"{token}:".encode()).decode()
+    request = urllib.request.Request(
+        directory,
+        method="PROPFIND",
+        headers={
+            "Authorization": f"Basic {authorization}",
+            "Depth": "1",
+            "User-Agent": "PlataformaReceitaManifest/0.2",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        root = ET.fromstring(response.read())
+
+    files: list[dict[str, Any]] = []
+    for item in root.findall("{DAV:}response"):
+        href_node = item.find("{DAV:}href")
+        if href_node is None or not href_node.text:
+            continue
+        name = urllib.parse.unquote(href_node.text.rstrip("/").rsplit("/", 1)[-1])
+        kind = kind_from_filename(name)
+        if not kind or not name.lower().endswith(".zip"):
+            continue
+        size_node = item.find(".//{DAV:}getcontentlength")
+        files.append({
+            "kind": kind,
+            "name": name,
+            "url": urllib.parse.urljoin(directory, urllib.parse.quote(name)),
+            "size": int(size_node.text) if size_node is not None and size_node.text else None,
+        })
+    files.sort(key=lambda item: (item["kind"], item["name"]))
+    return parse_manifest({
+        "version": version,
+        "source_url": directory,
+        "files": files,
+    })
 
 
 def manifest_payload(manifest: Manifest) -> dict[str, Any]:

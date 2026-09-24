@@ -55,9 +55,40 @@ ADMIN_POSTGRES_DSN=... python scripts/build_unified_search.py --version 2026-08 
 
 ## Próximas cargas mensais
 
-Cada versão deve ser montada em staging e consolidada em novas tabelas shadow.
-Não se altera a tabela operacional linha a linha. Depois de importar, criar os
-índices, executar `ANALYZE` e validar paridade, publica-se por nova troca
-atômica. O script usa nomes por versão para permitir que a tabela de rollback
-do mês anterior continue existindo sem conflito.
+`scripts/import_unified_dataset.py` monta cada nova competência diretamente nas
+tabelas shadow, sem popular novamente as antigas tabelas auxiliares. A tabela
+operacional vigente não é alterada linha a linha.
 
+O manifesto oficial pode ser gerado diretamente do compartilhamento público da
+Receita:
+
+```bash
+PYTHONPATH=src python scripts/build_full_manifest.py \
+  --version 2026-09 \
+  --official-share-url URL_DO_COMPARTILHAMENTO_OFICIAL \
+  --output work/rfb-2026-09-official-manifest.json
+```
+
+A carga é retomável por arquivo e fase. Os ZIPs de estabelecimentos são
+mantidos temporariamente entre a passagem que conta filiais e a passagem que
+monta a tabela mãe; todos os demais são apagados logo após o processamento.
+
+```bash
+ADMIN_POSTGRES_DSN=... python scripts/import_unified_dataset.py \
+  --manifest work/rfb-2026-09-official-manifest.json \
+  --cache-dir /cache
+```
+
+Depois da conferência do relatório de validação, a troca atômica pode ser feita
+sem repetir a carga:
+
+```bash
+ADMIN_POSTGRES_DSN=... python scripts/import_unified_dataset.py \
+  --manifest work/rfb-2026-09-official-manifest.json \
+  --cache-dir /cache \
+  --publish-only
+```
+
+Após a publicação, os índices e `ANALYZE` já estão prontos, a versão anterior
+fica preservada para rollback por sete dias e as tabelas grandes de staging já
+foram removidas.

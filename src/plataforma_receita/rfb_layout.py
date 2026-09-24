@@ -38,6 +38,11 @@ COMPANY_SIZE_LABELS = {
     "05": "DEMAIS",
 }
 
+BRAZIL_STATES = {
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+}
+
 REFERENCE_KINDS = {
     "reference_cnaes": "cnae",
     "reference_countries": "country",
@@ -130,6 +135,58 @@ def establishment_details_row(row: list[str], version: str) -> tuple | None:
         clean(row[15]) if inactive else None,
         clean(row[16]) if inactive else None,
         clean(row[17]) if inactive else None,
+        clean(row[21]),
+        clean(row[22]),
+        clean(row[23]),
+        clean(row[24]),
+        clean(row[25]),
+        clean(row[26]),
+        clean(row[27]),
+        clean(row[28]),
+        date_or_none(row[29]),
+    )
+
+
+def unified_establishment_row(row: list[str], version: str) -> tuple | None:
+    """Parse every establishment field needed by the consolidated relation.
+
+    Unlike ``establishment_details_row``, this parser never drops fields from
+    active registrations.  It is used by the shadow importer that builds the
+    next operational table directly from Receita's ZIP files.
+    """
+    if len(row) < 30:
+        return None
+    root = identifier(row[0])
+    order = identifier(row[1])
+    check_digits = digits(row[2])
+    cnpj = root + order + check_digits
+    uf = clean(row[19])
+    if len(root) != 8 or len(cnpj) != 14 or not uf or uf.upper() not in BRAZIL_STATES:
+        return None
+    return (
+        version,
+        cnpj,
+        root,
+        order,
+        check_digits,
+        clean(row[3]),
+        clean(row[4]),
+        clean(row[5]) or "00",
+        date_or_none(row[6]),
+        clean(row[7]),
+        clean(row[8]),
+        clean(row[9]),
+        date_or_none(row[10]),
+        clean(row[11]),
+        [value for value in (clean(row[12]) or "").split(",") if value] or None,
+        clean(row[13]),
+        clean(row[14]),
+        clean(row[15]),
+        clean(row[16]),
+        clean(row[17]),
+        clean(row[18]),
+        uf.upper(),
+        clean(row[20]),
         clean(row[21]),
         clean(row[22]),
         clean(row[23]),

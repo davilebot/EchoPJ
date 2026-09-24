@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 import zipfile
+from io import BytesIO
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -12,8 +13,10 @@ from plataforma_receita.rfb_layout import (
     establishment_details_row,
     partner_row,
     simples_row,
+    unified_establishment_row,
 )
 from plataforma_receita.rfb_manifest import (
+    discover_official_manifest,
     import_plan,
     kind_from_filename,
     manifest_from_links,
@@ -55,6 +58,19 @@ class LayoutTests(unittest.TestCase):
         row[0:3] = ["12ABC678", "00D1", "95"]
         parsed = establishment_details_row(row, "2026-08")
         self.assertEqual(parsed[1], "12ABC67800D195")
+
+    def test_unified_establishment_parser_keeps_active_fields(self):
+        row = [""] * 30
+        row[0:7] = ["12345678", "0001", "95", "1", "LOJA", "02", "20260901"]
+        row[10:21] = [
+            "20100102", "5611201", "5611203,5620101", "RUA", "BRASIL", "10",
+            "SALA 1", "CENTRO", "01001000", "SP", "7107",
+        ]
+        row[21:30] = ["11", "33334444", "", "", "", "", "x@example.com", "", ""]
+        parsed = unified_establishment_row(row, "2026-09")
+        self.assertEqual(parsed[1:7], ("12345678000195", "12345678", "0001", "95", "1", "LOJA"))
+        self.assertEqual(parsed[12:15], ("2010-01-02", "5611201", ["5611203", "5620101"]))
+        self.assertEqual(parsed[21:25], ("SP", "7107", "11", "33334444"))
 
     def test_simples_parser_distinguishes_false_from_unknown(self):
         self.assertEqual(
@@ -123,6 +139,28 @@ class ManifestTests(unittest.TestCase):
         )
         self.assertEqual(len(manifest.files), 5)
         self.assertTrue(all(item.url.startswith(manifest.source_url) for item in manifest.files))
+
+    def test_manifest_can_be_built_from_official_share(self):
+        responses = """<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+          <d:response><d:href>/public.php/dav/files/token/2026-09/Empresas0.zip</d:href>
+            <d:propstat><d:prop><d:getcontentlength>10</d:getcontentlength></d:prop></d:propstat></d:response>
+          <d:response><d:href>/public.php/dav/files/token/2026-09/Estabelecimentos0.zip</d:href>
+            <d:propstat><d:prop><d:getcontentlength>20</d:getcontentlength></d:prop></d:propstat></d:response>
+          <d:response><d:href>/public.php/dav/files/token/2026-09/Socios0.zip</d:href>
+            <d:propstat><d:prop><d:getcontentlength>30</d:getcontentlength></d:prop></d:propstat></d:response>
+          <d:response><d:href>/public.php/dav/files/token/2026-09/Simples.zip</d:href>
+            <d:propstat><d:prop><d:getcontentlength>40</d:getcontentlength></d:prop></d:propstat></d:response>
+        </d:multistatus>""".encode()
+        with patch("urllib.request.urlopen", return_value=BytesIO(responses)) as request:
+            manifest = discover_official_manifest(
+                "2026-09", "https://arquivos.receitafederal.gov.br/index.php/s/token"
+            )
+        self.assertEqual(manifest.version, "2026-09")
+        self.assertEqual(sum(item.size or 0 for item in manifest.files), 100)
+        sent = request.call_args.args[0]
+        self.assertEqual(sent.method, "PROPFIND")
+        self.assertTrue(sent.get_header("Authorization").startswith("Basic "))
 
 
 class SafetyTests(unittest.TestCase):
