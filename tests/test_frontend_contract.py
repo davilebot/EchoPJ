@@ -127,12 +127,9 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("requestExactCompanySearchCount", script)
         self.assertIn("applyExactCompanySearchCount", script)
         self.assertIn("if (!data.total_count_exact)", script)
-        self.assertLess(
-            script.index('fetch("/api/search"'),
-            script.index("requestExactCompanySearchCount(payload, searchCountController.signal)"),
-        )
+        self.assertIn("startExactCompanySearchCount(payload, requestNumber, true)", script)
         self.assertIn("function searchResponseError", script)
-        self.assertIn("20260923-direct-search-1", self.html)
+        self.assertIn("20260923-unified-search-1", self.html)
         self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):

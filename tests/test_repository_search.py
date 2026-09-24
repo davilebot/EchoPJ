@@ -73,7 +73,68 @@ class _FallbackPool(_Pool):
         yield _FallbackConnection(self.observed_sql, self.observed_states)
 
 
+class _UnifiedConnection:
+    def __init__(self, observed_sql):
+        self.observed_sql = observed_sql
+
+    def execute(self, statement, parameters=None):
+        query = str(statement)
+        self.observed_sql.append(query)
+        if "set_config('statement_timeout'" in query:
+            return _Rows([])
+        if "count(*) AS total_count" in query:
+            return _Rows([{"total_count": 193427}])
+        return _Rows([
+            {
+                "cnpj": f"00000000000{index:03d}",
+                "cnpj_root": "00000000",
+                "legal_name": f"Restaurante {index}",
+                "trade_name": None,
+                "primary_cnae": "5611201",
+                "primary_cnae_description": "Restaurantes e similares",
+                "municipality": "SAO PAULO",
+                "uf": "SP",
+                "company_size": "01",
+                "dataset_version": "2026-08",
+            }
+            for index in range(4)
+        ])
+
+
+class _UnifiedPool:
+    def __init__(self):
+        self.observed_sql = []
+
+    @contextmanager
+    def connection(self):
+        yield _UnifiedConnection(self.observed_sql)
+
+
 class RepositorySearchTests(unittest.TestCase):
+    def test_unified_search_runs_one_result_query_and_one_count_query(self):
+        repository = Repository.__new__(Repository)
+        repository.pool = _UnifiedPool()
+        repository.database_workers = 8
+        repository.statement_timeout_ms = 1800
+        repository.search_capabilities = lambda: SearchCapabilities(unified=True)
+        filters = {
+            "ufs": ["SP"],
+            "registration_statuses": ["ATIVA"],
+            "cnaes": ["5611201"],
+            "limit": 3,
+        }
+
+        results, _, _, has_more, total_count = repository.search_companies(filters)
+        exact_count, _, _ = repository.count_companies(filters)
+
+        self.assertEqual(len(results), 3)
+        self.assertTrue(has_more)
+        self.assertIsNone(total_count)
+        self.assertEqual(exact_count, 193427)
+        data_queries = [query for query in repository.pool.observed_sql if "FROM rfb_establishments e" in query]
+        self.assertEqual(len(data_queries), 2)
+        self.assertTrue(all("JOIN" not in query for query in data_queries))
+
     def test_broad_multi_region_search_returns_a_bounded_partial_result_without_counting(self):
         repository = Repository.__new__(Repository)
         repository.pool = _Pool()

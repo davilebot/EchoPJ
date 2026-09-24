@@ -92,6 +92,43 @@ class SearchModelTests(unittest.TestCase):
 
 
 class SearchSqlTests(unittest.TestCase):
+    def test_unified_search_and_count_use_only_the_mother_table(self):
+        filters = CompanySearchRequest(
+            regions=["S", "SE"],
+            cnaes=["5611201"],
+            simples=True,
+            has_phone=True,
+            partner_age_ranges=["4", "5"],
+            partner_count_min=2,
+            active_branch_count_min=1,
+            limit=10000,
+        ).model_dump()
+        capabilities = SearchCapabilities(unified=True)
+
+        result_sql, result_parameters = build_search_query(filters, capabilities)
+        count_sql, count_parameters = build_search_count_query(filters, capabilities)
+
+        self.assertIn("FROM rfb_establishments e", result_sql)
+        self.assertIn("LIMIT %s", result_sql)
+        self.assertIn("SELECT count(*) AS total_count FROM rfb_establishments e", count_sql)
+        self.assertNotIn("JOIN", result_sql)
+        self.assertNotIn("JOIN", count_sql)
+        self.assertIn("e.partner_age_codes && %s", result_sql)
+        self.assertIn("e.partner_count>=%s", result_sql)
+        self.assertIn("e.active_branch_count>=%s", result_sql)
+        self.assertIn("e.has_phone=%s", result_sql)
+        self.assertEqual(count_parameters, result_parameters[:-1])
+        self.assertEqual(result_parameters[-1], 10000)
+
+    def test_unified_result_contains_only_listing_fields(self):
+        filters = CompanySearchRequest(ufs=["SP"], cnaes=["5611201"]).model_dump()
+        sql, _ = build_search_query(filters, SearchCapabilities(unified=True))
+
+        self.assertIn("e.primary_cnae_description", sql)
+        self.assertIn("e.company_size", sql)
+        self.assertNotIn("e.secondary_cnaes", sql.split("FROM rfb_establishments e", 1)[0])
+        self.assertNotIn("e.email", sql.split("FROM rfb_establishments e", 1)[0])
+
     def test_selected_states_expands_and_intersects_regions(self):
         self.assertEqual(selected_states({"regions": ["S", "SE"]}), ("ES", "MG", "PR", "RJ", "RS", "SC", "SP"))
         self.assertEqual(selected_states({"regions": ["S", "SE"], "ufs": ["SP", "PR"]}), ("PR", "SP"))

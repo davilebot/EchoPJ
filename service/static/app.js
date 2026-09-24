@@ -1684,7 +1684,7 @@ function renderCompanySearchView() {
   const resultNotice = totalCountExact
     ? `A busca encontrou ${exactTotal.toLocaleString("pt-BR")} empresa${exactTotal === 1 ? "" : "s"} na base. Até 10.000 ficam disponíveis para seleção, lista e CSV.`
     : data.total_count_error
-      ? `As ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas carregadas continuam disponíveis. A contagem exata pode ser tentada novamente atualizando os resultados.`
+      ? `As ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas carregadas continuam disponíveis. <button id="retry-company-search-count" class="table-link" type="button">Tentar contar novamente</button>`
       : `As primeiras ${Number(data.returned || 0).toLocaleString("pt-BR")} empresas já estão disponíveis enquanto o total exato é calculado.`;
   companySearchResult.innerHTML = `<div class="search-result-metrics">
       <article><span>Encontradas na base</span><strong>${totalDisplay}</strong><small>${totalDetail}</small></article>
@@ -1704,6 +1704,12 @@ function renderCompanySearchView() {
     <p class="search-notice">${resultNotice}</p>
     ` : `<div class="empty-state"><strong>Nenhuma empresa ${activeCompanySearchView === "saved" ? "salva" : activeCompanySearchView === "new" ? "nova" : "encontrada"} nesta categoria.</strong><p>${activeCompanySearchView === "total" ? "Altere ou remova algum filtro e tente novamente." : "Escolha outra categoria ou ajuste os filtros."}</p></div>`}`;
   document.querySelector("#save-selected-company-search")?.addEventListener("click", () => openSaveListDialog().catch((error) => showToast(error.message)));
+  document.querySelector("#retry-company-search-count")?.addEventListener("click", () => {
+    if (!lastCompanySearchPayload) return;
+    lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: true, total_count_error: false };
+    renderCompanySearchView();
+    startExactCompanySearchCount(lastCompanySearchPayload, companySearchRequest, true);
+  });
   const downloadSelectedButton = document.querySelector("#download-selected-company-search");
   downloadSelectedButton?.addEventListener("click", () => runButtonAction(downloadSelectedButton, "Preparando CSV…", () => (
     downloadCompanySearch(lastCompanySearch.filter((company) => selectedCompanyCnpjs.has(company.cnpj)), "empresas-selecionadas.csv")
@@ -1860,6 +1866,18 @@ async function requestExactCompanySearchCount(payload, signal) {
   return response.json();
 }
 
+function startExactCompanySearchCount(payload, requestNumber, recordSavedSearchRun = false) {
+  if (searchCountController) searchCountController.abort();
+  searchCountController = new AbortController();
+  requestExactCompanySearchCount(payload, searchCountController.signal)
+    .then((countData) => applyExactCompanySearchCount(countData, requestNumber, recordSavedSearchRun))
+    .catch((error) => {
+      if (error.name === "AbortError" || requestNumber !== companySearchRequest || !lastCompanySearchData) return;
+      lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: false, total_count_error: true };
+      renderCompanySearchView();
+    });
+}
+
 function applyExactCompanySearchCount(countData, requestNumber, recordSavedSearchRun = false) {
   if (requestNumber !== companySearchRequest || !lastCompanySearchData) return;
   lastCompanySearchData = {
@@ -1888,7 +1906,7 @@ async function runCompanySearch({ scroll = false } = {}) {
   if (searchCountController) searchCountController.abort();
   searchResultsController = new AbortController();
   searchCountController = null;
-  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até 10.000 empresas; o total será calculado em paralelo.</small></span>`;
+  companySearchLoading.innerHTML = `<span class="spinner" aria-hidden="true"></span><span><strong>Atualizando resultados…</strong><small>Carregando até 10.000 empresas; o total exato será calculado em seguida.</small></span>`;
   companySearchLoading.classList.remove("hidden");
   companySearchForm.setAttribute("aria-busy", "true");
   setSearchPreviewStatus("Atualizando", "loading");
@@ -1924,14 +1942,7 @@ async function runCompanySearch({ scroll = false } = {}) {
       }).catch(() => {});
     }
     if (!data.total_count_exact) {
-      searchCountController = new AbortController();
-      requestExactCompanySearchCount(payload, searchCountController.signal)
-        .then((countData) => applyExactCompanySearchCount(countData, requestNumber, true))
-        .catch((error) => {
-          if (error.name === "AbortError" || requestNumber !== companySearchRequest || !lastCompanySearchData) return;
-          lastCompanySearchData = { ...lastCompanySearchData, total_count_pending: false, total_count_error: true };
-          renderCompanySearchView();
-        });
+      startExactCompanySearchCount(payload, requestNumber, true);
     }
   } catch (error) {
     if (error.name === "AbortError") return;

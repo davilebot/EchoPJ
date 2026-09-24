@@ -33,6 +33,7 @@ COMPANY_SIZE_CODES = {
 
 @dataclass(frozen=True)
 class SearchCapabilities:
+    unified: bool = False
     simples: bool = False
     company_details: bool = False
     establishment_details: bool = False
@@ -42,6 +43,7 @@ class SearchCapabilities:
 
     def as_dict(self) -> dict[str, bool]:
         return {
+            "unified_search": self.unified,
             "simples_mei": self.simples,
             "legal_nature": self.company_details,
             "establishment_details": self.establishment_details,
@@ -105,6 +107,196 @@ def selected_states(filters: dict[str, Any]) -> tuple[str, ...] | None:
     return tuple(sorted(region_states)) if region_states is not None else None
 
 
+def _build_unified_search_query(
+    filters: dict[str, Any],
+    *,
+    count_only: bool,
+    candidate_only: bool,
+) -> tuple[str, list[Any]]:
+    """Build a search against the consolidated one-row-per-CNPJ relation."""
+
+    predicates: list[str] = []
+    parameters: list[Any] = []
+    statuses = filters.get("registration_statuses") or []
+    active_only = not statuses or set(statuses) == {"ATIVA"}
+    capital_filtered = any(
+        filters.get(field) is not None
+        for field in ("share_capital_min", "share_capital_max")
+    )
+
+    if set(statuses) == {"ATIVA"} or not statuses:
+        predicates.append("e.is_active")
+    else:
+        predicates.append("e.registration_status=ANY(%s)")
+        parameters.append(statuses)
+
+    included_cnpjs = filters.get("_included_cnpjs")
+    if included_cnpjs is not None:
+        if included_cnpjs:
+            predicates.append("e.cnpj=ANY(%s)")
+            parameters.append(list(included_cnpjs))
+        else:
+            predicates.append("FALSE")
+    excluded_cnpjs = filters.get("_excluded_cnpjs") or []
+    if excluded_cnpjs:
+        predicates.append("NOT (e.cnpj=ANY(%s))")
+        parameters.append(list(excluded_cnpjs))
+    if filters.get("_cnpj_min") is not None:
+        predicates.append("e.cnpj>=%s")
+        parameters.append(filters["_cnpj_min"])
+    if filters.get("_cnpj_max") is not None:
+        predicates.append("e.cnpj<%s")
+        parameters.append(filters["_cnpj_max"])
+
+    states = selected_states(filters)
+    if states:
+        if len(states) == 1:
+            predicates.append("e.uf=%s")
+            parameters.append(states[0])
+        else:
+            predicates.append("e.uf=ANY(%s)")
+            parameters.append(list(states))
+
+    municipality_pairs: dict[str, list[str]] = {}
+    municipalities: list[str] = []
+    for value in filters.get("municipalities") or []:
+        raw = str(value)
+        if "|" in raw:
+            uf, municipality = raw.split("|", 1)
+            municipality_pairs.setdefault(uf, []).append(normalize(municipality))
+        else:
+            municipalities.append(normalize(raw))
+    legacy_municipality = normalize(filters.get("municipality"))
+    if legacy_municipality:
+        municipalities.append(legacy_municipality)
+    municipality_clauses: list[str] = []
+    municipalities = list(dict.fromkeys(value for value in municipalities if value))
+    if municipalities:
+        municipality_clauses.append("e.municipality=ANY(%s)")
+        parameters.append(municipalities)
+    for uf, names in municipality_pairs.items():
+        municipality_clauses.append("(e.uf=%s AND e.municipality=ANY(%s))")
+        parameters.extend([uf, list(dict.fromkeys(names))])
+    if municipality_clauses:
+        predicates.append(f"({' OR '.join(municipality_clauses)})")
+
+    postal_codes = [digits(value) for value in filters.get("postal_code_prefixes") or []]
+    legacy_postal_code = digits(filters.get("postal_code_prefix"))
+    if legacy_postal_code:
+        postal_codes.append(legacy_postal_code)
+    postal_codes = list(dict.fromkeys(value for value in postal_codes if value))
+    if postal_codes:
+        patterns = [f"{postal_code}%" for postal_code in postal_codes]
+        predicates.append("e.postal_code LIKE %s" if len(patterns) == 1 else "e.postal_code LIKE ANY(%s)")
+        parameters.append(patterns[0] if len(patterns) == 1 else patterns)
+
+    cnaes = [digits(value) for value in filters.get("cnaes") or []]
+    legacy_cnae = digits(filters.get("cnae"))
+    if legacy_cnae:
+        cnaes.append(legacy_cnae)
+    cnaes = list(dict.fromkeys(value for value in cnaes if value))
+    if cnaes:
+        if filters.get("cnae_scope") == "any":
+            if len(cnaes) == 1:
+                predicates.append("(e.primary_cnae=%s OR e.secondary_cnaes @> ARRAY[%s]::text[])")
+                parameters.extend([cnaes[0], cnaes[0]])
+            else:
+                predicates.append("(e.primary_cnae=ANY(%s) OR e.secondary_cnaes && %s)")
+                parameters.extend([cnaes, cnaes])
+        elif all(len(cnae) == 7 for cnae in cnaes):
+            predicates.append("e.primary_cnae=%s" if len(cnaes) == 1 else "e.primary_cnae=ANY(%s)")
+            parameters.append(cnaes[0] if len(cnaes) == 1 else cnaes)
+        else:
+            patterns = [f"{cnae}%" for cnae in cnaes]
+            predicates.append("e.primary_cnae LIKE %s" if len(patterns) == 1 else "e.primary_cnae LIKE ANY(%s)")
+            parameters.append(patterns[0] if len(patterns) == 1 else patterns)
+
+    excluded_cnaes = [digits(value) for value in filters.get("excluded_cnaes") or []]
+    excluded_cnaes = list(dict.fromkeys(value for value in excluded_cnaes if value))
+    if excluded_cnaes:
+        predicates.append(
+            "NOT (e.primary_cnae=ANY(%s) OR coalesce(e.secondary_cnaes,ARRAY[]::text[]) && %s)"
+        )
+        parameters.extend([excluded_cnaes, excluded_cnaes])
+
+    sizes = filters.get("company_sizes") or []
+    if sizes:
+        predicates.append("e.company_size_code=ANY(%s)")
+        parameters.append([COMPANY_SIZE_CODES[size] for size in sizes])
+
+    company_name = normalize(filters.get("company_name"))
+    if company_name:
+        predicates.append("(e.normalized_legal_name LIKE %s OR e.normalized_trade_name LIKE %s)")
+        parameters.extend([f"%{company_name}%", f"%{company_name}%"])
+    excluded_names = [normalize(value) for value in filters.get("excluded_company_names") or []]
+    excluded_patterns = [f"%{value}%" for value in dict.fromkeys(value for value in excluded_names if value)]
+    if excluded_patterns:
+        predicates.append(
+            "NOT (coalesce(e.normalized_legal_name,'') LIKE ANY(%s) "
+            "OR coalesce(e.normalized_trade_name,'') LIKE ANY(%s))"
+        )
+        parameters.extend([excluded_patterns, excluded_patterns])
+
+    if filters.get("partner_age_ranges"):
+        predicates.append("e.partner_age_codes && %s")
+        parameters.append(filters["partner_age_ranges"])
+    for field, column, operator in (
+        ("partner_count_min", "partner_count", ">="),
+        ("partner_count_max", "partner_count", "<="),
+        ("share_capital_min", "share_capital", ">="),
+        ("share_capital_max", "share_capital", "<="),
+        ("opened_from", "opened_at", ">="),
+        ("opened_to", "opened_at", "<="),
+        ("active_branch_count_min", "active_branch_count", ">="),
+        ("active_branch_count_max", "active_branch_count", "<="),
+    ):
+        if filters.get(field) is not None:
+            predicates.append(f"e.{column}{operator}%s")
+            parameters.append(filters[field])
+
+    for field, column in (
+        ("simples", "is_simples"),
+        ("mei", "is_mei"),
+        ("has_email", "has_email"),
+        ("has_phone", "has_phone"),
+    ):
+        if filters.get(field) is not None:
+            predicates.append(f"e.{column}=%s")
+            parameters.append(filters[field])
+    if filters.get("legal_nature_code"):
+        predicates.append("e.legal_nature_code=%s")
+        parameters.append(filters["legal_nature_code"])
+    if filters.get("branch_type") is not None:
+        predicates.append("e.branch_type_code=%s")
+        parameters.append(filters["branch_type"])
+
+    where_sql = " AND ".join(predicates)
+    if count_only:
+        return f"SELECT count(*) AS total_count FROM rfb_establishments e WHERE {where_sql}", parameters
+
+    if active_only and capital_filtered:
+        order_expression = "e.share_capital,e.cnpj"
+    elif cnaes and filters.get("cnae_scope") != "any":
+        order_expression = "e.primary_cnae,e.cnpj"
+    else:
+        order_expression = "e.cnpj"
+    parameters.append(int(filters["limit"]))
+    if candidate_only:
+        return (
+            "SELECT e.uf,e.cnpj,e.share_capital FROM rfb_establishments e "
+            f"WHERE {where_sql} ORDER BY {order_expression} LIMIT %s",
+            parameters,
+        )
+    return f"""
+        SELECT e.cnpj,e.cnpj_root,e.legal_name,e.trade_name,e.primary_cnae,
+               e.primary_cnae_description,e.municipality,e.uf,e.company_size,e.dataset_version
+        FROM rfb_establishments e
+        WHERE {where_sql}
+        ORDER BY {order_expression}
+        LIMIT %s
+    """, parameters
+
+
 def build_search_query(
     filters: dict[str, Any],
     capabilities: SearchCapabilities,
@@ -112,6 +304,12 @@ def build_search_query(
     count_only: bool = False,
     candidate_only: bool = False,
 ) -> tuple[str, list[Any]]:
+    if capabilities.unified:
+        return _build_unified_search_query(
+            filters,
+            count_only=count_only,
+            candidate_only=candidate_only,
+        )
     predicates: list[str] = []
     parameters: list[Any] = []
     joins: list[str] = []

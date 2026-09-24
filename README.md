@@ -32,6 +32,8 @@ estão em [`.env.example`](.env.example).
 - fila persistente em `POST /api/jobs`, com até 10.000 entradas;
 - busca direta por CNAE, região, UF, município, CEP, situação, porte, nome,
   capital social e data de abertura, com até 10.000 resultados por consulta;
+- busca em duas etapas (`POST /api/search` e `POST /api/search/count`), com os
+  resultados disponíveis antes da contagem exata e sem prévia intermediária;
 - seletores pesquisáveis com múltiplos CNAEs e múltiplos municípios da UF
   escolhida, alimentados pela própria versão corrente da Receita;
 - seleção múltipla de regiões, UFs, situações, portes, CEPs e faixas etárias

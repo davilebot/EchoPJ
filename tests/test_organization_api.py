@@ -694,7 +694,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertIn("processamentos em andamento", blocked["detail"])
         self.assertEqual(response_headers[b"retry-after"], b"30")
 
-    def test_search_preview_marks_saved_companies_with_organization_lists(self):
+    def test_search_marks_saved_companies_with_organization_lists(self):
         company = {
             "cnpj": "11222333000181",
             "legal_name": "Empresa Exemplo Ltda",
@@ -711,12 +711,12 @@ class OrganizationAPITests(unittest.TestCase):
         self.main.repository.current_version.return_value = "2026-08"
 
         status, data, _ = self.request(
-            "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,
+            "/api/search", "POST", {"ufs": ["SP"], "limit": 10000}, self.owner_token,
             {"x-organization-id": str(self.org)},
         )
         self.assertEqual(status, 200)
-        self.assertTrue(data["preview"])
-        self.assertEqual(data["limit"], 500)
+        self.assertNotIn("preview", data)
+        self.assertEqual(data["limit"], 10000)
         self.assertEqual(data["total_count"], 12450)
         self.assertTrue(data["total_count_exact"])
         self.assertEqual(data["total_count_lower_bound"], 12450)
@@ -726,10 +726,10 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertTrue(data["results"][0]["saved"])
         self.assertEqual(data["results"][0]["saved_lists"][0]["name"], "Prospecção SaaS")
         filters = self.main.repository.search_companies.call_args.args[0]
-        self.assertEqual(filters["limit"], 500)
+        self.assertEqual(filters["limit"], 10000)
 
         status, _, _ = self.request(
-            "/api/search/preview", "POST",
+            "/api/search", "POST",
             {
                 "ufs": ["SP"],
                 "included_cnpjs": ["11.222.333/0001-81"],
@@ -743,7 +743,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(filters["_excluded_cnpjs"], ["19131243000197"])
 
         status, _, _ = self.request(
-            "/api/search/preview", "POST",
+            "/api/search", "POST",
             {"ufs": ["SP"], "included_list_ids": [company_list["id"]], "saved_status": "saved"},
             self.owner_token, {"x-organization-id": str(self.org)},
         )
@@ -752,7 +752,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(filters["_included_cnpjs"], [company["cnpj"]])
 
         status, _, _ = self.request(
-            "/api/search/preview", "POST",
+            "/api/search", "POST",
             {"ufs": ["SP"], "saved_status": "new"},
             self.owner_token, {"x-organization-id": str(self.org)},
         )
@@ -762,7 +762,7 @@ class OrganizationAPITests(unittest.TestCase):
 
         self.main.repository.search_companies.return_value = ([company], capabilities, 12, True, None)
         status, partial_data, _ = self.request(
-            "/api/search/preview", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
+            "/api/search", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
             self.owner_token, {"x-organization-id": str(self.org)},
         )
         self.assertEqual(status, 200)
@@ -793,18 +793,18 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertTrue(cached_count_data["cached"])
         self.main.repository.count_companies.assert_called_once()
 
-        status, cached_preview, _ = self.request(
-            "/api/search/preview", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
+        status, cached_search, _ = self.request(
+            "/api/search", "POST", {"regions": ["S", "SE"], "cnaes": ["5611201"]},
             self.owner_token, {"x-organization-id": str(self.org)},
         )
         self.assertEqual(status, 200)
-        self.assertEqual(cached_preview["limit"], 500)
-        self.assertEqual(cached_preview["total_count"], 254541)
-        self.assertTrue(cached_preview["total_count_exact"])
+        self.assertEqual(cached_search["limit"], 10000)
+        self.assertEqual(cached_search["total_count"], 254541)
+        self.assertTrue(cached_search["total_count_exact"])
 
         self.main.repository.search_companies.side_effect = PoolTimeout("busy")
         status, busy, _ = self.request(
-            "/api/search/preview", "POST", {"cnaes": ["6201501"]}, self.owner_token,
+            "/api/search", "POST", {"cnaes": ["6201501"]}, self.owner_token,
             {"x-organization-id": str(self.org)},
         )
         self.assertEqual(status, 503)
@@ -813,7 +813,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.main.repository.search_companies.return_value = ([company], capabilities, 12, True, None)
 
         status, detail, _ = self.request(
-            "/api/search/preview", "POST",
+            "/api/search", "POST",
             {"ufs": ["SP"], "included_list_ids": [company_list["id"]]},
             self.owner_token, {"x-organization-id": str(self.other)},
         )
@@ -821,7 +821,7 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertIn("workspace", detail["detail"])
 
         status, foreign_data, _ = self.request(
-            "/api/search/preview", "POST", {"ufs": ["SP"], "limit": 500}, self.owner_token,
+            "/api/search", "POST", {"ufs": ["SP"], "limit": 10000}, self.owner_token,
             {"x-organization-id": str(self.other)},
         )
         self.assertEqual(status, 200)

@@ -63,6 +63,11 @@ class Repository:
         with self.pool.connection() as connection:
             row = connection.execute("""
                 SELECT
+                  EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='rfb_establishments'
+                      AND column_name='partner_age_codes'
+                  ) AS unified,
                   to_regclass('public.rfb_simples') IS NOT NULL AS simples,
                   to_regclass('public.rfb_company_details') IS NOT NULL AS company_details,
                   to_regclass('public.rfb_establishment_details') IS NOT NULL AS establishment_details,
@@ -76,7 +81,7 @@ class Repository:
             branch_counts_ready = False
             if row["datasets"]:
                 base = connection.execute(
-                    "SELECT version FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
+                    "SELECT version,metadata FROM dataset_versions WHERE is_current AND status='ready' LIMIT 1"
                 ).fetchone()
                 auxiliary = connection.execute(
                     "SELECT version FROM rfb_aux_datasets WHERE version=%s AND status IN ('staging','current')",
@@ -99,12 +104,18 @@ class Repository:
                             (base["version"],),
                         ).fetchone()
                         branch_counts_ready = bool(metadata and metadata["status"] == "ready")
+        unified = bool(
+            row["unified"]
+            and base
+            and (base.get("metadata") or {}).get("unified_search") == "ready"
+        )
         return SearchCapabilities(
-            simples=bool(row["simples"] and readiness.get("simples")),
-            company_details=bool(row["company_details"] and readiness.get("companies")),
-            establishment_details=bool(row["establishment_details"] and readiness.get("establishments")),
-            partners=bool(row["partners"] and readiness.get("partners")),
-            references=bool(
+            unified=unified,
+            simples=unified or bool(row["simples"] and readiness.get("simples")),
+            company_details=unified or bool(row["company_details"] and readiness.get("companies")),
+            establishment_details=unified or bool(row["establishment_details"] and readiness.get("establishments")),
+            partners=unified or bool(row["partners"] and readiness.get("partners")),
+            references=unified or bool(
                 row["references"]
                 and readiness
                 and all(
@@ -115,7 +126,7 @@ class Repository:
                     )
                 )
             ),
-            branch_counts=branch_counts_ready,
+            branch_counts=unified or branch_counts_ready,
         )
 
     @staticmethod
@@ -202,6 +213,22 @@ class Repository:
         }
         return {key: cls._serializable(value) for key, value in fields.items()}
 
+    @classmethod
+    def _search_summary(cls, row: dict[str, Any]) -> dict[str, Any]:
+        fields = {
+            "cnpj": row["cnpj"],
+            "cnpj_root": row.get("cnpj_root"),
+            "legal_name": row.get("legal_name"),
+            "trade_name": row.get("trade_name"),
+            "primary_cnae": row.get("primary_cnae"),
+            "primary_cnae_description": row.get("primary_cnae_description"),
+            "municipality": row.get("municipality"),
+            "uf": row.get("uf"),
+            "company_size": cls._company_size_label(row.get("company_size")),
+            "dataset_version": row.get("dataset_version"),
+        }
+        return {key: cls._serializable(value) for key, value in fields.items()}
+
     def search_companies(self, filters: dict[str, Any]) -> tuple[list[dict[str, Any]], SearchCapabilities, int, bool, int | None]:
         started = monotonic()
         capabilities = self.search_capabilities()
@@ -214,6 +241,24 @@ class Repository:
         # 10,000 indexed rows quickly.  The extra row is enough to tell the UI
         # that the response is partial without discarding useful results.
         query_filters = {**filters, "limit": limit + 1}
+        if capabilities.unified:
+            result_sql, result_parameters = build_search_query(query_filters, capabilities)
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(300_000, self.statement_timeout_ms * 10)),),
+                )
+                rows = connection.execute(result_sql, result_parameters).fetchall()
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+            duration_ms = round((monotonic() - started) * 1000)
+            return (
+                [self._search_summary(row) for row in rows],
+                capabilities,
+                duration_ms,
+                has_more,
+                None if has_more else len(rows),
+            )
         statuses = filters.get("registration_statuses") or []
         active_only = not statuses or set(statuses) == {"ATIVA"}
         nationwide_capital_filter = active_only and not any((
@@ -349,6 +394,16 @@ class Repository:
     def count_companies(self, filters: dict[str, Any]) -> tuple[int, SearchCapabilities, int]:
         started = monotonic()
         capabilities = self.search_capabilities()
+        if capabilities.unified:
+            count_sql, count_parameters = build_search_count_query(filters, capabilities)
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(600_000, self.statement_timeout_ms * 10)),),
+                )
+                row = connection.execute(count_sql, count_parameters).fetchone()
+            duration_ms = round((monotonic() - started) * 1000)
+            return int(row["total_count"]) if row else 0, capabilities, duration_ms
         states = selected_states(filters) or ALL_STATES
 
         def execute_count(scope_filters: dict[str, Any]) -> int:
@@ -380,27 +435,41 @@ class Repository:
         connection,
         dataset_version: str,
         roots: list[str],
+        *,
+        unified: bool = False,
     ) -> dict[str, list[dict[str, Any]]]:
         if not roots:
             return {}
-        partner_rows = connection.execute("""
-            SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
-                   p.partner_document,p.qualification_code,p.joined_at,p.country_code,
-                   p.legal_representative_document,p.legal_representative_name,
-                   p.legal_representative_qualification_code,p.age_range_code,p.age_range,
-                   q.label AS qualification,co.label AS country,
-                   rq.label AS legal_representative_qualification
-            FROM rfb_partners p
-            LEFT JOIN rfb_aux_reference q
-              ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
-            LEFT JOIN rfb_aux_reference co
-              ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
-            LEFT JOIN rfb_aux_reference rq
-              ON rq.dataset_version=p.dataset_version AND rq.kind='qualification'
-             AND rq.code=p.legal_representative_qualification_code
-            WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
-            ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
-        """, (dataset_version, roots)).fetchall()
+        if unified:
+            partner_rows = connection.execute("""
+                SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
+                       p.partner_document,p.qualification_code,p.qualification,p.joined_at,
+                       p.country_code,p.country,p.legal_representative_document,
+                       p.legal_representative_name,p.legal_representative_qualification_code,
+                       p.legal_representative_qualification,p.age_range_code,p.age_range
+                FROM rfb_partners p
+                WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
+                ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
+            """, (dataset_version, roots)).fetchall()
+        else:
+            partner_rows = connection.execute("""
+                SELECT p.cnpj_root,p.partner_type_code,p.partner_type,p.partner_name,
+                       p.partner_document,p.qualification_code,p.joined_at,p.country_code,
+                       p.legal_representative_document,p.legal_representative_name,
+                       p.legal_representative_qualification_code,p.age_range_code,p.age_range,
+                       q.label AS qualification,co.label AS country,
+                       rq.label AS legal_representative_qualification
+                FROM rfb_partners p
+                LEFT JOIN rfb_aux_reference q
+                  ON q.dataset_version=p.dataset_version AND q.kind='qualification' AND q.code=p.qualification_code
+                LEFT JOIN rfb_aux_reference co
+                  ON co.dataset_version=p.dataset_version AND co.kind='country' AND co.code=p.country_code
+                LEFT JOIN rfb_aux_reference rq
+                  ON rq.dataset_version=p.dataset_version AND rq.kind='qualification'
+                 AND rq.code=p.legal_representative_qualification_code
+                WHERE p.dataset_version=%s AND p.cnpj_root=ANY(%s)
+                ORDER BY p.cnpj_root,p.partner_name,p.qualification_code
+            """, (dataset_version, roots)).fetchall()
         partners_by_root: dict[str, list[dict[str, Any]]] = {}
         for partner in partner_rows:
             serialized = {
@@ -412,7 +481,20 @@ class Repository:
         return partners_by_root
 
     def search_cnae_options(self) -> list[dict[str, str]]:
+        capabilities = self.search_capabilities()
         with self.pool.connection() as connection:
+            if capabilities.unified:
+                row = connection.execute("""
+                    SELECT metadata->'reference_labels'->'cnae' AS labels
+                    FROM dataset_versions
+                    WHERE is_current AND status='ready'
+                    ORDER BY imported_at DESC LIMIT 1
+                """).fetchone()
+                labels = (row or {}).get("labels") or {}
+                return [
+                    {"value": code, "label": label}
+                    for code, label in sorted(labels.items())
+                ]
             rows = connection.execute("""
                 SELECT code,label
                 FROM rfb_current_aux_reference
@@ -423,7 +505,27 @@ class Repository:
 
     def search_municipality_options(self, ufs: list[str]) -> list[dict[str, str]]:
         options: list[dict[str, str]] = []
+        capabilities = self.search_capabilities()
         with self.pool.connection() as connection:
+            if capabilities.unified:
+                row = connection.execute("""
+                    SELECT metadata->'municipalities_by_uf' AS municipalities
+                    FROM dataset_versions
+                    WHERE is_current AND status='ready'
+                    ORDER BY imported_at DESC LIMIT 1
+                """).fetchone()
+                by_uf = (row or {}).get("municipalities") or {}
+                for uf in ufs:
+                    options.extend({
+                        "value": f"{uf}|{municipality}",
+                        "label": f"{municipality}/{uf}",
+                        "option_label": f"{municipality}/{uf}",
+                        "option_description": "",
+                        "display_label": f"{municipality}/{uf}",
+                        "uf": uf,
+                        "municipality": municipality,
+                    } for municipality in by_uf.get(uf, []))
+                return options
             for uf in ufs:
                 rows = connection.execute("""
                     SELECT DISTINCT reference.label
@@ -639,6 +741,67 @@ class Repository:
             ).fetchone()
             if not core:
                 return None
+            if capabilities.unified:
+                partners_by_root = self._partners_by_roots(
+                    connection,
+                    core["dataset_version"],
+                    [core["cnpj_root"]],
+                    unified=True,
+                )
+                metadata_row = connection.execute(
+                    "SELECT metadata->'reference_labels' AS labels FROM dataset_versions WHERE version=%s",
+                    (core["dataset_version"],),
+                ).fetchone()
+                labels = (metadata_row or {}).get("labels") or {}
+                reference_codes = {
+                    "cnae": [core.get("primary_cnae"), *(core.get("secondary_cnaes") or [])],
+                    "legal_nature": [core.get("legal_nature_code")],
+                    "qualification": [core.get("responsible_qualification_code")],
+                    "status_reason": [core.get("registration_status_reason_code")],
+                    "country": [core.get("country_code")],
+                }
+                references = {
+                    f"{kind}:{code}": labels[kind][code]
+                    for kind, codes in reference_codes.items()
+                    for code in codes
+                    if code and labels.get(kind, {}).get(code)
+                }
+                company_fields = (
+                    "cnpj_root", "legal_nature_code", "responsible_qualification_code",
+                    "company_size_code", "company_size", "share_capital", "federative_entity",
+                )
+                establishment_fields = (
+                    "cnpj", "branch_type_code", "registration_status_reason_code",
+                    "foreign_city_name", "country_code", "opened_at", "primary_cnae",
+                    "secondary_cnaes", "street_type", "street", "street_number",
+                    "address_extra", "district", "phone1_area_code", "phone1",
+                    "phone2_area_code", "phone2", "fax_area_code", "fax", "email",
+                    "special_status", "special_status_date",
+                )
+                simples_fields = (
+                    "cnpj_root", "is_simples", "simples_started_at", "simples_ended_at",
+                    "is_mei", "mei_started_at", "mei_ended_at",
+                )
+
+                def select_fields(names: tuple[str, ...]) -> dict[str, Any]:
+                    return {
+                        name: self._serializable(core.get(name))
+                        for name in names
+                    }
+
+                return {
+                    "core": self._company_detail_core(core),
+                    "company": select_fields(company_fields),
+                    "establishment": select_fields(establishment_fields),
+                    "simples": select_fields(simples_fields),
+                    "partners": partners_by_root.get(core["cnpj_root"], []),
+                    "branch_counts": {
+                        "branch_count": int(core.get("branch_count") or 0),
+                        "active_branch_count": int(core.get("active_branch_count") or 0),
+                    },
+                    "references": references,
+                    "capabilities": capabilities.as_dict(),
+                }
             company = establishment = simples = None
             partners: list[dict[str, Any]] = []
             references: dict[str, str] = {}
@@ -723,6 +886,42 @@ class Repository:
         """List every CNPJ sharing the official eight-character company root."""
         root, lower_bound, upper_bound = cnpj_root_bounds(cnpj)
         capabilities = self.search_capabilities()
+        if capabilities.unified:
+            sql = """
+                SELECT cnpj,cnpj_root,legal_name,trade_name,registration_status,
+                       registration_status_date,opened_at,company_size,share_capital,
+                       primary_cnae,primary_cnae_description,secondary_cnaes,municipality,uf,
+                       postal_code,street_type,street,street_number,address_extra,district,
+                       dataset_version,branch_type_code,email,phone1_area_code,phone1,
+                       branch_count,active_branch_count
+                FROM rfb_establishments
+                WHERE cnpj >= %s AND cnpj <= %s AND cnpj_root=%s
+                ORDER BY CASE WHEN branch_type_code='1' THEN 0 ELSE 1 END,cnpj
+                LIMIT 10001
+            """
+            with self.pool.connection() as connection:
+                connection.execute(
+                    "SELECT set_config('statement_timeout',%s,true)",
+                    (str(max(15_000, self.statement_timeout_ms * 5)),),
+                )
+                rows = connection.execute(sql, (lower_bound, upper_bound, root)).fetchall()
+            if not rows:
+                return None
+            has_more = len(rows) > 10000
+            establishments = [self._search_result(row) for row in rows[:10000]]
+            matrix = next((item for item in establishments if item["branch_type_code"] == "1"), None)
+            return {
+                "cnpj_root": root,
+                "queried_cnpj": cnpj,
+                "matrix": matrix,
+                "establishments": establishments,
+                "returned": len(establishments),
+                "has_more": has_more,
+                "dataset_version": rows[0]["dataset_version"],
+                "branch_type_available": True,
+                "branch_count": int(rows[0].get("branch_count") or 0),
+                "active_branch_count": int(rows[0].get("active_branch_count") or 0),
+            }
         detail_join = """
             LEFT JOIN rfb_establishment_details x
               ON x.dataset_version=e.dataset_version AND x.cnpj=e.cnpj
@@ -792,6 +991,26 @@ class Repository:
         if not cnpjs:
             return {}
         capabilities = self.search_capabilities()
+        if capabilities.unified:
+            with self.pool.connection() as connection:
+                connection.execute("SELECT set_config('statement_timeout','60000',true)")
+                rows = connection.execute(
+                    "SELECT * FROM rfb_establishments WHERE cnpj=ANY(%s)",
+                    (cnpjs,),
+                ).fetchall()
+                roots = list({row["cnpj_root"] for row in rows})
+                partners_by_root = self._partners_by_roots(
+                    connection,
+                    rows[0]["dataset_version"] if rows else "",
+                    roots,
+                    unified=True,
+                ) if roots else {}
+            result: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                company = self._search_result(row)
+                company["partners"] = partners_by_root.get(row["cnpj_root"], [])
+                result[row["cnpj"]] = company
+            return result
         joins: list[str] = []
         if capabilities.simples:
             joins.append(

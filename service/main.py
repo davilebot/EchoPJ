@@ -2036,12 +2036,8 @@ def _company_search_filters(payload: CompanySearchRequest, user: dict) -> dict:
 def _company_search_response(
     payload: CompanySearchRequest,
     user: dict,
-    *,
-    preview: bool,
 ) -> dict:
     filters = _company_search_filters(payload, user)
-    if preview:
-        filters["limit"] = 500
     try:
         results, capabilities, duration_ms, has_more, total_count = repository.search_companies(filters)
     except SearchCapabilityUnavailable as error:
@@ -2089,7 +2085,6 @@ def _company_search_response(
         "limit": filters["limit"],
         "has_more": has_more,
         "partial": has_more,
-        "preview": preview,
         "segments": {
             "total": len(enriched_results),
             "new": len(enriched_results) - saved_count,
@@ -2099,32 +2094,25 @@ def _company_search_response(
         "capabilities": capabilities.as_dict(),
         "timing_ms": duration_ms,
     }
-    if not preview:
-        saas_store.record_product_event(
-            user["organization_id"],
-            user["id"],
-            "search.executed",
-            metadata={
-                "returned": len(enriched_results),
-                "total_count": total_count,
-                "total_count_lower_bound": total_count_lower_bound,
-                "total_count_exact": total_count_exact,
-                "limit": filters["limit"],
-            },
-        )
+    saas_store.record_product_event(
+        user["organization_id"],
+        user["id"],
+        "search.executed",
+        metadata={
+            "returned": len(enriched_results),
+            "total_count": total_count,
+            "total_count_lower_bound": total_count_lower_bound,
+            "total_count_exact": total_count_exact,
+            "limit": filters["limit"],
+        },
+    )
     return response
 
 
 @app.post("/api/search")
 def search_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
     enforce_heavy_rate_limit(user, "search")
-    return _company_search_response(payload, user, preview=False)
-
-
-@app.post("/api/search/preview")
-def preview_companies(payload: CompanySearchRequest, user: dict = Depends(require_organization)) -> dict:
-    enforce_heavy_rate_limit(user, "search-preview")
-    return _company_search_response(payload, user, preview=True)
+    return _company_search_response(payload, user)
 
 
 @app.post("/api/search/count")
