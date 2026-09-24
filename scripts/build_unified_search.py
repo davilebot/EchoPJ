@@ -322,17 +322,9 @@ class UnifiedSearchBuilder:
         )
         self.connection.commit()
 
-    def build_state(self, state: str) -> None:
-        state = state.upper()
-        if state not in STATES:
-            raise ValueError(f"UF invalida: {state}")
-        if state in self.state().states_completed:
-            LOGGER.info("UF %s ja preparada", state)
-            return
-        LOGGER.info("consolidando UF %s", state)
-        self.connection.execute(
-            sql.SQL("TRUNCATE {}").format(sql.Identifier(self._partition(state)))
-        )
+    def _insert_establishments(self, state: str | None = None) -> None:
+        state_predicate = " AND e.uf=%s" if state else ""
+        parameters = (self.version, state) if state else (self.version,)
         self.connection.execute(f"""
             INSERT INTO {self.main_next} ({MAIN_COLUMNS})
             SELECT
@@ -387,8 +379,21 @@ class UnifiedSearchBuilder:
             LEFT JOIN rfb_aux_reference country_ref
               ON country_ref.dataset_version=e.dataset_version AND country_ref.kind='country'
              AND country_ref.code=x.country_code
-            WHERE e.dataset_version=%s AND e.uf=%s
-        """, (self.version, state))
+            WHERE e.dataset_version=%s{state_predicate}
+        """, parameters)
+
+    def build_state(self, state: str) -> None:
+        state = state.upper()
+        if state not in STATES:
+            raise ValueError(f"UF invalida: {state}")
+        if state in self.state().states_completed:
+            LOGGER.info("UF %s ja preparada", state)
+            return
+        LOGGER.info("consolidando UF %s", state)
+        self.connection.execute(
+            sql.SQL("TRUNCATE {}").format(sql.Identifier(self._partition(state)))
+        )
+        self._insert_establishments(state)
         self.connection.execute("""
             UPDATE rfb_unified_builds
             SET states_completed=array_append(states_completed,%s),updated_at=now()
@@ -397,8 +402,31 @@ class UnifiedSearchBuilder:
         self.connection.commit()
 
     def build_all_states(self) -> None:
-        for state in STATES:
-            self.build_state(state)
+        state = self.state()
+        if state.states_completed == set(STATES):
+            LOGGER.info("todas as UFs ja foram preparadas")
+            return
+        # A unica passagem nacional deixa o PostgreSQL ler cada fonte auxiliar
+        # uma vez e escolher hash/merge joins. Repetir a mesma consulta por UF
+        # transformaria as tabelas auxiliares em centenas de milhoes de buscas
+        # aleatorias, mesmo que cada particao de destino fosse pequena.
+        LOGGER.info("consolidando todas as UFs em uma unica passagem")
+        self.connection.execute(
+            sql.SQL("TRUNCATE {}").format(sql.Identifier(self.main_next))
+        )
+        self.connection.execute(
+            "UPDATE rfb_unified_builds SET states_completed=ARRAY[]::text[],updated_at=now() WHERE version=%s",
+            (self.version,),
+        )
+        self.connection.commit()
+        self.connection.execute("SET LOCAL work_mem='256MB'")
+        self.connection.execute("SET LOCAL max_parallel_workers_per_gather=4")
+        self._insert_establishments()
+        self.connection.execute(
+            "UPDATE rfb_unified_builds SET states_completed=%s,updated_at=now() WHERE version=%s",
+            (list(STATES), self.version),
+        )
+        self.connection.commit()
 
     def create_indexes(self) -> None:
         if self.state().indexes_ready:
