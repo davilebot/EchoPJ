@@ -192,8 +192,8 @@ class UnifiedSearchBuilder:
 
     def lock(self) -> None:
         locked = self.connection.execute(
-            "SELECT pg_try_advisory_lock(hashtext(%s))", (ADVISORY_LOCK,)
-        ).fetchone()[0]
+            "SELECT pg_try_advisory_lock(hashtext(%s)) AS locked", (ADVISORY_LOCK,)
+        ).fetchone()["locked"]
         if not locked:
             raise RuntimeError("ja existe uma construcao unificada em andamento")
 
@@ -440,17 +440,17 @@ class UnifiedSearchBuilder:
         if not state.partners_ready or not state.indexes_ready:
             raise RuntimeError("socios e indices precisam estar prontos antes da validacao")
         source_rows = self.connection.execute(
-            "SELECT count(*) FROM rfb_establishments WHERE dataset_version=%s", (self.version,)
-        ).fetchone()[0]
+            "SELECT count(*) AS rows FROM rfb_establishments WHERE dataset_version=%s", (self.version,)
+        ).fetchone()["rows"]
         target_rows = self.connection.execute(
-            f"SELECT count(*) FROM {self.main_next} WHERE dataset_version=%s", (self.version,)
-        ).fetchone()[0]
+            f"SELECT count(*) AS rows FROM {self.main_next} WHERE dataset_version=%s", (self.version,)
+        ).fetchone()["rows"]
         source_partners = self.connection.execute(
-            "SELECT count(*) FROM rfb_partners WHERE dataset_version=%s", (self.version,)
-        ).fetchone()[0]
+            "SELECT count(*) AS rows FROM rfb_partners WHERE dataset_version=%s", (self.version,)
+        ).fetchone()["rows"]
         target_partners = self.connection.execute(
-            f"SELECT count(*) FROM {self.partners_next} WHERE dataset_version=%s", (self.version,)
-        ).fetchone()[0]
+            f"SELECT count(*) AS rows FROM {self.partners_next} WHERE dataset_version=%s", (self.version,)
+        ).fetchone()["rows"]
         per_state = self.connection.execute(f"""
             SELECT source.uf,source.rows AS source_rows,target.rows AS target_rows
             FROM (
@@ -468,7 +468,7 @@ class UnifiedSearchBuilder:
               SELECT uf,cnpj FROM rfb_establishments TABLESAMPLE SYSTEM (0.02)
               WHERE dataset_version=%s LIMIT 25000
             )
-            SELECT count(*)
+            SELECT count(*) AS mismatches
             FROM sample s
             JOIN rfb_establishments old USING(uf,cnpj)
             JOIN {self.main_next} new USING(uf,cnpj)
@@ -477,7 +477,7 @@ class UnifiedSearchBuilder:
               IS DISTINCT FROM
                   (coalesce(new.legal_name,''),coalesce(new.trade_name,''),new.registration_status,
                    coalesce(new.municipality,''),coalesce(new.postal_code,''))
-        """, (self.version,)).fetchone()[0]
+        """, (self.version,)).fetchone()["mismatches"]
         validation = {
             "source_rows": int(source_rows),
             "target_rows": int(target_rows),
@@ -535,8 +535,8 @@ class UnifiedSearchBuilder:
         with self.connection.transaction():
             for relation in (legacy_main, legacy_partners):
                 exists = self.connection.execute(
-                    "SELECT to_regclass(%s)", (f"public.{relation}",)
-                ).fetchone()[0]
+                    "SELECT to_regclass(%s) AS relation", (f"public.{relation}",)
+                ).fetchone()["relation"]
                 if exists:
                     raise RuntimeError(f"a relacao de rollback {relation} ja existe")
             self.connection.execute(f"ALTER TABLE rfb_establishments RENAME TO {legacy_main}")
@@ -602,8 +602,8 @@ class UnifiedSearchBuilder:
         if not row or row["status"] != "ready" or not row["published_at"]:
             raise RuntimeError("a versao unificada ainda nao esta publicada")
         age = self.connection.execute(
-            "SELECT now()-%s::timestamptz", (row["published_at"],)
-        ).fetchone()[0]
+            "SELECT now()-%s::timestamptz AS age", (row["published_at"],)
+        ).fetchone()["age"]
         if age.days < 7:
             raise RuntimeError("o periodo minimo de rollback de sete dias ainda nao terminou")
         views = (
