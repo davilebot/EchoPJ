@@ -388,11 +388,74 @@ class UnifiedDatasetImporter:
                 "companies", entry, company_details_row,
                 lambda rows: self._copy_rows(self.company_stage, COMPANY_COLUMNS, rows),
             )
-        self.connection.execute(
+        self._create_company_index()
+        self.connection.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(self.company_stage)))
+        self.connection.commit()
+
+    def _create_company_index(self) -> None:
+        statement = (
             f"CREATE UNIQUE INDEX IF NOT EXISTS {self.company_stage}_root_idx "
             f"ON {self.company_stage}(dataset_version,cnpj_root)"
         )
-        self.connection.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(self.company_stage)))
+        try:
+            self.connection.execute(statement)
+            self.connection.commit()
+        except psycopg.errors.UniqueViolation:
+            self.connection.rollback()
+            LOGGER.warning("raízes repetidas na fonte de Empresas; consolidando a linha mais completa")
+            self._deduplicate_companies()
+            self.connection.execute(statement)
+            self.connection.commit()
+
+    def _deduplicate_companies(self) -> None:
+        duplicate_keys = "rfb_unified_company_duplicate_keys"
+        self.connection.execute(f"DROP TABLE IF EXISTS {duplicate_keys}")
+        self.connection.execute(f"""
+            CREATE TEMP TABLE {duplicate_keys} ON COMMIT DROP AS
+            SELECT dataset_version,cnpj_root
+            FROM {self.company_stage}
+            GROUP BY dataset_version,cnpj_root HAVING count(*)>1
+        """)
+        duplicate_count = self.connection.execute(
+            f"SELECT count(*) AS rows FROM {duplicate_keys}"
+        ).fetchone()["rows"]
+        if not duplicate_count:
+            raise RuntimeError("indice unico falhou, mas nenhuma raiz duplicada foi localizada")
+        result = self.connection.execute(f"""
+            DELETE FROM {self.company_stage} target
+            USING (
+              SELECT row_ctid FROM (
+                SELECT company.ctid AS row_ctid,
+                       row_number() OVER (
+                         PARTITION BY company.dataset_version,company.cnpj_root
+                         ORDER BY
+                           ((company.legal_nature_code IS NOT NULL AND company.legal_nature_code<>'0000')::int * 8
+                            +(company.responsible_qualification_code IS NOT NULL
+                              AND company.responsible_qualification_code<>'00')::int * 4
+                            +(company.company_size_code IS NOT NULL
+                              AND company.company_size_code<>'00')::int * 2
+                            +(company.federative_entity IS NOT NULL)::int
+                            +(coalesce(company.share_capital,0)<>0)::int) DESC,
+                           company.legal_nature_code DESC NULLS LAST,
+                           company.responsible_qualification_code DESC NULLS LAST,
+                           company.company_size_code DESC NULLS LAST,
+                           md5(ROW(company.legal_nature_code,
+                                   company.responsible_qualification_code,
+                                   company.company_size_code,company.company_size,
+                                   company.share_capital,company.federative_entity)::text)
+                       ) AS position
+                FROM {self.company_stage} company
+                JOIN {duplicate_keys} duplicate
+                  USING(dataset_version,cnpj_root)
+              ) ranked WHERE position>1
+            ) discarded
+            WHERE target.ctid=discarded.row_ctid
+        """)
+        LOGGER.warning(
+            "%s raiz(es) repetida(s); %s linha(s) menos completa(s) removida(s)",
+            duplicate_count,
+            result.rowcount,
+        )
         self.connection.commit()
 
     def load_simples(self) -> None:
