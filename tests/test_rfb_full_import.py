@@ -14,6 +14,7 @@ from plataforma_receita.rfb_layout import (
     partner_row,
     simples_row,
     unified_establishment_row,
+    unified_company_row,
 )
 from plataforma_receita.rfb_manifest import (
     discover_official_manifest,
@@ -31,6 +32,12 @@ class LayoutTests(unittest.TestCase):
             company_details_row(row, "2026-08"),
             ("2026-08", "12345678", "2062", "49", "03", "EMPRESA DE PEQUENO PORTE", Decimal("1234.56"), "UNIAO"),
         )
+
+    def test_unified_company_parser_keeps_legal_name(self):
+        row = ["12345678", "EMPRESA X", "2062", "49", "1.234,56", "03", "UNIAO"]
+        parsed = unified_company_row(row, "2026-09")
+        self.assertEqual(parsed[:4], ("2026-09", "12345678", "EMPRESA X", "2062"))
+        self.assertEqual(parsed[7], Decimal("1234.56"))
 
     def test_establishment_parser_keeps_all_complementary_fields(self):
         row = [""] * 30

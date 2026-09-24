@@ -113,6 +113,14 @@ def company_details_row(row: list[str], version: str) -> tuple | None:
     )
 
 
+def unified_company_row(row: list[str], version: str) -> tuple | None:
+    """Keep the company name as well as every field needed by the mother table."""
+    parsed = company_details_row(row, version)
+    if parsed is None:
+        return None
+    return parsed[0], parsed[1], clean(row[1]), *parsed[2:]
+
+
 def establishment_details_row(row: list[str], version: str) -> tuple | None:
     if len(row) < 30:
         return None

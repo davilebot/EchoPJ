@@ -29,10 +29,10 @@ from psycopg.rows import dict_row
 from plataforma_receita.rfb_importer import read_semicolon_zip, sha256_file
 from plataforma_receita.rfb_layout import (
     LAYOUTS,
-    company_details_row,
     partner_row,
     simples_row,
     unified_establishment_row,
+    unified_company_row,
 )
 from plataforma_receita.rfb_manifest import Manifest, ManifestFile, load_manifest
 try:
@@ -48,7 +48,7 @@ REQUIRED_REFERENCE_KINDS = {
 }
 
 COMPANY_COLUMNS = (
-    "dataset_version", "cnpj_root", "legal_nature_code",
+    "dataset_version", "cnpj_root", "legal_name", "legal_nature_code",
     "responsible_qualification_code", "company_size_code", "company_size",
     "share_capital", "federative_entity",
 )
@@ -160,7 +160,7 @@ class UnifiedDatasetImporter:
         self.connection.execute(f"""
             CREATE UNLOGGED TABLE IF NOT EXISTS {self.company_stage} (
               dataset_version text NOT NULL,cnpj_root text NOT NULL,
-              legal_nature_code text,responsible_qualification_code text,
+              legal_name text,legal_nature_code text,responsible_qualification_code text,
               company_size_code text,company_size text,share_capital numeric(20,2),
               federative_entity text
             )
@@ -205,6 +205,9 @@ class UnifiedDatasetImporter:
               metadata=dataset_versions.metadata || jsonb_build_object('source_url',%s::text),
               errors='[]'::jsonb
         """, (self.version, self.manifest.source_url, self.manifest.source_url))
+        self.connection.execute(
+            f"ALTER TABLE {self.company_stage} ADD COLUMN IF NOT EXISTS legal_name text"
+        )
         self.connection.commit()
 
     def _ensure_capacity(self) -> None:
@@ -383,13 +386,38 @@ class UnifiedDatasetImporter:
         """)
 
     def load_companies(self) -> None:
+        self._reset_legacy_company_stage_without_names()
         for entry in self._files("companies"):
             self._load_file(
-                "companies", entry, company_details_row,
+                "companies", entry, unified_company_row,
                 lambda rows: self._copy_rows(self.company_stage, COMPANY_COLUMNS, rows),
             )
         self._create_company_index()
         self.connection.execute(sql.SQL("ANALYZE {}").format(sql.Identifier(self.company_stage)))
+        self.connection.commit()
+
+    def _reset_legacy_company_stage_without_names(self) -> None:
+        counts = self.connection.execute(f"""
+            SELECT count(*) AS rows,count(legal_name) AS named_rows
+            FROM {self.company_stage} WHERE dataset_version=%s
+        """, (self.version,)).fetchone()
+        if not counts["rows"] or counts["named_rows"]:
+            return
+        LOGGER.warning(
+            "staging de Empresas sem razão social; recarregando somente esta fase"
+        )
+        self.connection.execute(
+            sql.SQL("DROP INDEX IF EXISTS {}").format(
+                sql.Identifier(f"{self.company_stage}_root_idx")
+            )
+        )
+        self.connection.execute(sql.SQL("TRUNCATE {}").format(sql.Identifier(self.company_stage)))
+        self.connection.execute("""
+            UPDATE rfb_unified_import_files
+            SET status='pending',source_rows_processed=0,rows_loaded=0,
+                bytes_downloaded=0,started_at=NULL,completed_at=NULL,error=NULL
+            WHERE version=%s AND phase='companies'
+        """, (self.version,))
         self.connection.commit()
 
     def _create_company_index(self) -> None:
