@@ -198,6 +198,9 @@ class UnifiedSearchBuilder:
             raise RuntimeError("ja existe uma construcao unificada em andamento")
 
     def unlock(self) -> None:
+        # A session-level advisory lock must also be released after a statement
+        # aborts the current transaction.
+        self.connection.rollback()
         self.connection.execute("SELECT pg_advisory_unlock(hashtext(%s))", (ADVISORY_LOCK,))
         self.connection.commit()
 

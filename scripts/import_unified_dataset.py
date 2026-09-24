@@ -199,10 +199,10 @@ class UnifiedDatasetImporter:
         """, (self.version, self.manifest.source_url))
         self.connection.execute("""
             INSERT INTO dataset_versions(version,published_at,status,is_current,metadata)
-            VALUES (%s,current_date,'importing',false,jsonb_build_object('source_url',%s))
+            VALUES (%s,current_date,'importing',false,jsonb_build_object('source_url',%s::text))
             ON CONFLICT(version) DO UPDATE SET
               status=CASE WHEN dataset_versions.is_current THEN dataset_versions.status ELSE 'importing' END,
-              metadata=dataset_versions.metadata || jsonb_build_object('source_url',%s),
+              metadata=dataset_versions.metadata || jsonb_build_object('source_url',%s::text),
               errors='[]'::jsonb
         """, (self.version, self.manifest.source_url, self.manifest.source_url))
         self.connection.commit()
