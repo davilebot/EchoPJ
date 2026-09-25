@@ -1,7 +1,11 @@
 import base64
 import unittest
 
-from scripts.import_unified_dataset import branch_row, official_download_headers
+from scripts.import_unified_dataset import (
+    branch_row,
+    direct_validation_is_valid,
+    official_download_headers,
+)
 
 
 class UnifiedImportTests(unittest.TestCase):
@@ -22,6 +26,45 @@ class UnifiedImportTests(unittest.TestCase):
         branch[1] = "0002"
         branch[3] = "2"
         self.assertEqual(branch_row(branch, "2026-09"), ("2026-09", "12345678", True))
+
+    def test_direct_validation_accepts_exact_source_duplicates_and_blank_names(self):
+        validation = {
+            "source_establishments": 73_193_135,
+            "target_establishments": 73_193_135,
+            "source_partners": 28_341_092,
+            "target_partners": 28_340_800,
+            "missing_company_rows": 0,
+            "blank_source_legal_names": 16,
+            "states": [
+                "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA",
+                "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
+                "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+            ],
+            "reference_kinds": [
+                "cnae", "country", "legal_nature", "municipality", "qualification",
+                "status_reason",
+            ],
+        }
+        self.assertTrue(direct_validation_is_valid(validation))
+
+    def test_direct_validation_rejects_missing_company_join(self):
+        validation = {
+            "source_establishments": 1,
+            "target_establishments": 1,
+            "source_partners": 1,
+            "target_partners": 1,
+            "missing_company_rows": 1,
+            "states": [
+                "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA",
+                "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
+                "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+            ],
+            "reference_kinds": [
+                "cnae", "country", "legal_nature", "municipality", "qualification",
+                "status_reason",
+            ],
+        }
+        self.assertFalse(direct_validation_is_valid(validation))
 
 
 if __name__ == "__main__":

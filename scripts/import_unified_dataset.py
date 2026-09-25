@@ -46,6 +46,7 @@ DOWNLOAD_ATTEMPTS = 6
 REQUIRED_REFERENCE_KINDS = {
     "cnae", "country", "legal_nature", "municipality", "qualification", "status_reason",
 }
+MAX_PARTNER_DUPLICATE_RATIO = 0.0001
 
 COMPANY_COLUMNS = (
     "dataset_version", "cnpj_root", "legal_name", "legal_nature_code",
@@ -101,6 +102,22 @@ def branch_row(row: list[str], version: str) -> tuple | None:
     if parsed is None:
         return None
     return version, parsed[2], parsed[7] == "02"
+
+
+def direct_validation_is_valid(validation: dict[str, Any]) -> bool:
+    source_partners = int(validation["source_partners"])
+    target_partners = int(validation["target_partners"])
+    duplicate_partners = source_partners - target_partners
+    duplicate_ratio = duplicate_partners / source_partners if source_partners else 0.0
+    return (
+        int(validation["source_establishments"])
+        == int(validation["target_establishments"])
+        and 0 <= duplicate_partners
+        and duplicate_ratio <= MAX_PARTNER_DUPLICATE_RATIO
+        and int(validation["missing_company_rows"]) == 0
+        and set(validation["states"]) == set(STATES)
+        and REQUIRED_REFERENCE_KINDS.issubset(validation["reference_kinds"])
+    )
 
 
 class UnifiedDatasetImporter:
@@ -700,30 +717,53 @@ class UnifiedDatasetImporter:
         target_partners = self.connection.execute(f"""
             SELECT count(*) AS rows FROM {self.builder.partners_next} WHERE dataset_version=%s
         """, (self.version,)).fetchone()["rows"]
+        company_stage_exists = self.connection.execute(
+            "SELECT to_regclass(%s) AS relation", (f"public.{self.company_stage}",)
+        ).fetchone()["relation"]
+        previous_validation = self.connection.execute(
+            "SELECT validation FROM rfb_unified_builds WHERE version=%s", (self.version,)
+        ).fetchone()["validation"] or {}
+        if company_stage_exists:
+            company_validation = self.connection.execute(f"""
+                SELECT
+                  count(*) FILTER (WHERE c.cnpj_root IS NULL) AS missing_company_rows,
+                  count(*) FILTER (
+                    WHERE c.cnpj_root IS NOT NULL AND c.legal_name IS NULL
+                  ) AS blank_source_legal_names
+                FROM {self.builder.main_next} e
+                LEFT JOIN {self.company_stage} c
+                  ON c.dataset_version=e.dataset_version AND c.cnpj_root=e.cnpj_root
+                WHERE e.dataset_version=%s
+            """, (self.version,)).fetchone()
+            missing_company_rows = int(company_validation["missing_company_rows"])
+            blank_source_legal_names = int(company_validation["blank_source_legal_names"])
+        else:
+            missing_company_rows = int(previous_validation.get("missing_company_rows", -1))
+            blank_source_legal_names = int(
+                previous_validation.get("blank_source_legal_names", -1)
+            )
         reference_kinds = self.connection.execute(f"""
             SELECT array_agg(DISTINCT kind ORDER BY kind) AS kinds
             FROM {self.reference_stage} WHERE dataset_version=%s
         """, (self.version,)).fetchone()["kinds"] or []
         states = target["states"] or []
+        duplicate_partner_rows = source_partners - int(target_partners)
         validation = {
             "source_establishments": source_establishments,
             "target_establishments": int(target["rows"]),
             "source_partners": source_partners,
             "target_partners": int(target_partners),
+            "duplicate_partner_rows": duplicate_partner_rows,
             "active_establishments": int(target["active_rows"]),
             "inactive_establishments": int(target["inactive_rows"]),
             "missing_legal_name": int(target["missing_legal_name"]),
+            "missing_company_rows": missing_company_rows,
+            "blank_source_legal_names": blank_source_legal_names,
             "missing_municipality": int(target["missing_municipality"]),
             "states": states,
             "reference_kinds": reference_kinds,
         }
-        valid = (
-            source_establishments == target["rows"]
-            and source_partners == target_partners
-            and set(states) == set(STATES)
-            and REQUIRED_REFERENCE_KINDS.issubset(reference_kinds)
-            and target["missing_legal_name"] == 0
-        )
+        valid = direct_validation_is_valid(validation)
         self.connection.execute("""
             UPDATE rfb_unified_builds
             SET status=%s,validated=%s,validation=%s::jsonb,updated_at=now(),error=%s
