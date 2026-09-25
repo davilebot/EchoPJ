@@ -602,9 +602,9 @@ class UnifiedSearchBuilder:
                     metadata=metadata || jsonb_build_object(
                       'unified_search','ready',
                       'unified_search_published_at',now(),
-                      'unified_search_legacy_establishments',%s,
-                      'unified_search_legacy_partners',%s,
-                      'unified_search_previous_version',%s,
+                      'unified_search_legacy_establishments',%s::text,
+                      'unified_search_legacy_partners',%s::text,
+                      'unified_search_previous_version',%s::text,
                       'reference_labels',%s::jsonb,
                       'municipalities_by_uf',%s::jsonb
                     )
