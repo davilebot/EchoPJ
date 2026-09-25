@@ -439,6 +439,7 @@ class UnifiedSearchBuilder:
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_cnpj_idx ON {self.main_next}(cnpj)",
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_root_idx ON {self.main_next}(cnpj_root,cnpj) WHERE is_active",
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_cnae_idx ON {self.main_next}(primary_cnae,cnpj) WHERE is_active",
+            f"CREATE INDEX IF NOT EXISTS {self.main_next}_cnae_count_idx ON {self.main_next}(primary_cnae,uf) WHERE is_active",
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_location_idx ON {self.main_next}(municipality,postal_code,cnpj) WHERE is_active",
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_capital_idx ON {self.main_next}(share_capital,cnpj) WHERE is_active AND share_capital IS NOT NULL",
             f"CREATE INDEX IF NOT EXISTS {self.main_next}_opened_idx ON {self.main_next}(opened_at,cnpj) WHERE is_active AND opened_at IS NOT NULL",
