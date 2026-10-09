@@ -33,7 +33,10 @@ from plataforma_receita.rfb_manifest import (
     discover_official_manifest,
     manifest_payload,
 )
-from scripts.import_unified_dataset import ImportSettings, UnifiedDatasetImporter
+try:
+    from scripts.import_unified_dataset import ImportSettings, UnifiedDatasetImporter
+except ModuleNotFoundError:  # Execucao direta: python scripts/auto_update_rfb.py
+    from import_unified_dataset import ImportSettings, UnifiedDatasetImporter
 
 
 LOGGER = logging.getLogger("rfb-auto-update")
