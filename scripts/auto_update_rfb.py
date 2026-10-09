@@ -53,6 +53,27 @@ REFERENCE_KINDS = {
 ROLLBACK_RELATION = re.compile(r"^rfb_(?:establishments|partners)_legacy_\d{4}_\d{2}$")
 
 
+@dataclass(frozen=True)
+class PublishedPrimaryKey:
+    relation: str
+    columns: tuple[str, ...]
+    read_index_fragment: str
+
+
+PUBLISHED_PRIMARY_KEYS = (
+    PublishedPrimaryKey(
+        relation="rfb_establishments",
+        columns=("uf", "cnpj"),
+        read_index_fragment="USING btree (cnpj)",
+    ),
+    PublishedPrimaryKey(
+        relation="rfb_partners",
+        columns=("dataset_version", "row_hash"),
+        read_index_fragment="USING btree (cnpj_root, dataset_version)",
+    ),
+)
+
+
 class ManifestNotReady(RuntimeError):
     """The official folder exists but is not safe to import yet."""
 
@@ -236,6 +257,128 @@ def live_relation_bytes(connection: psycopg.Connection[Any]) -> int:
           + pg_total_relation_size('rfb_partners'::regclass) AS bytes
     """).fetchone()
     return int(row["bytes"])
+
+
+def _published_primary_key(
+    connection: psycopg.Connection[Any], relation: str
+) -> dict[str, Any] | None:
+    return connection.execute("""
+        SELECT constraint_row.conname,
+               constraint_row.conindid::regclass::text AS index_name,
+               array_agg(attribute.attname ORDER BY key_column.ordinality) AS columns
+        FROM pg_constraint constraint_row
+        CROSS JOIN LATERAL unnest(constraint_row.conkey)
+          WITH ORDINALITY AS key_column(attnum,ordinality)
+        JOIN pg_attribute attribute
+          ON attribute.attrelid=constraint_row.conrelid
+         AND attribute.attnum=key_column.attnum
+        WHERE constraint_row.conrelid=to_regclass(%s)
+          AND constraint_row.contype='p'
+        GROUP BY constraint_row.conname,constraint_row.conindid
+    """, (f"public.{relation}",)).fetchone()
+
+
+def _index_tree_bytes(connection: psycopg.Connection[Any], index_name: str) -> int:
+    row = connection.execute("""
+        SELECT count(*) AS relations,coalesce(sum(pg_relation_size(relid)),0) AS bytes
+        FROM pg_partition_tree(%s::regclass)
+    """, (index_name,)).fetchone()
+    if row["relations"]:
+        return int(row["bytes"])
+    return int(connection.execute(
+        "SELECT pg_relation_size(%s::regclass) AS bytes", (index_name,)
+    ).fetchone()["bytes"])
+
+
+def optimize_published_read_indexes(
+    connection: psycopg.Connection[Any], *, version: str
+) -> dict[str, Any]:
+    """Drop import-only primary keys after a validated publication.
+
+    The shadow build keeps both primary keys while it is ingesting and
+    deduplicating the official files.  The published relations are immutable
+    and the application reads them through the dedicated CNPJ and CNPJ-root
+    indexes, so retaining the import keys only duplicates read storage.
+    """
+    current = connection.execute("""
+        SELECT version FROM dataset_versions
+        WHERE version=%s AND is_current AND status='ready'
+          AND metadata->>'unified_search'='ready'
+    """, (version,)).fetchone()
+    if not current:
+        raise RuntimeError("a versao informada nao e a base unificada atual e pronta")
+
+    foreign_keys = connection.execute("""
+        SELECT count(*) AS rows
+        FROM pg_constraint
+        WHERE contype='f'
+          AND confrelid=ANY(ARRAY[
+            'rfb_establishments'::regclass,'rfb_partners'::regclass
+          ])
+    """).fetchone()["rows"]
+    if foreign_keys:
+        raise RuntimeError("ha chaves estrangeiras dependentes; otimizacao recusada")
+
+    removable: list[dict[str, Any]] = []
+    for specification in PUBLISHED_PRIMARY_KEYS:
+        primary_key = _published_primary_key(connection, specification.relation)
+        if not primary_key:
+            continue
+        columns = tuple(primary_key["columns"])
+        if columns != specification.columns:
+            raise RuntimeError(
+                f"chave primaria inesperada em {specification.relation}: {columns}"
+            )
+        indexes = connection.execute("""
+            SELECT pg_get_indexdef(indexrelid) AS definition
+            FROM pg_index
+            WHERE indrelid=to_regclass(%s) AND indisvalid AND indisready
+              AND NOT indisprimary
+        """, (f"public.{specification.relation}",)).fetchall()
+        if not any(
+            specification.read_index_fragment in row["definition"] for row in indexes
+        ):
+            raise RuntimeError(
+                f"indice de leitura ausente em {specification.relation}; otimizacao recusada"
+            )
+        removable.append({
+            "relation": specification.relation,
+            "constraint": primary_key["conname"],
+            "index": primary_key["index_name"],
+            "bytes": _index_tree_bytes(connection, primary_key["index_name"]),
+        })
+
+    if not removable:
+        connection.commit()
+        return {"status": "already_optimized", "removed": [], "bytes_released": 0}
+
+    payload = {
+        "optimized_at": utc_now().isoformat(),
+        "removed_constraints": [item["constraint"] for item in removable],
+        "estimated_bytes_released": sum(item["bytes"] for item in removable),
+    }
+    connection.commit()
+    with connection.transaction():
+        connection.execute("SET LOCAL lock_timeout='10s'")
+        for item in removable:
+            connection.execute(
+                sql.SQL("ALTER TABLE {} DROP CONSTRAINT {}").format(
+                    sql.Identifier(item["relation"]),
+                    sql.Identifier(item["constraint"]),
+                )
+            )
+        connection.execute("""
+            UPDATE dataset_versions
+            SET metadata=metadata || jsonb_build_object(
+              'unified_search_read_index_optimization',%s::jsonb
+            )
+            WHERE version=%s AND is_current AND status='ready'
+        """, (json.dumps(payload), version))
+    return {
+        "status": "optimized",
+        "removed": removable,
+        "bytes_released": payload["estimated_bytes_released"],
+    }
 
 
 def ensure_capacity(
@@ -509,10 +652,16 @@ def run(*, check_only: bool = False, force_stable: bool = False) -> dict[str, An
                 raise RuntimeError(f"publicacao terminou, mas a versao atual e {published}")
             legacy_compatibility = sync_legacy_compatibility(connection, manifest)
             readiness = verify_readiness(settings.readiness_urls, target)
+            read_index_optimization = optimize_published_read_indexes(
+                connection, version=target
+            )
+            if read_index_optimization["status"] == "optimized":
+                readiness = verify_readiness(settings.readiness_urls, target)
             return update_status(
                 settings.state_path, "published", **manifest_status,
                 validation=validation,
                 legacy_compatibility=legacy_compatibility,
+                read_index_optimization=read_index_optimization,
                 readiness=readiness,
                 published_at=utc_now().isoformat(),
                 detail="Nova competencia validada e publicada atomicamente.",

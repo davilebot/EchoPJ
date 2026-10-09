@@ -10,6 +10,7 @@ from scripts.auto_update_rfb import (
     active_jobs,
     manifest_fingerprint,
     month_after,
+    optimize_published_read_indexes,
     stable_since,
     sync_legacy_compatibility,
     validate_release_manifest,
@@ -168,6 +169,80 @@ class AutoUpdateTests(unittest.TestCase):
         self.assertEqual(result, {"files": 37, "references": 6})
         self.assertEqual(len(connection.test_cursor.batch[1]), 37)
         self.assertTrue(connection.committed)
+
+    def test_published_index_optimization_keeps_read_indexes(self):
+        class Result:
+            def __init__(self, row=None, rows=None):
+                self.row = row
+                self.rows = rows if rows is not None else ([] if row is None else [row])
+
+            def fetchone(self):
+                return self.row
+
+            def fetchall(self):
+                return self.rows
+
+        class Transaction:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+        class Connection:
+            def __init__(self):
+                self.statements = []
+                self.commits = 0
+
+            def execute(self, statement, parameters=None):
+                rendered = str(statement)
+                self.statements.append((rendered, parameters))
+                if "SELECT version FROM dataset_versions" in rendered:
+                    return Result({"version": "2026-09"})
+                if "confrelid=ANY" in rendered:
+                    return Result({"rows": 0})
+                if "constraint_row.conrelid=to_regclass" in rendered:
+                    relation = parameters[0]
+                    if relation.endswith("rfb_establishments"):
+                        return Result({
+                            "conname": "establishments_pkey",
+                            "index_name": "establishments_pkey",
+                            "columns": ["uf", "cnpj"],
+                        })
+                    return Result({
+                        "conname": "partners_pkey",
+                        "index_name": "partners_pkey",
+                        "columns": ["dataset_version", "row_hash"],
+                    })
+                if "FROM pg_index" in rendered:
+                    relation = parameters[0]
+                    definition = (
+                        "CREATE INDEX x ON rfb_establishments USING btree (cnpj)"
+                        if relation.endswith("rfb_establishments")
+                        else "CREATE INDEX x ON rfb_partners USING btree (cnpj_root, dataset_version)"
+                    )
+                    return Result(rows=[{"definition": definition}])
+                if "FROM pg_partition_tree" in rendered:
+                    if parameters[0] == "establishments_pkey":
+                        return Result({"relations": 28, "bytes": 100})
+                    return Result({"relations": 0, "bytes": 0})
+                if "SELECT pg_relation_size" in rendered:
+                    return Result({"bytes": 50})
+                return Result()
+
+            def commit(self):
+                self.commits += 1
+
+            def transaction(self):
+                return Transaction()
+
+        connection = Connection()
+        result = optimize_published_read_indexes(connection, version="2026-09")
+        self.assertEqual(result["status"], "optimized")
+        self.assertEqual(result["bytes_released"], 150)
+        self.assertEqual(len(result["removed"]), 2)
+        self.assertTrue(any("ALTER TABLE" in statement for statement, _ in connection.statements))
+        self.assertEqual(connection.commits, 1)
 
 
 if __name__ == "__main__":
