@@ -323,7 +323,7 @@ def sync_legacy_compatibility(
         return {"files": 0, "references": 0}
 
     connection.execute(
-        "UPDATE rfb_aux_datasets SET status='archived' WHERE status='current' AND version<>%s",
+        "UPDATE rfb_aux_datasets SET status='ready' WHERE status='current' AND version<>%s",
         (manifest.version,),
     )
     connection.execute("""
