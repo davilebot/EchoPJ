@@ -11,6 +11,7 @@ from scripts.auto_update_rfb import (
     manifest_fingerprint,
     month_after,
     stable_since,
+    sync_legacy_compatibility,
     validate_release_manifest,
 )
 
@@ -115,6 +116,58 @@ class AutoUpdateTests(unittest.TestCase):
                     [("queued",), ("running",), ("completed",)],
                 )
             self.assertEqual(active_jobs((path,)), {str(path): 2})
+
+    def test_legacy_sync_batches_files_through_a_cursor(self):
+        class Result:
+            def __init__(self, rows):
+                self.rows = rows
+
+            def fetchall(self):
+                return self.rows
+
+        class Cursor:
+            def __init__(self):
+                self.batch = None
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def executemany(self, statement, values):
+                self.batch = (statement, values)
+
+        class Connection:
+            def __init__(self):
+                self.statements = []
+                self.test_cursor = Cursor()
+                self.committed = False
+
+            def execute(self, statement, parameters=None):
+                self.statements.append((statement, parameters))
+                if "SELECT relname FROM pg_class" in statement:
+                    return Result([
+                        {"relname": "rfb_aux_datasets"},
+                        {"relname": "rfb_aux_import_files"},
+                        {"relname": "rfb_aux_reference"},
+                    ])
+                if "RETURNING 1" in statement:
+                    return Result([{"?column?": 1}] * 6)
+                return Result([])
+
+            def cursor(self):
+                return self.test_cursor
+
+            def commit(self):
+                self.committed = True
+
+        connection = Connection()
+        manifest = complete_manifest()
+        result = sync_legacy_compatibility(connection, manifest)
+        self.assertEqual(result, {"files": 37, "references": 6})
+        self.assertEqual(len(connection.test_cursor.batch[1]), 37)
+        self.assertTrue(connection.committed)
 
 
 if __name__ == "__main__":

@@ -338,15 +338,16 @@ def sync_legacy_compatibility(
     connection.execute(
         "DELETE FROM rfb_aux_import_files WHERE dataset_version=%s", (manifest.version,)
     )
-    connection.executemany("""
-        INSERT INTO rfb_aux_import_files(
-          dataset_version,file_name,kind,source_url,status,source_rows_processed,
-          rows_loaded,bytes_downloaded,started_at,completed_at,error
-        ) VALUES (%s,%s,%s,%s,'completed',0,0,%s,now(),now(),NULL)
-    """, [
-        (manifest.version, entry.name, entry.kind, entry.url, entry.size or 0)
-        for entry in manifest.files
-    ])
+    with connection.cursor() as cursor:
+        cursor.executemany("""
+            INSERT INTO rfb_aux_import_files(
+              dataset_version,file_name,kind,source_url,status,source_rows_processed,
+              rows_loaded,bytes_downloaded,started_at,completed_at,error
+            ) VALUES (%s,%s,%s,%s,'completed',0,0,%s,now(),now(),NULL)
+        """, [
+            (manifest.version, entry.name, entry.kind, entry.url, entry.size or 0)
+            for entry in manifest.files
+        ])
     references = connection.execute("""
         INSERT INTO rfb_aux_reference(dataset_version,kind,code,label)
         SELECT d.version,k.key,c.key,c.value #>> '{}'
