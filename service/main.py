@@ -1983,6 +1983,14 @@ def search_cnae_options(_: dict = Depends(require_organization)) -> dict:
     }
 
 
+@app.get("/api/search/options/legal-natures")
+def search_legal_nature_options(_: dict = Depends(require_organization)) -> dict:
+    return {
+        "dataset_version": repository.current_version(),
+        "options": repository.search_legal_nature_options(),
+    }
+
+
 @app.get("/api/search/options/municipalities")
 def search_municipality_options(
     uf: str | None = Query(default=None, min_length=2, max_length=2),

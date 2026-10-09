@@ -503,6 +503,41 @@ class Repository:
             """).fetchall()
         return [{"value": row["code"], "label": row["label"]} for row in rows]
 
+    def search_legal_nature_options(self) -> list[dict[str, str]]:
+        capabilities = self.search_capabilities()
+        with self.pool.connection() as connection:
+            if capabilities.unified:
+                row = connection.execute("""
+                    SELECT metadata->'reference_labels'->'legal_nature' AS labels
+                    FROM dataset_versions
+                    WHERE is_current AND status='ready'
+                    ORDER BY imported_at DESC LIMIT 1
+                """).fetchone()
+                labels = (row or {}).get("labels") or {}
+                references = sorted(labels.items(), key=lambda item: (item[1], item[0]))
+            else:
+                rows = connection.execute("""
+                    SELECT code,label
+                    FROM rfb_current_aux_reference
+                    WHERE kind='legal_nature'
+                    ORDER BY label,code
+                """).fetchall()
+                references = [(row["code"], row["label"]) for row in rows]
+        return [
+            {
+                "value": code,
+                "label": label,
+                "option_label": label,
+                "option_description": (
+                    f"Código {code[:3]}-{code[3:]}"
+                    if len(code) == 4 and code.isdigit()
+                    else f"Código {code}"
+                ),
+                "display_label": label,
+            }
+            for code, label in references
+        ]
+
     def search_municipality_options(self, ufs: list[str]) -> list[dict[str, str]]:
         options: list[dict[str, str]] = []
         capabilities = self.search_capabilities()

@@ -40,7 +40,7 @@ class FrontendContractTests(unittest.TestCase):
             "notification-toggle", "notification-panel", "notification-list", "notification-badge",
             "search-templates", "workspace-access-notice", "search-excluded-cnae-picker", "sidebar-toggle",
             "bulk-cnpj-workbench", "bulk-cnpj-filter-form", "bulk-active-filter-count",
-            "run-company-search",
+            "run-company-search", "search-legal-nature-picker",
         }
         self.assertTrue(required.issubset(set(self.parser.ids)))
 
@@ -91,9 +91,13 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("share_capital_min: optionalCapitalNumber", script)
         self.assertIn("function normalizeCnpjFilterList", script)
         self.assertIn("included_cnpjs: normalizeCnpjFilterList", script)
+        self.assertIn('fetch("/api/search/options/legal-natures")', script)
+        self.assertIn("legal_nature_code: legalNaturePicker.values()[0] || null", script)
         self.assertIn("function activateFilterCategory", script)
         self.assertIn("echopjs-filter-category-v3", script)
         self.assertIn('id="clear-company-filters"', self.html)
+        self.assertIn('<option value="false" selected>Não é MEI</option>', self.html)
+        self.assertIn('<option value="1" selected>Matriz</option>', self.html)
         self.assertIn('class="filter-category-tabs"', self.html)
         self.assertIn(".filter-group { display: none", styles)
         self.assertIn(".filter-group.is-active { display: grid", styles)

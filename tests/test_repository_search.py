@@ -110,7 +110,34 @@ class _UnifiedPool:
         yield _UnifiedConnection(self.observed_sql)
 
 
+class _ReferenceOptionsConnection:
+    def execute(self, statement, parameters=None):
+        return _Rows([{
+            "labels": {
+                "2135": "Empresário (Individual)",
+                "2062": "Sociedade Empresária Limitada",
+            },
+        }])
+
+
+class _ReferenceOptionsPool:
+    @contextmanager
+    def connection(self):
+        yield _ReferenceOptionsConnection()
+
+
 class RepositorySearchTests(unittest.TestCase):
+    def test_legal_nature_options_present_names_and_keep_codes_as_secondary_data(self):
+        repository = Repository.__new__(Repository)
+        repository.pool = _ReferenceOptionsPool()
+        repository.search_capabilities = lambda: SearchCapabilities(unified=True)
+
+        options = repository.search_legal_nature_options()
+
+        self.assertEqual([option["value"] for option in options], ["2135", "2062"])
+        self.assertEqual(options[0]["display_label"], "Empresário (Individual)")
+        self.assertEqual(options[0]["option_description"], "Código 213-5")
+
     def test_unified_search_runs_one_result_query_and_one_count_query(self):
         repository = Repository.__new__(Repository)
         repository.pool = _UnifiedPool()

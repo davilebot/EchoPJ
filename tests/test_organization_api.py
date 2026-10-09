@@ -853,6 +853,27 @@ class OrganizationAPITests(unittest.TestCase):
         self.assertEqual(returned["saved_lists"][0]["id"], company_list["id"])
         self.assertEqual(returned["saved_lists"][0]["name"], "CNPJs prioritários")
 
+    def test_legal_nature_options_return_the_search_dictionary(self):
+        self.main.repository.current_version.return_value = "2026-09"
+        self.main.repository.search_legal_nature_options.return_value = [{
+            "value": "2062",
+            "label": "Sociedade Empresária Limitada",
+            "option_label": "Sociedade Empresária Limitada",
+            "option_description": "Código 206-2",
+            "display_label": "Sociedade Empresária Limitada",
+        }]
+
+        status, data, _ = self.request(
+            "/api/search/options/legal-natures",
+            token=self.owner_token,
+            headers={"x-organization-id": str(self.org)},
+        )
+
+        self.assertEqual(status, 200)
+        self.assertEqual(data["dataset_version"], "2026-09")
+        self.assertEqual(data["options"][0]["value"], "2062")
+        self.assertEqual(data["options"][0]["display_label"], "Sociedade Empresária Limitada")
+
     def test_admin_pages_and_membership_free_invite_page(self):
         self.assertEqual(self.request("/organizations")[0], 303)
         self.assertEqual(self.request("/organizations", token=self.owner_token)[0], 200)

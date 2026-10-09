@@ -132,6 +132,7 @@ document.querySelectorAll("[data-filter-panel]").forEach((panel) => {
 });
 
 function updateFilterGroupCounts() {
+  const defaultSelectValues = { "search-mei": "false", "search-branch-type": "1" };
   document.querySelectorAll(".filter-group").forEach((group) => {
     let activeCount = group.querySelectorAll(".multi-picker-tags .multi-picker-tag").length;
     const defaultStatusTags = group.querySelectorAll("#search-status-picker .multi-picker-tag");
@@ -139,6 +140,10 @@ function updateFilterGroupCounts() {
     group.querySelectorAll("input, select, textarea").forEach((field) => {
       if (field.disabled || field.closest(".multi-picker-panel")) return;
       const value = String(field.value || "").trim();
+      if (Object.prototype.hasOwnProperty.call(defaultSelectValues, field.id)) {
+        if (defaultSelectValues[field.id] !== value) activeCount += 1;
+        return;
+      }
       if (!value || ["all", "primary"].includes(value)) return;
       activeCount += 1;
     });
@@ -205,6 +210,7 @@ let partnerEnrichmentPoll = null;
 let searchCapabilitiesLoaded = false;
 let searchCapabilities = {};
 let searchCnaeOptionsLoaded = false;
+let searchLegalNatureOptionsLoaded = false;
 let searchListOptionsLoaded = false;
 let municipalityOptionsRequest = 0;
 let explorerSchemaLoaded = false;
@@ -284,7 +290,7 @@ const listTemplates = {
   nurture: { name: "Acompanhar depois", description: "Contas para retomar em outro momento ou manter em acompanhamento." },
 };
 
-function createMultiPicker(root, emptyLabel) {
+function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
   const trigger = root.querySelector(".multi-picker-trigger");
   const triggerLabel = trigger.querySelector("span");
   const triggerCount = trigger.querySelector("small");
@@ -363,9 +369,13 @@ function createMultiPicker(root, emptyLabel) {
     const checkbox = event.target.closest("input[type='checkbox']");
     if (!checkbox) return;
     const option = optionByValue.get(checkbox.value);
-    if (checkbox.checked && option) selected.set(option.value, option);
+    if (checkbox.checked && option) {
+      if (maxSelected === 1) selected.clear();
+      selected.set(option.value, option);
+    }
     else selected.delete(checkbox.value);
     renderSummary();
+    if (maxSelected === 1) renderOptions();
     notifyChange();
   });
   tags.addEventListener("click", (event) => {
@@ -448,6 +458,7 @@ const regionPicker = createMultiPicker(document.querySelector("#search-region-pi
 const ufPicker = createMultiPicker(document.querySelector("#search-uf-picker"), "Todos os estados");
 const statusPicker = createMultiPicker(document.querySelector("#search-status-picker"), "Ativa (padrão)");
 const sizePicker = createMultiPicker(document.querySelector("#search-size-picker"), "Todos os portes");
+const legalNaturePicker = createMultiPicker(document.querySelector("#search-legal-nature-picker"), "Todas as naturezas jurídicas", { maxSelected: 1 });
 const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
 const includedListPicker = createMultiPicker(document.querySelector("#search-included-list-picker"), "Todas as listas");
 const excludedListPicker = createMultiPicker(document.querySelector("#search-excluded-list-picker"), "Nenhuma lista excluída");
@@ -538,17 +549,19 @@ regionPicker.onChange(updateUfOptions);
 ufPicker.onChange(loadMunicipalityOptions);
 
 document.querySelector("#clear-company-filters").addEventListener("click", () => {
-  [cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
+  [cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, sizePicker, legalNaturePicker, partnerAgePicker, includedListPicker, excludedListPicker]
     .forEach((picker) => picker.clear());
   statusPicker.setSelected(["ATIVA"]);
   [
     "#search-name", "#search-excluded-names", "#search-capital-min", "#search-capital-max",
     "#search-opened-from", "#search-opened-to", "#search-included-cnpjs", "#search-excluded-cnpjs",
-    "#search-postal-codes", "#search-legal-nature", "#search-partners-min", "#search-partners-max",
+    "#search-postal-codes", "#search-partners-min", "#search-partners-max",
     "#search-branches-min", "#search-branches-max",
   ].forEach((selector) => { document.querySelector(selector).value = ""; });
-  ["#search-simples", "#search-mei", "#search-branch-type", "#search-has-email", "#search-has-phone"]
+  ["#search-simples", "#search-has-email", "#search-has-phone"]
     .forEach((selector) => { document.querySelector(selector).value = ""; });
+  document.querySelector("#search-mei").value = "false";
+  document.querySelector("#search-branch-type").value = "1";
   document.querySelector("#search-cnae-scope").value = "primary";
   document.querySelector("#search-saved-status").value = "all";
   setActiveSavedSearch();
@@ -791,6 +804,7 @@ function switchTab(tabName) {
   if (tabName === "search") {
     loadSearchCapabilities();
     loadCnaeOptions();
+    loadLegalNatureOptions();
     loadSearchListOptions();
   }
   if (tabName === "lists") loadCompanyLists();
@@ -963,6 +977,21 @@ async function loadCnaeOptions() {
   }
 }
 
+async function loadLegalNatureOptions() {
+  if (searchLegalNatureOptionsLoaded) return;
+  legalNaturePicker.setLoading("Carregando naturezas jurídicas…");
+  try {
+    const response = await fetch("/api/search/options/legal-natures");
+    if (!response.ok) throw new Error("Não foi possível carregar as naturezas jurídicas");
+    const data = await response.json();
+    legalNaturePicker.setOptions(data.options);
+    legalNaturePicker.setDisabled(false);
+    searchLegalNatureOptionsLoaded = true;
+  } catch (error) {
+    legalNaturePicker.setDisabled(true, error.message);
+  }
+}
+
 async function loadSearchListOptions() {
   if (searchListOptionsLoaded) return;
   includedListPicker.setLoading("Carregando listas…");
@@ -1042,9 +1071,13 @@ function companySearchPayload() {
     excluded_list_ids: excludedListPicker.values(),
     saved_status: document.querySelector("#search-saved-status").value,
     simples: optionalBoolean(document.querySelector("#search-simples").value),
-    mei: optionalBoolean(document.querySelector("#search-mei").value),
-    legal_nature_code: document.querySelector("#search-legal-nature").value || null,
-    branch_type: document.querySelector("#search-branch-type").value || null,
+    mei: document.querySelector("#search-mei").disabled
+      ? null
+      : optionalBoolean(document.querySelector("#search-mei").value),
+    legal_nature_code: legalNaturePicker.values()[0] || null,
+    branch_type: document.querySelector("#search-branch-type").disabled
+      ? null
+      : document.querySelector("#search-branch-type").value || null,
     has_email: optionalBoolean(document.querySelector("#search-has-email").value),
     has_phone: optionalBoolean(document.querySelector("#search-has-phone").value),
     active_branch_count_min: optionalNumber(document.querySelector("#search-branches-min").value),
@@ -1824,7 +1857,8 @@ function hasMeaningfulCompanyFilters(payload) {
     || payload.partner_count_min !== null || payload.partner_count_max !== null
     || payload.included_cnpjs.length || payload.excluded_cnpjs.length
     || payload.included_list_ids.length || payload.excluded_list_ids.length || payload.saved_status !== "all"
-    || payload.simples !== null || payload.mei !== null || payload.legal_nature_code || payload.branch_type
+    || payload.simples !== null || (payload.mei !== null && payload.mei !== false) || payload.legal_nature_code
+    || (payload.branch_type !== null && payload.branch_type !== "1")
     || payload.has_email !== null || payload.has_phone !== null || payload.active_branch_count_min !== null
     || payload.active_branch_count_max !== null
     || payload.registration_statuses.length !== 1 || payload.registration_statuses[0] !== "ATIVA"
@@ -2010,7 +2044,7 @@ companySearchForm.addEventListener("change", (event) => {
   updateFilterGroupCounts();
   markCompanySearchFiltersChanged();
 });
-[cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, partnerAgePicker, includedListPicker, excludedListPicker]
+[cnaePicker, excludedCnaePicker, municipalityPicker, regionPicker, ufPicker, statusPicker, sizePicker, legalNaturePicker, partnerAgePicker, includedListPicker, excludedListPicker]
   .forEach((picker) => picker.onChange(() => {
     updateFilterGroupCounts();
     markCompanySearchFiltersChanged();
@@ -2389,7 +2423,7 @@ function setCapitalInputValue(selector, value) {
 }
 
 async function applySearchFilters(filters) {
-  await Promise.all([loadSearchCapabilities(), loadCnaeOptions(), loadSearchListOptions()]);
+  await Promise.all([loadSearchCapabilities(), loadCnaeOptions(), loadLegalNatureOptions(), loadSearchListOptions()]);
   cnaePicker.setSelected(filters.cnaes || []);
   excludedCnaePicker.setSelected(filters.excluded_cnaes || []);
   statusPicker.setSelected(filters.registration_statuses || []);
@@ -2412,7 +2446,7 @@ async function applySearchFilters(filters) {
   setInputValue("#search-postal-codes", (filters.postal_code_prefixes || []).join("\n"));
   setInputValue("#search-simples", filters.simples === null || filters.simples === undefined ? "" : String(filters.simples));
   setInputValue("#search-mei", filters.mei === null || filters.mei === undefined ? "" : String(filters.mei));
-  setInputValue("#search-legal-nature", filters.legal_nature_code);
+  legalNaturePicker.setSelected(filters.legal_nature_code ? [filters.legal_nature_code] : []);
   setInputValue("#search-branch-type", filters.branch_type);
   setInputValue("#search-has-email", filters.has_email === null || filters.has_email === undefined ? "" : String(filters.has_email));
   setInputValue("#search-has-phone", filters.has_phone === null || filters.has_phone === undefined ? "" : String(filters.has_phone));
