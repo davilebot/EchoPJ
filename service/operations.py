@@ -108,3 +108,32 @@ def backup_status(path: str, *, stale_after_hours: int = 8) -> dict[str, Any]:
         "retained": int(payload.get("retained", 0) or 0),
         "detail": str(payload.get("detail", ""))[:240] or None,
     }
+
+
+def rfb_update_status(path: str, *, stale_after_hours: int = 36) -> dict[str, Any]:
+    """Return a bounded, secret-free view of the monthly Receita updater."""
+    source = Path(path)
+    if not source.is_file():
+        return {"status": "unknown", "detail": "O atualizador ainda não publicou seu estado."}
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        checked_at = datetime.fromisoformat(str(payload["checked_at"]))
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=timezone.utc)
+        checked_at = checked_at.astimezone(timezone.utc)
+        age_seconds = max(0, (datetime.now(timezone.utc) - checked_at).total_seconds())
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        return {"status": "invalid", "detail": "O arquivo de estado do atualizador é inválido."}
+
+    status = str(payload.get("status", "unknown"))
+    if age_seconds > stale_after_hours * 3600 and status != "importing":
+        status = "stale"
+    return {
+        "status": status,
+        "checked_at": checked_at.isoformat(),
+        "age_seconds": round(age_seconds),
+        "current_version": str(payload.get("current_version") or "") or None,
+        "target_version": str(payload.get("target_version") or "") or None,
+        "published_at": str(payload.get("published_at") or "") or None,
+        "detail": str(payload.get("detail", ""))[:300] or None,
+    }

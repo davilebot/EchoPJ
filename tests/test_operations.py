@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from service.operations import OperationsMonitor, backup_status, percentile
+from service.operations import OperationsMonitor, backup_status, percentile, rfb_update_status
 
 
 class OperationsTests(unittest.TestCase):
@@ -36,6 +36,28 @@ class OperationsTests(unittest.TestCase):
                 "status": "ok", "checked_at": (datetime.now(timezone.utc) - timedelta(hours=9)).isoformat(),
             }))
             self.assertEqual(backup_status(str(path))["status"], "stale")
+
+    def test_rfb_update_status_is_bounded_and_detects_stale_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rfb-status.json"
+            self.assertEqual(rfb_update_status(str(path))["status"], "unknown")
+            path.write_text(json.dumps({
+                "status": "waiting_for_release",
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "current_version": "2026-09",
+                "target_version": "2026-10",
+                "detail": "aguardando",
+                "ADMIN_POSTGRES_DSN": "nao deve aparecer",
+            }))
+            result = rfb_update_status(str(path))
+            self.assertEqual(result["status"], "waiting_for_release")
+            self.assertEqual(result["current_version"], "2026-09")
+            self.assertNotIn("ADMIN_POSTGRES_DSN", result)
+            path.write_text(json.dumps({
+                "status": "waiting_for_release",
+                "checked_at": (datetime.now(timezone.utc) - timedelta(hours=40)).isoformat(),
+            }))
+            self.assertEqual(rfb_update_status(str(path))["status"], "stale")
 
 
 if __name__ == "__main__":

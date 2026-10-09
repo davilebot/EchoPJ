@@ -53,6 +53,11 @@ As tabelas antigas só podem ser removidas após sete dias:
 ADMIN_POSTGRES_DSN=... python scripts/build_unified_search.py --version 2026-08 --retire-legacy
 ```
 
+Em producao, novas competencias usam o atualizador diario descrito em
+`docs/atualizacao-automatica-receita.md`. A aposentadoria automatica remove
+somente as relacoes de rollback registradas; a migracao das auxiliares antigas
+para views possui um procedimento separado e reversivel antes da finalizacao.
+
 ## Próximas cargas mensais
 
 `scripts/import_unified_dataset.py` monta cada nova competência diretamente nas

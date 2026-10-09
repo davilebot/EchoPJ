@@ -1,0 +1,11 @@
+[Unit]
+Description=Verificacao diaria de nova competencia da Receita
+
+[Timer]
+OnCalendar=*-*-* 03:40:00 America/Sao_Paulo
+Persistent=true
+RandomizedDelaySec=20m
+Unit=echopjs-rfb-auto-update.service
+
+[Install]
+WantedBy=timers.target

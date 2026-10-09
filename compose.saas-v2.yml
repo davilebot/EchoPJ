@@ -9,6 +9,7 @@ services:
       - /etc/easypanel/secrets/echopjs-saas-v2/app.env
     volumes:
       - /srv/echopjs-saas-v2/data:/data
+      - /srv/echopjs-saas-v2/rfb-updater:/rfb-updater:ro
     expose:
       - "8000"
     mem_limit: 1g
@@ -30,6 +31,33 @@ services:
       easypanel:
         aliases:
           - echopjs-saas_v2_app
+      radar_backend: {}
+      egress: {}
+
+  rfb-updater:
+    profiles: ["operations"]
+    image: ${RFB_UPDATER_IMAGE:-echopjs-saas:b4a1a73}
+    pull_policy: never
+    env_file:
+      - /etc/easypanel/secrets/echopjs-saas-v2/app.env
+      - /etc/easypanel/secrets/echopjs-rfb-updater/updater.env
+    command: ["python", "scripts/auto_update_rfb.py"]
+    volumes:
+      - /srv/echopjs-saas-v2/rfb-updater:/state
+      - /srv/radar-cnpj/tmp/rfb-auto-update:/cache
+      - /srv/echopjs-saas-v2/data:/app-data:ro
+      - /srv/plataforma-receita/data:/legacy-data:ro
+    mem_limit: 4g
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      easypanel: {}
       radar_backend: {}
       egress: {}
 

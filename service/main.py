@@ -69,7 +69,7 @@ from .saas import SaaSError, SaaSStore
 from .payments import AsaasClient, BillingCatalog, PaymentError, normalize_asaas_event
 from .legal import LegalDocuments
 from .launch import commercial_launch_readiness
-from .operations import OperationsMonitor, backup_status
+from .operations import OperationsMonitor, backup_status, rfb_update_status
 from .partner_enrichment import (
     LemitClient,
     PartnerEnrichmentRunner,
@@ -1126,6 +1126,7 @@ def publish_admin_billing_catalog(user: dict = Depends(require_internal_admin)) 
 def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
     application = readiness_report()
     backup = backup_status(settings.saas_backup_status_path)
+    rfb_update = rfb_update_status(settings.rfb_update_status_path)
     billing = billing_catalog_public()
     catalog = current_billing_catalog()
     webhook_ready = 32 <= len(settings.asaas_webhook_token) <= 255
@@ -1134,6 +1135,7 @@ def admin_operations(user: dict = Depends(require_internal_admin)) -> dict:
         "readiness": application,
         "traffic": operations_monitor.snapshot(),
         "backup": backup,
+        "rfb_update": rfb_update,
         "billing": {
             "enabled": billing["enabled"],
             "catalog_offers": len(catalog.offers()),
