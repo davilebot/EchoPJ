@@ -1,4 +1,5 @@
-name: echopjs-saas-v2
+# Match the EasyPanel Compose project to avoid a second app on the same network alias.
+name: echopjs-saas_v2
 
 services:
   app:
