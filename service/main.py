@@ -234,7 +234,7 @@ async def prevent_stale_application_state(request, call_next):
         if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") not in allowed_origins):
             return JSONResponse({"detail": "Origem da solicitação não autorizada."}, status_code=403)
     response = await call_next(request)
-    if request.url.path in {"/", "/produto", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/termos", "/privacidade", "/billing/return"} or request.url.path.startswith("/api/"):
+    if request.url.path in {"/", "/produto", "/login", "/signup", "/verify-email", "/forgot-password", "/reset-password", "/account", "/organizations", "/invite", "/admin", "/help", "/plans", "/termos", "/privacidade", "/billing/return"} or request.url.path.startswith("/api/") or (request.url.path.startswith("/static/") and request.url.path.endswith((".js", ".css"))):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     response.headers["X-Content-Type-Options"] = "nosniff"
