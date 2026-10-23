@@ -290,7 +290,41 @@ const listTemplates = {
   nurture: { name: "Acompanhar depois", description: "Contas para retomar em outro momento ou manter em acompanhamento." },
 };
 
-function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
+function parseCnaePaste(text) {
+  const lines = text.split(/\r\n|\r|\n/);
+  const firstLineIndex = lines.findIndex((line) => line.trim());
+  const firstLine = lines[firstLineIndex] || "";
+  const delimiter = firstLine.includes("\t") ? "\t" : /^\s*\|/.test(firstLine) ? "|" : null;
+  let source = text;
+  let hasCnaeColumn = false;
+
+  if (delimiter) {
+    const cells = (line) => line.split(delimiter).map((cell) => cell.trim()).filter((cell, index, parts) =>
+      delimiter !== "|" || (index !== 0 && index !== parts.length - 1));
+    const cnaeColumns = cells(firstLine).flatMap((cell, index) => /^cnaes?\b/i.test(cell) ? [index] : []);
+    if (cnaeColumns.length) {
+      hasCnaeColumn = true;
+      source = lines.slice(firstLineIndex + 1)
+        .flatMap((line) => cnaeColumns.map((index) => cells(line)[index] || ""))
+        .join("\n");
+    }
+  }
+
+  const codes = [...source.matchAll(/(^|[^\d])(\d{4}-\d\/\d{2}|\d{7})(?=$|[^\d])/g)]
+    .map((match) => match[2].replace(/\D/g, ""));
+  const structured = lines.length > 1 || text.includes("\t") || codes.length > 1;
+  if (!structured) return null;
+
+  const invalid = [];
+  for (const line of source.split("\n")) {
+    const prefix = line.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(?:CNAE\s*:?\s*)?(\d[\d./-]*)(?=\s|$)/i);
+    if (prefix && prefix[1].replace(/\D/g, "").length !== 7) invalid.push(prefix[1]);
+  }
+  if (!codes.length && !invalid.length && !hasCnaeColumn) return null;
+  return { codes: [...new Set(codes)], invalid: [...new Set(invalid)] };
+}
+
+function createMultiPicker(root, emptyLabel, { maxSelected = null, cnaePaste = false } = {}) {
   const trigger = root.querySelector(".multi-picker-trigger");
   const triggerLabel = trigger.querySelector("span");
   const triggerCount = trigger.querySelector("small");
@@ -299,6 +333,18 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
   const optionsContainer = root.querySelector(".multi-picker-options");
   const tags = root.querySelector(".multi-picker-tags");
   const clearButton = root.querySelector(".multi-picker-clear");
+  let pasteFeedback = null;
+  if (cnaePaste) {
+    const hint = document.createElement("p");
+    hint.className = "multi-picker-paste-hint";
+    hint.textContent = "Cole uma lista para marcar vários CNAEs de uma vez.";
+    search.insertAdjacentElement("afterend", hint);
+    pasteFeedback = document.createElement("p");
+    pasteFeedback.className = "multi-picker-paste-feedback hidden";
+    pasteFeedback.setAttribute("role", "status");
+    pasteFeedback.setAttribute("aria-live", "polite");
+    optionsContainer.insertAdjacentElement("beforebegin", pasteFeedback);
+  }
   let options = [];
   let optionByValue = new Map();
   const selected = new Map();
@@ -364,7 +410,41 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
   document.addEventListener("pointerdown", (event) => {
     if (!root.contains(event.target)) closePanel();
   });
-  search.addEventListener("input", renderOptions);
+  search.addEventListener("input", () => {
+    pasteFeedback?.classList.add("hidden");
+    renderOptions();
+  });
+  if (cnaePaste) search.addEventListener("paste", (event) => {
+    const parsed = parseCnaePaste(event.clipboardData?.getData("text/plain") || "");
+    if (!parsed) return;
+    event.preventDefault();
+
+    const unknown = parsed.codes.filter((code) => !optionByValue.has(code));
+    const valid = parsed.codes.filter((code) => optionByValue.has(code));
+    const additions = valid.filter((code) => !selected.has(code));
+    if (selected.size + additions.length > 2000) {
+      pasteFeedback.textContent = "Limite de 2.000 CNAEs por filtro. Nenhum código foi adicionado.";
+      pasteFeedback.classList.remove("hidden");
+      return;
+    }
+
+    additions.forEach((code) => selected.set(code, optionByValue.get(code)));
+    search.value = "";
+    renderSummary();
+    renderOptions();
+    if (additions.length) notifyChange();
+
+    const ignored = [...new Set([...unknown, ...parsed.invalid])];
+    const alreadySelected = valid.length - additions.length;
+    const summary = [`${additions.length} CNAE${additions.length === 1 ? "" : "s"} adicionado${additions.length === 1 ? "" : "s"}.`];
+    if (alreadySelected) summary.push(`${alreadySelected} já selecionado${alreadySelected === 1 ? "" : "s"}.`);
+    if (ignored.length) {
+      const shown = ignored.slice(0, 8).join(", ");
+      summary.push(`${ignored.length} não reconhecido${ignored.length === 1 ? "" : "s"}: ${shown}${ignored.length > 8 ? ` e mais ${ignored.length - 8}` : ""}.`);
+    }
+    pasteFeedback.textContent = summary.join(" ");
+    pasteFeedback.classList.remove("hidden");
+  });
   optionsContainer.addEventListener("change", (event) => {
     const checkbox = event.target.closest("input[type='checkbox']");
     if (!checkbox) return;
@@ -374,6 +454,7 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
       selected.set(option.value, option);
     }
     else selected.delete(checkbox.value);
+    pasteFeedback?.classList.add("hidden");
     renderSummary();
     if (maxSelected === 1) renderOptions();
     notifyChange();
@@ -382,12 +463,14 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
     const button = event.target.closest("[data-remove-value]");
     if (!button) return;
     selected.delete(button.dataset.removeValue);
+    pasteFeedback?.classList.add("hidden");
     renderSummary();
     renderOptions();
     notifyChange();
   });
   clearButton.addEventListener("click", () => {
     selected.clear();
+    pasteFeedback?.classList.add("hidden");
     renderSummary();
     renderOptions();
     notifyChange();
@@ -412,11 +495,13 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
         if (!optionByValue.has(value)) selected.delete(value);
       });
       search.value = "";
+      pasteFeedback?.classList.add("hidden");
       renderSummary();
       renderOptions();
     },
     clear() {
       selected.clear();
+      pasteFeedback?.classList.add("hidden");
       renderSummary();
       renderOptions();
     },
@@ -426,6 +511,7 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
         const option = optionByValue.get(String(value));
         if (option) selected.set(option.value, option);
       });
+      pasteFeedback?.classList.add("hidden");
       renderSummary();
       renderOptions();
     },
@@ -451,8 +537,8 @@ function createMultiPicker(root, emptyLabel, { maxSelected = null } = {}) {
   };
 }
 
-const cnaePicker = createMultiPicker(document.querySelector("#search-cnae-picker"), "Selecionar CNAEs");
-const excludedCnaePicker = createMultiPicker(document.querySelector("#search-excluded-cnae-picker"), "Nenhum CNAE excluído");
+const cnaePicker = createMultiPicker(document.querySelector("#search-cnae-picker"), "Selecionar CNAEs", { cnaePaste: true });
+const excludedCnaePicker = createMultiPicker(document.querySelector("#search-excluded-cnae-picker"), "Nenhum CNAE excluído", { cnaePaste: true });
 const municipalityPicker = createMultiPicker(document.querySelector("#search-municipality-picker"), "Selecionar municípios");
 const regionPicker = createMultiPicker(document.querySelector("#search-region-picker"), "Brasil inteiro");
 const ufPicker = createMultiPicker(document.querySelector("#search-uf-picker"), "Todos os estados");
@@ -462,8 +548,8 @@ const legalNaturePicker = createMultiPicker(document.querySelector("#search-lega
 const partnerAgePicker = createMultiPicker(document.querySelector("#search-partner-age-picker"), "Todas as faixas etárias");
 const includedListPicker = createMultiPicker(document.querySelector("#search-included-list-picker"), "Todas as listas");
 const excludedListPicker = createMultiPicker(document.querySelector("#search-excluded-list-picker"), "Nenhuma lista excluída");
-const bulkCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-cnae-picker"), "Todos os CNAEs");
-const bulkExcludedCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-excluded-cnae-picker"), "Nenhum CNAE excluído");
+const bulkCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-cnae-picker"), "Todos os CNAEs", { cnaePaste: true });
+const bulkExcludedCnaePicker = createMultiPicker(document.querySelector("#bulk-filter-excluded-cnae-picker"), "Nenhum CNAE excluído", { cnaePaste: true });
 const bulkStatusPicker = createMultiPicker(document.querySelector("#bulk-filter-status-picker"), "Todas as situações");
 const bulkSizePicker = createMultiPicker(document.querySelector("#bulk-filter-size-picker"), "Todos os portes");
 const bulkBranchPicker = createMultiPicker(document.querySelector("#bulk-filter-branch-picker"), "Matrizes e filiais");

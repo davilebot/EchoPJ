@@ -133,7 +133,7 @@ class FrontendContractTests(unittest.TestCase):
         self.assertIn("if (!data.total_count_exact)", script)
         self.assertIn("startExactCompanySearchCount(payload, requestNumber, true)", script)
         self.assertIn("function searchResponseError", script)
-        self.assertIn("20260923-unified-search-1", self.html)
+        self.assertRegex(self.html, r'/static/styles\.css\?v=[A-Za-z0-9-]+')
         self.assertIn("excluded_cnaes", script)
 
     def test_downloads_use_server_credit_enforcement(self):
